@@ -38,4 +38,4 @@ build/
 .DS_Store
 
 ### ignora file gtfs
-../src/rome_static_gtfs/*.csv
+src/rome_static_gtfs/*.csv
