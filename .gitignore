@@ -36,3 +36,6 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+### ignora file gtfs
+../src/rome_static_gtfs/*.csv
