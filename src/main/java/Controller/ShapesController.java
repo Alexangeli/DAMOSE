@@ -5,7 +5,7 @@ import Service.ShapesService;
 import java.util.List;
 
 public class ShapesController {
-    public List<ShapesModel> getRoutes(String filePath) {
+    public List<ShapesModel> getShapes(String filePath) {
         return ShapesService.readFromCSV(filePath);
     }
 }

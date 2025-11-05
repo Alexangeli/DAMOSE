@@ -5,7 +5,7 @@ import Service.StopService;
 import java.util.List;
 
 public class StopController {
-    public List<StopModel> getRoutes(String filePath) {
+    public List<StopModel> getStops(String filePath) {
         return StopService.readFromCSV(filePath);
     }
 }

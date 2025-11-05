@@ -6,7 +6,7 @@ import Service.TripsService;
 import java.util.List;
 
 public class TripsController {
-    public List<TripsModel> getRoutes(String filePath) {
+    public List<TripsModel> getTrips(String filePath) {
         return TripsService.readFromCSV(filePath);
     }
 }

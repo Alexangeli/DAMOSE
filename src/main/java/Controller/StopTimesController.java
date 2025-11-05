@@ -5,7 +5,7 @@ import Service.StopTimesService;
 import java.util.List;
 
 public class StopTimesController {
-    public List<StopTimesModel> getRoutes(String filePath) {
+    public List<StopTimesModel> getStopTimes(String filePath) {
         return StopTimesService.readFromCSV(filePath);
     }
 }
