@@ -4,7 +4,11 @@ import Model.StopTimesModel;
 import Service.StopTimesService;
 import java.util.List;
 
+// Controller responsabile della gestione delle informazioni sugli orari delle fermate (stop_times).
+// Si occupa di richiamare il servizio che legge i dati dal CSV e restituirli come lista di oggetti StopTimesModel.
 public class StopTimesController {
+
+    // Legge il file CSV indicato dal percorso e restituisce una lista di oggetti StopTimesModel.
     public List<StopTimesModel> getStopTimes(String filePath) {
         return StopTimesService.readFromCSV(filePath);
     }
