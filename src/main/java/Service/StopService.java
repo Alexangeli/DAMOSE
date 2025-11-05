@@ -10,14 +10,26 @@ import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Classe di servizio per la gestione delle fermate (Stop).
+ * Si occupa della lettura dei dati da un file CSV e della conversione
+ * in oggetti {@link StopModel}.
+ */
 public class StopService {
+
+    /**
+     * Legge le informazioni delle fermate da un file CSV e le converte in una lista di {@link StopModel}.
+     *
+     * @param filePath percorso del file CSV da leggere
+     * @return una lista di oggetti StopModel contenenti i dati delle fermate
+     */
     public static List<StopModel> readFromCSV(String filePath) {
         List<StopModel> stopsList = new ArrayList<>();
 
         try (CSVReader reader = new CSVReader(new InputStreamReader(new FileInputStream(filePath), "UTF-8"))) {
 
             String[] nextLine;
-            reader.readNext(); // salta l'intestazione
+            reader.readNext(); // Salta l'intestazione del CSV
 
             while ((nextLine = reader.readNext()) != null) {
                 StopModel stop = new StopModel();

@@ -1,17 +1,20 @@
 package Model;
 
+// Classe che rappresenta le informazioni sulle fermate di un viaggio (file stop_times.txt nel formato GTFS)
 public class StopTimesModel {
-    private String trip_id;
-    private String arrival_time;
-    private String departure_time;
-    private String stop_id;
-    private String stop_sequence;
-    private String stop_headsign;
-    private String pickup_type;
-    private String drop_off_type;
-    private String shape_dist_traveled;
-    private String timepoint;
 
+    private String trip_id;               // Identificativo del viaggio
+    private String arrival_time;          // Orario di arrivo alla fermata (HH:MM:SS)
+    private String departure_time;        // Orario di partenza dalla fermata (HH:MM:SS)
+    private String stop_id;               // Identificativo della fermata
+    private String stop_sequence;         // Ordine della fermata nel viaggio
+    private String stop_headsign;         // Nome della destinazione mostrata sul mezzo
+    private String pickup_type;           // Tipo di possibilità di salita (0 = normale)
+    private String drop_off_type;         // Tipo di possibilità di discesa (0 = normale)
+    private String shape_dist_traveled;   // Distanza percorsa lungo la shape associata
+    private String timepoint;             // Indica se l’orario è preciso (1) o stimato (0)
+
+    // Costruttore vuoto
     public StopTimesModel() {}
 
     public String getArrival_time() {

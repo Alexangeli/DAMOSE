@@ -1,18 +1,20 @@
 package Model;
 
+// Classe che rappresenta un singolo viaggio (trip) nel dataset GTFS.
+// Ogni viaggio è una singola corsa su una determinata linea (route) in un certo giorno.
 public class TripsModel {
-    private String route_id;
-    private String service_id;
-    private String trip_id;
-    private String trip_headsign;
-    private String trip_short_name;
-    private String direction_id;
-    private String block_id;
-    private String shape_id;
-    private String wheelchair_accessible;
-    private String exceptional;
+    private String route_id;               // Identificativo della linea (collega il viaggio alla route)
+    private String service_id;             // Identificativo del servizio (collega al calendario)
+    private String trip_id;                // Identificativo univoco del viaggio
+    private String trip_headsign;          // Destinazione mostrata al passeggero (es. "Termini")
+    private String trip_short_name;        // Nome breve del viaggio (facoltativo)
+    private String direction_id;           // Direzione del viaggio (0 o 1)
+    private String block_id;               // Identifica un gruppo di viaggi eseguiti dallo stesso veicolo
+    private String shape_id;               // Collega il viaggio al tracciato geometrico (shape)
+    private String wheelchair_accessible;  // Indica se il viaggio è accessibile a persone in sedia a rotelle
+    private String exceptional;            // Indica eventuali eccezioni o corse speciali
 
-
+    // Costruttore vuoto
     public TripsModel() {
     }
 

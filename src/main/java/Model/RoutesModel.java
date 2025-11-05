@@ -1,16 +1,23 @@
 package Model;
 
+/**
+ * Modello che rappresenta una linea o rotta di trasporto nel dataset GTFS.
+ * Ogni record descrive una rotta (bus, metro, treno, ecc.) con i suoi dettagli identificativi e grafici.
+ */
 public class RoutesModel {
 
-    private String route_id;
-    private String agency_id;
-    private String route_short_name;
-    private String route_long_name;
-    private String route_type;
-    private String route_url;
-    private String route_color;
-    private String route_text_color;
+    private String route_id;          // Identificatore univoco della rotta
+    private String agency_id;         // Identificatore dell'agenzia che gestisce la rotta
+    private String route_short_name;  // Nome breve della rotta (es. numero della linea)
+    private String route_long_name;   // Nome completo o descrizione della rotta
+    private String route_type;        // Tipo di servizio (0 = tram, 1 = metro, 2 = treno, 3 = bus, ecc.)
+    private String route_url;         // URL con informazioni dettagliate sulla rotta
+    private String route_color;       // Colore utilizzato per rappresentare la rotta (in formato esadecimale)
+    private String route_text_color;  // Colore del testo da usare sullo sfondo del colore della rotta
 
+    /**
+     * Costruttore vuoto richiesto per l'inizializzazione del modello.
+     */
     public RoutesModel() {}
 
     public String getRoute_id() {
@@ -76,5 +83,4 @@ public class RoutesModel {
     public void setRoute_text_color(String route_text_color) {
         this.route_text_color = route_text_color;
     }
-
 }

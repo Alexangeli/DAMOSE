@@ -10,14 +10,26 @@ import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Classe di servizio per la gestione dei dati relativi ai viaggi (Trips).
+ * Si occupa della lettura dei dati dal file CSV GTFS e della conversione
+ * in oggetti {@link TripsModel}.
+ */
 public class TripsService {
+
+    /**
+     * Legge i dati dei viaggi (trips) da un file CSV e li converte in una lista di {@link TripsModel}.
+     *
+     * @param filePath percorso del file CSV contenente i dati dei viaggi
+     * @return una lista di oggetti TripsModel con i dati letti
+     */
     public static List<TripsModel> readFromCSV(String filePath) {
         List<TripsModel> tripsList = new ArrayList<>();
 
         try (CSVReader reader = new CSVReader(new InputStreamReader(new FileInputStream(filePath), "UTF-8"))) {
 
             String[] nextLine;
-            reader.readNext(); // salta l'intestazione
+            reader.readNext(); // Salta l'intestazione del CSV
 
             while ((nextLine = reader.readNext()) != null) {
                 TripsModel trip = new TripsModel();
@@ -44,3 +56,4 @@ public class TripsService {
         return tripsList;
     }
 }
+
