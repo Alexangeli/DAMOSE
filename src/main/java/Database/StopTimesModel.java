@@ -112,19 +112,19 @@ public class StopTimesModel {
             reader.readNext(); // salta l'intestazione
 
             while ((nextLine = reader.readNext()) != null) {
-                StopTimesModel stop = new StopTimesModel();
-                stop.setTrip_id(nextLine[0].trim());
-                stop.setArrival_time(nextLine[1].trim());
-                stop.setDeparture_time(nextLine[2].trim());
-                stop.setStop_id(nextLine[3].trim());
-                stop.setStop_sequence(nextLine[4].trim());
-                stop.setStop_headsign(nextLine[5].trim());
-                stop.setPickup_type(nextLine[6].trim());
-                stop.setDrop_off_type(nextLine[7].trim());
-                stop.setShape_dist_traveled(nextLine[8].trim());
-                stop.setTimepoint(nextLine[9].trim());
+                StopTimesModel stopTimes = new StopTimesModel();
+                stopTimes.setTrip_id(nextLine[0].trim());
+                stopTimes.setArrival_time(nextLine[1].trim());
+                stopTimes.setDeparture_time(nextLine[2].trim());
+                stopTimes.setStop_id(nextLine[3].trim());
+                stopTimes.setStop_sequence(nextLine[4].trim());
+                stopTimes.setStop_headsign(nextLine[5].trim());
+                stopTimes.setPickup_type(nextLine[6].trim());
+                stopTimes.setDrop_off_type(nextLine[7].trim());
+                stopTimes.setShape_dist_traveled(nextLine[8].trim());
+                stopTimes.setTimepoint(nextLine[9].trim());
 
-                stopsTimesList.add(stop);
+                stopsTimesList.add(stopTimes);
             }
 
         } catch (IOException e) {
