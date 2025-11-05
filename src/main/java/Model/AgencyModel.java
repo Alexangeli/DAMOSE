@@ -1,22 +1,22 @@
 package Model;
 
+/**
+ * Modello che rappresenta un'agenzia di trasporto pubblico all'interno del dataset GTFS.
+ * Contiene tutte le informazioni fondamentali sull'agenzia come nome, URL, lingua, contatto, ecc.
+ */
 public class AgencyModel {
-    private String agency_id;
-    private String agency_name;
-    private String agency_url;
-    private String agency_timezone;
-    private String agency_lang;
-    private String agency_phone;
-    private String agency_fare_url;
+    private String agency_id;          // Identificatore univoco dell'agenzia
+    private String agency_name;        // Nome dell'agenzia
+    private String agency_url;         // URL del sito web dell'agenzia
+    private String agency_timezone;    // Fuso orario dell'agenzia
+    private String agency_lang;        // Lingua principale utilizzata dall'agenzia
+    private String agency_phone;       // Numero di telefono dell'agenzia
+    private String agency_fare_url;    // URL con informazioni sulle tariffe
 
-    public AgencyModel() {}
-
-    public String getAgency_url() {
-        return agency_url;
-    }
-
-    public void setAgency_url(String agency_url) {
-        this.agency_url = agency_url;
+    /**
+     * Costruttore vuoto richiesto per l'inizializzazione del modello.
+     */
+    public AgencyModel() {
     }
 
     public String getAgency_id() {
@@ -33,6 +33,14 @@ public class AgencyModel {
 
     public void setAgency_name(String agency_name) {
         this.agency_name = agency_name;
+    }
+
+    public String getAgency_url() {
+        return agency_url;
+    }
+
+    public void setAgency_url(String agency_url) {
+        this.agency_url = agency_url;
     }
 
     public String getAgency_timezone() {
@@ -66,6 +74,5 @@ public class AgencyModel {
     public void setAgency_fare_url(String agency_fare_url) {
         this.agency_fare_url = agency_fare_url;
     }
-
-
 }
+
