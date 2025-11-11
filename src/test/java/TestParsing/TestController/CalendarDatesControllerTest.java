@@ -8,6 +8,15 @@ import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 
+// Creatore: Alessandro Angeli
+
+/**
+ * Questa classe è una suite di test JUnit che verifica il corretto funzionamento dei metodi della classe CalendarDatesController,
+ * in particolare testa la lettura e il parsing dei dati delle date di servizio da un file CSV.
+ * La classe assicura che il controller produca una lista di oggetti CalendarDatesModel con attributi corrispondenti alle attese,
+ * validando i risultati tramite asserzioni e stampando i dati per ulteriori controlli manuali durante il debugging.
+ */
+
 public class CalendarDatesControllerTest {
     @Test
     public void testGetCalendarDates() {

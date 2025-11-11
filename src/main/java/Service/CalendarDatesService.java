@@ -10,6 +10,8 @@ import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
 
+// Creatore: Alessandro Angeli
+
 /**
  * Classe di servizio che gestisce la lettura dei dati relativi alle eccezioni del calendario (Calendar Dates)
  * dal file CSV del dataset GTFS.

@@ -1,5 +1,7 @@
 package Model;
 
+// Creatore: Alessandro Angeli
+
 // Classe che rappresenta un singolo viaggio (trip) nel dataset GTFS.
 // Ogni viaggio è una singola corsa su una determinata linea (route) in un certo giorno.
 public class TripsModel {

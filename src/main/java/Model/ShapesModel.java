@@ -1,5 +1,7 @@
 package Model;
 
+// Creatore: Alessandro Angeli
+
 /**
  * Modello che rappresenta i punti geografici (shape) che definiscono il percorso effettivo di una rotta GTFS.
  * Ogni shape è composta da una sequenza ordinata di coordinate latitudine/longitudine che descrivono il tragitto seguito da un veicolo.

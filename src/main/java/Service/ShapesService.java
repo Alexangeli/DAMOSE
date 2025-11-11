@@ -11,6 +11,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
+// Creatore: Alessandro Angeli
+
 /**
  * Classe di servizio che gestisce la lettura dei dati relativi alle forme dei percorsi (Shapes)
  * dal file CSV del dataset GTFS.

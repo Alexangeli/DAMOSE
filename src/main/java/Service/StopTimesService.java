@@ -10,6 +10,8 @@ import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
 
+// Creatore: Alessandro Angeli
+
 /**
  * Classe di servizio per la gestione dei dati di StopTimes.
  * Si occupa della lettura dei tempi di arrivo e partenza delle fermate

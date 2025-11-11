@@ -1,5 +1,7 @@
 package Model;
 
+// Creatore: Alessandro Angeli
+
 /**
  * Classe che rappresenta una fermata di un mezzo di trasporto (ad esempio bus, tram o metro).
  * Ogni oggetto di questa classe contiene tutte le informazioni associate a una singola fermata,

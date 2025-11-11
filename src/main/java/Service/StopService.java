@@ -10,6 +10,8 @@ import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
 
+// Creatore: Alessandro Angeli
+
 /**
  * Classe di servizio per la gestione delle fermate (Stop).
  * Si occupa della lettura dei dati da un file CSV e della conversione

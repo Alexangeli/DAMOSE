@@ -1,5 +1,7 @@
 package Model;
 
+// Creatore: Alessandro Angeli
+
 /**
  * Modello che rappresenta una linea o rotta di trasporto nel dataset GTFS.
  * Ogni record descrive una rotta (bus, metro, treno, ecc.) con i suoi dettagli identificativi e grafici.

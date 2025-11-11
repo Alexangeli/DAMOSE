@@ -4,6 +4,8 @@ import Model.TripsModel;
 import Service.TripsService;
 import java.util.List;
 
+// Creatore: Alessandro Angeli
+
 // Controller responsabile della gestione dei viaggi (trips).
 // Si occupa di richiamare il servizio che legge i dati dei viaggi dal file CSV
 // e restituirli come lista di oggetti TripsModel.

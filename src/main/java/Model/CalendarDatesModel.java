@@ -1,5 +1,7 @@
 package Model;
 
+// Creatore: Alessandro Angeli
+
 /**
  * Modello che rappresenta le eccezioni del calendario di servizio nel dataset GTFS.
  * Ogni record specifica una data particolare in cui un servizio è aggiunto o rimosso rispetto al calendario regolare.

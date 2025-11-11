@@ -36,6 +36,14 @@ build/
 
 ### Mac OS ###
 .DS_Store
+<<<<<<< Updated upstream
 
 ### ignora file gtfs
 src/rome_static_gtfs/*.csv
+=======
+src/rome_static_gtfs/shapes.csv
+src/rome_static_gtfs/agency.csv
+src/rome_static_gtfs/calendar_dates.csv
+src/rome_static_gtfs/routes.csv
+src/rome_static_gtfs/stop_times.csv
+>>>>>>> Stashed changes

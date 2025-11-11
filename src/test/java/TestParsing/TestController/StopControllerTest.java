@@ -7,6 +7,15 @@ import org.junit.Test;
 
 import java.util.List;
 
+// Creatore: Alessandro Angeli
+
+/**
+ * Questa classe rappresenta una suite di test JUnit per la verifica delle funzionalità della classe StopController.
+ * Il test controlla la corretta lettura e il parsing delle fermate da un file CSV GTFS,
+ * accertandosi che il controller produca una lista di StopModel con dati coerenti alle aspettative.
+ * Include asserzioni sui valori delle fermate restituite e stampa i dati per facilitare il debug e il controllo manuale durante lo sviluppo.
+ */
+
 public class StopControllerTest {
     @Test
     public void testGetStops() {

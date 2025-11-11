@@ -6,6 +6,15 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 import java.util.List;
 
+// Creatore: Alessandro Angeli
+
+/**
+ * Questa classe rappresenta una suite di test JUnit che verifica il funzionamento dei metodi della classe AgencyController,
+ * specificamente la corretta lettura e parsing dei dati delle agenzie da un file CSV.
+ * Lo scopo della classe è garantire che il controller restitusca una lista di oggetti AgencyModel con attributi coerenti con le aspettative,
+ * eseguendo asserzioni sui dati importati e stampando informazioni utili per il controllo manuale durante lo sviluppo.
+ */
+
 public class AgencyControllerTest {
     @Test
     public void testGetAgencies() {

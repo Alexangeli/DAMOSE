@@ -9,6 +9,15 @@ import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 
+// Creatore: Alessandro Angeli
+
+/**
+ * Questa classe implementa una suite di test JUnit volta a verificare il corretto funzionamento dei metodi della classe RoutesController.
+ * In particolare, testa la lettura e il parsing delle rotte di trasporto da un file CSV,
+ * controllando che il controller produca una lista di RoutesModel con attributi conformi alle aspettative.
+ * Il test esegue asserzioni sui risultati ottenuti e stampa i dati delle rotte per facilitare eventuali controlli manuali durante lo sviluppo o il debug.
+ */
+
 public class RoutesControllerTest {
     @Test
     public void testGetRoutes() {

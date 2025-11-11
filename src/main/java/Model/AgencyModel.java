@@ -1,5 +1,7 @@
 package Model;
 
+// Creatore: Alessandro Angeli
+
 /**
  * Modello che rappresenta un'agenzia di trasporto pubblico all'interno del dataset GTFS.
  * Contiene tutte le informazioni fondamentali sull'agenzia come nome, URL, lingua, contatto, ecc.

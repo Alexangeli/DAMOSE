@@ -10,6 +10,8 @@ import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
 
+// Creatore: Alessandro Angeli
+
 /**
  * Classe di servizio che gestisce la lettura dei dati delle linee di trasporto (Routes)
  * dal file CSV del dataset GTFS.

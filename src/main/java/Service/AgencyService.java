@@ -10,6 +10,8 @@ import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
 
+// Creatore: Alessandro Angeli
+
 /**
  * Classe di servizio responsabile per la lettura dei dati delle agenzie da un file CSV.
  * Utilizza la libreria OpenCSV per parsare il file e restituire una lista di oggetti AgencyModel.

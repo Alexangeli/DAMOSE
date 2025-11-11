@@ -4,6 +4,8 @@ import Model.ShapesModel;
 import Service.ShapesService;
 import java.util.List;
 
+// Creatore: Alessandro Angeli
+
 // Controller responsabile della gestione dei dati relativi alle "shapes"
 // (ossia i tracciati geometrici delle linee di trasporto nel dataset GTFS).
 // Fornisce un metodo per ottenere la lista di ShapesModel leggendo da un file CSV.
