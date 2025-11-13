@@ -47,3 +47,10 @@ src/rome_static_gtfs/calendar_dates.csv
 src/rome_static_gtfs/routes.csv
 src/rome_static_gtfs/stop_times.csv
 >>>>>>> Stashed changes
+src/main/rome_static_gtfs/stops.csv
+src/main/rome_static_gtfs/trips.csv
+src/main/rome_static_gtfs/stop_times.csv
+src/main/rome_static_gtfs/shapes.csv
+src/main/rome_static_gtfs/routes.csv
+src/main/rome_static_gtfs/calendar_dates.csv
+src/main/rome_static_gtfs/agency.csv
