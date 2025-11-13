@@ -5,6 +5,12 @@ import Model.MapModel;
 import View.MapView;
 import Controller.MapController;
 
+import Model.StopModel;
+import Controller.StopController;
+
+import java.util.List;
+
+
 public class Main {
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
@@ -15,6 +21,12 @@ public class Main {
             myFrame.setResizable(true);
             myFrame.setSize(AppConfig.DEFAULT_WIDTH, AppConfig.DEFAULT_HEIGHT);
             myFrame.getContentPane().setBackground(AppConfig.BACKGROUND_COLOR);
+
+            // carico dati fermate
+            final String stops_csv = "src/main/rome_static_gtfs/stops.csv";
+            List<StopModel> stops = new StopController().getStops(stops_csv);
+            System.out.println("fermate caricate con successo");
+            System.out.println(stops.getFirst().getName());
 
             // --- Crea il modello, la view e il controller della mappa ---
             MapModel model = new MapModel();
