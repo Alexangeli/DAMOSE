@@ -39,17 +39,16 @@ public class MapView extends JPanel {
     public MapView() {
         setLayout(new BorderLayout());
 
-        // --- CREA IL COMPONENTE MAPPA ---
-        mapViewer = new JXMapViewer();
+        this.mapViewer = new JXMapViewer();
 
         // Usa la CustomTileFactory (HTTPS + zoom corretto)
         TileFactory tileFactory = CustomTileFactory.create();
-        mapViewer.setTileFactory(tileFactory);
+        this.mapViewer.setTileFactory(tileFactory);
 
         // Centra su Roma
         GeoPosition roma = new GeoPosition(41.9028, 12.4964);
-        mapViewer.setZoom(10);
-        mapViewer.setAddressLocation(roma);
+        this.mapViewer.setZoom(10);
+        this.mapViewer.setAddressLocation(roma);
 
         // Abilita interazione con mouse
         addDefaultInteractions();
@@ -57,7 +56,7 @@ public class MapView extends JPanel {
         // Aggiungi blocco confini
         addMapBoundariesLimiter();
 
-        add(mapViewer, BorderLayout.CENTER);
+        add(this.mapViewer, BorderLayout.CENTER);
     }
 
     private void addDefaultInteractions() {
@@ -65,22 +64,22 @@ public class MapView extends JPanel {
     }
 
     private void addMapBoundariesLimiter() {
-        mapViewer.addMouseMotionListener(new MouseAdapter() {
+        this.mapViewer.addMouseMotionListener(new MouseAdapter() {
             @Override
             public void mouseDragged(MouseEvent e) {
                 limitMapView();
             }
         });
-        mapViewer.addMouseWheelListener(e -> limitMapView());
+        this.mapViewer.addMouseWheelListener(e -> limitMapView());
     }
 
     private void limitMapView() {
         GeoPosition center = mapViewer.getCenterPosition();
         double lat = Math.max(minLat, Math.min(maxLat, center.getLatitude()));
         double lon = Math.max(minLon, Math.min(maxLon, center.getLongitude()));
-        mapViewer.setCenterPosition(new GeoPosition(lat, lon));
+        this.mapViewer.setCenterPosition(new GeoPosition(lat, lon));
 
-        int zoom = mapViewer.getZoom();
+        int zoom = this.mapViewer.getZoom();
         if (zoom < MIN_ZOOM) mapViewer.setZoom(MIN_ZOOM);
         if (zoom > MAX_ZOOM) mapViewer.setZoom(MAX_ZOOM);
     }
@@ -88,8 +87,8 @@ public class MapView extends JPanel {
 
     public void updateView(GeoPosition center, int zoom, java.util.List<GeoPosition> markers) {
         // Aggiorna posizione e zoom
-        mapViewer.setAddressLocation(center);
-        mapViewer.setZoom(zoom);
+        this.mapViewer.setAddressLocation(center);
+        this.mapViewer.setZoom(zoom);
 
         // Rimuove vecchi marker
         waypoints.clear();
@@ -102,10 +101,10 @@ public class MapView extends JPanel {
         // Crea un Painter per visualizzare i marker
         WaypointPainter<Waypoint> painter = new WaypointPainter<>();
         painter.setWaypoints(waypoints);
-        mapViewer.setOverlayPainter(painter);
+        this.mapViewer.setOverlayPainter(painter);
 
         // Ridisegna
-        mapViewer.repaint();
+        this.mapViewer.repaint();
     }
 
     public JXMapViewer getMapViewer() {

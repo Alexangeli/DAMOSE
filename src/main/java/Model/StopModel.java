@@ -1,5 +1,8 @@
 package Model;
 
+import org.jxmapviewer.viewer.GeoPosition;
+
+
 // Creatore: Alessandro Angeli
 
 /**
@@ -20,8 +23,8 @@ public class StopModel {  // Classe che rappresenta una fermata di un mezzo di t
 
     private String name;   // Nome della fermata.
     private String description;
-    private String latitude;    // Latitudine della fermata (coordinate geografiche).
-    private String longitude;   // Longitudine della fermata.
+    private double latitude;    // Latitudine della fermata (coordinate geografiche).
+    private double longitude;   // Longitudine della fermata.
     private String url;
     private String wheelchair_boarding;
     private String timezone;
@@ -67,19 +70,19 @@ public class StopModel {  // Classe che rappresenta una fermata di un mezzo di t
         this.description = description;
     }
 
-    public String getLatitude() {
+    public double getLatitude() {
         return latitude;
     }
 
-    public void setLatitude(String latitude) {
+    public void setLatitude(double latitude) {
         this.latitude = latitude;
     }
 
-    public String getLongitude() {
+    public double getLongitude() {
         return longitude;
     }
 
-    public void setLongitude(String longitude) {
+    public void setLongitude(double longitude) {
         this.longitude = longitude;
     }
 
@@ -121,6 +124,10 @@ public class StopModel {  // Classe che rappresenta una fermata di un mezzo di t
 
     public void setParent_station(String parent_location) {
         this.parent_station = parent_location;
+    }
+
+    public GeoPosition getGeoPosition(){
+        return new GeoPosition(longitude, latitude);
     }
 
 }

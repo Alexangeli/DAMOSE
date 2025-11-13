@@ -39,8 +39,8 @@ public class StopService {
                 stop.setCode(nextLine[1].trim());
                 stop.setName(nextLine[2].trim());
                 stop.setDescription(nextLine[3].trim());
-                stop.setLatitude(nextLine[4].trim());
-                stop.setLongitude(nextLine[5].trim());
+                stop.setLatitude(Double.parseDouble(nextLine[4].trim()));
+                stop.setLongitude(Double.parseDouble(nextLine[5].trim()));
                 stop.setUrl(nextLine[6].trim());
                 stop.setWheelchair_boarding(nextLine[7].trim());
                 stop.setTimezone(nextLine[8].trim());

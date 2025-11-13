@@ -31,8 +31,9 @@ public class StopControllerTest {
 
         assertEquals("05000", stops.get(0).getId());
         assertEquals("TERMINI (MA-MB-FS)", stops.get(0).getName());
-        assertEquals("41.901308", stops.get(0).getLatitude());
-        assertEquals("12.500433", stops.get(0).getLongitude());
+        assertEquals(41.901308, stops.get(0).getLatitude(), 1e-6);
+        assertEquals(12.500433, stops.get(0).getLongitude(), 1e-6);
+
 
         assertEquals("05001", stops.get(1).getId());
         assertEquals("NERVI/PALAZZO SPORT", stops.get(1).getName());
