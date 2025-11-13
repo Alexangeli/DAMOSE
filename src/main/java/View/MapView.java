@@ -85,9 +85,7 @@ public class MapView extends JPanel {
         if (zoom > MAX_ZOOM) mapViewer.setZoom(MAX_ZOOM);
     }
 
-    /**
-     * Aggiorna la vista in base ai dati del modello
-     */
+
     public void updateView(GeoPosition center, int zoom, java.util.List<GeoPosition> markers) {
         // Aggiorna posizione e zoom
         mapViewer.setAddressLocation(center);
@@ -98,7 +96,7 @@ public class MapView extends JPanel {
 
         // Aggiunge i nuovi
         for (GeoPosition pos : markers) {
-            waypoints.add(new DefaultWaypoint(pos));
+            waypoints.add(new CustomWaypoint("fermata", pos));
         }
 
         // Crea un Painter per visualizzare i marker

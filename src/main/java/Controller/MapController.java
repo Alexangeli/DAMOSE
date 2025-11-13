@@ -66,9 +66,7 @@ public class MapController {
         });
     }
 
-    /**
-     * Sincronizza la View con i dati del Model
-     */
+
     public void refreshView() {
         view.updateView(model.getCenter(), model.getZoom(), model.getMarkers());
     }
