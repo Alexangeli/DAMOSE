@@ -5,132 +5,141 @@ import Model.StopWaypoint;
 import org.jxmapviewer.JXMapViewer;
 import org.jxmapviewer.viewer.GeoPosition;
 import org.jxmapviewer.viewer.TileFactory;
-import org.jxmapviewer.viewer.Waypoint;
 import org.jxmapviewer.viewer.WaypointPainter;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
 import java.awt.geom.Point2D;
-import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
-/**
- * VIEW - Responsabile della rappresentazione grafica della mappa
- * Gestisce la GUI e gli aggiornamenti visivi, ma non la logica
- */
 public class MapView extends JPanel {
 
     private final JXMapViewer mapViewer;
+    private final Set<StopWaypoint> stopWaypoints = new HashSet<>();
 
-    // Limiti geografici approssimativi di Roma
-    private final double minLat = 41.75;   // Sud
-    private final double maxLat = 42.05;   // Nord
-    private final double minLon = 12.30;   // Ovest
-    private final double maxLon = 12.70;   // Est
-
-    // Limiti di zoom
     private final int MIN_ZOOM = 5;
     private final int MAX_ZOOM = 17;
 
-    // Marker attuali (visivi)
-    private final Set<StopWaypoint> waypoints = new HashSet<>();
-
     public MapView() {
         setLayout(new BorderLayout());
+        mapViewer = new JXMapViewer();
 
-        this.mapViewer = new JXMapViewer();
-
-        // Usa la CustomTileFactory (HTTPS + zoom corretto)
         TileFactory tileFactory = CustomTileFactory.create();
-        this.mapViewer.setTileFactory(tileFactory);
+        mapViewer.setTileFactory(tileFactory);
 
-        // Centra su Roma
         GeoPosition roma = new GeoPosition(41.9028, 12.4964);
-        this.mapViewer.setZoom(10);
-        this.mapViewer.setAddressLocation(roma);
+        mapViewer.setZoom(10);
+        mapViewer.setAddressLocation(roma);
 
-        // Abilita interazione con mouse
-        addDefaultInteractions();
-
-        // Aggiungi blocco confini
         addMapBoundariesLimiter();
-
-        add(this.mapViewer, BorderLayout.CENTER);
-    }
-
-    private void addDefaultInteractions() {
-        // Niente qui: le interazioni principali sono gestite dal Controller
+        add(mapViewer, BorderLayout.CENTER);
     }
 
     private void addMapBoundariesLimiter() {
-        this.mapViewer.addMouseMotionListener(new MouseAdapter() {
+        mapViewer.addMouseWheelListener(e -> limitMapView());
+        mapViewer.addMouseMotionListener(new java.awt.event.MouseAdapter() {
             @Override
-            public void mouseDragged(MouseEvent e) {
+            public void mouseDragged(java.awt.event.MouseEvent e) {
                 limitMapView();
             }
         });
-        this.mapViewer.addMouseWheelListener(e -> limitMapView());
     }
 
     private void limitMapView() {
         GeoPosition center = mapViewer.getCenterPosition();
-        double lat = Math.max(minLat, Math.min(maxLat, center.getLatitude()));
-        double lon = Math.max(minLon, Math.min(maxLon, center.getLongitude()));
-        this.mapViewer.setCenterPosition(new GeoPosition(lat, lon));
+        double lat = Math.max(41.75, Math.min(42.05, center.getLatitude()));
+        double lon = Math.max(12.30, Math.min(12.70, center.getLongitude()));
+        mapViewer.setCenterPosition(new GeoPosition(lat, lon));
 
-        int zoom = this.mapViewer.getZoom();
+        int zoom = mapViewer.getZoom();
         if (zoom < MIN_ZOOM) mapViewer.setZoom(MIN_ZOOM);
         if (zoom > MAX_ZOOM) mapViewer.setZoom(MAX_ZOOM);
     }
 
-    public void updateView(GeoPosition center, int zoom, java.util.List<StopModel> stops) {
-        System.out.println("--- MAPVIEW --- | updateView: Updating view with " + stops.size() + " stops");
+    // Aggiorna centro, zoom e carica le fermate
+    public void updateView(GeoPosition center, int zoom, List<StopModel> stops) {
+        mapViewer.setAddressLocation(center);
+        mapViewer.setZoom(zoom);
 
-        // Aggiorna posizione e zoom
-        this.mapViewer.setAddressLocation(center);
-        this.mapViewer.setZoom(zoom);
-
-        // Rimuove vecchi marker
-        waypoints.clear();
-
-        // Aggiunge nuovi StopWaypoint
+        stopWaypoints.clear();
         for (StopModel stop : stops) {
-            StopWaypoint wp = new StopWaypoint(stop);
-            waypoints.add(wp);
-            System.out.println("--- MAPVIEW --- | updateView: loaded stop ID " + stop.getId());
+            stopWaypoints.add(new StopWaypoint(stop));
         }
 
-        System.out.println("--- MAPVIEW --- | updateView: Finished loading " + waypoints.size() + " waypoints");
+        System.out.println("--- MAPVIEW --- | updateView: loaded " + stopWaypoints.size() + " stops");
+        SwingUtilities.invokeLater(this::refreshWaypoints);
+    }
 
-        // Painter personalizzato per disegnare le icone
-        WaypointPainter<StopWaypoint> painter = new WaypointPainter<>() {
-            @Override
-            protected void doPaint(Graphics2D g, JXMapViewer map, int width, int height) {
-                System.out.println("--- MAPVIEW --- | doPaint: Drawing " + waypoints.size() + " waypoints");
-                Rectangle viewport = map.getViewportBounds();
+    // Calcola i quattro angoli del viewport in lat/lon
+    private GeoPosition[] getViewportCorners() {
+        Rectangle viewport = mapViewer.getViewportBounds();
+        if (viewport == null) return null;
 
-                for (StopWaypoint wp : waypoints) {
-                    Point2D geoPt = map.getTileFactory().geoToPixel(wp.getPosition(), map.getZoom());
-                    int x = (int) (geoPt.getX() - viewport.x);
-                    int y = (int) (geoPt.getY() - viewport.y);
+        GeoPosition center = mapViewer.getCenterPosition();
+        Point2D centerPx = mapViewer.getTileFactory().geoToPixel(center, mapViewer.getZoom());
 
-                    Icon icon = wp.getIcon();
-                    if (icon != null) {
-                        g.drawImage(((ImageIcon) icon).getImage(), x - icon.getIconWidth()/2, y - icon.getIconHeight()/2, null);
-                    } else {
-                        System.out.println("--- MAPVIEW --- | doPaint: WARNING stop ID " + wp.getStop().getId() + " has no icon!");
-                    }
-                }
-            }
+        double halfWidth = viewport.width / 2.0;
+        double halfHeight = viewport.height / 2.0;
+
+        Point2D topLeftPx = new Point2D.Double(centerPx.getX() - halfWidth, centerPx.getY() - halfHeight);
+        Point2D topRightPx = new Point2D.Double(centerPx.getX() + halfWidth, centerPx.getY() - halfHeight);
+        Point2D bottomLeftPx = new Point2D.Double(centerPx.getX() - halfWidth, centerPx.getY() + halfHeight);
+        Point2D bottomRightPx = new Point2D.Double(centerPx.getX() + halfWidth, centerPx.getY() + halfHeight);
+
+        return new GeoPosition[]{
+                mapViewer.getTileFactory().pixelToGeo(topLeftPx, mapViewer.getZoom()),
+                mapViewer.getTileFactory().pixelToGeo(topRightPx, mapViewer.getZoom()),
+                mapViewer.getTileFactory().pixelToGeo(bottomLeftPx, mapViewer.getZoom()),
+                mapViewer.getTileFactory().pixelToGeo(bottomRightPx, mapViewer.getZoom())
         };
+    }
 
-        painter.setWaypoints(new HashSet<>(waypoints));
-        this.mapViewer.setOverlayPainter(painter);
+    // Controlla se uno stop è all'interno del viewport (in base a lat/lon)
+    private boolean isStopInViewportGeo(StopModel stop) {
+        GeoPosition[] corners = getViewportCorners();
+        if (corners == null) return false;
 
-        this.mapViewer.repaint();
+        double minLat = Math.min(corners[0].getLatitude(), corners[2].getLatitude());
+        double maxLat = Math.max(corners[0].getLatitude(), corners[2].getLatitude());
+        double minLon = Math.min(corners[0].getLongitude(), corners[1].getLongitude());
+        double maxLon = Math.max(corners[0].getLongitude(), corners[1].getLongitude());
+
+        double lat = stop.getLatitude();
+        double lon = stop.getLongitude();
+
+        return lat >= minLat && lat <= maxLat && lon >= minLon && lon <= maxLon;
+    }
+
+    // Disegna i waypoint visibili
+    public void refreshWaypoints() {
+        Rectangle viewport = mapViewer.getViewportBounds();
+        if (viewport == null) return;
+
+        WaypointPainter<StopWaypoint> painter = new WaypointPainter<>();
+        painter.setWaypoints(stopWaypoints);
+
+        final int[] visibleCount = {0};
+
+        painter.setRenderer((g, map, wp) -> {
+            if (!isStopInViewportGeo(wp.getStop())) return;
+
+            visibleCount[0]++;
+
+            Point2D geoPt = map.getTileFactory().geoToPixel(wp.getPosition(), map.getZoom());
+            int x = (int) (geoPt.getX() - viewport.getX());
+            int y = (int) (geoPt.getY() - viewport.getY());
+
+            g.setColor(Color.RED);
+            g.fillOval(x - 5, y - 5, 10, 10);
+        });
+
+        mapViewer.setOverlayPainter(painter);
+        mapViewer.repaint();
+
+        System.out.println("--- MAPVIEW --- | viewport size: " + viewport.width + "x" + viewport.height);
+        System.out.println("--- MAPVIEW --- | VISIBLE stops: " + visibleCount[0]);
     }
 
 

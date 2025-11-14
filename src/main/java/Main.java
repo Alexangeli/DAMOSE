@@ -1,43 +1,35 @@
 import config.AppConfig;
 import javax.swing.*;
-
 import Model.MapModel;
 import View.MapView;
 import Controller.MapController;
-
 import Model.StopModel;
 import Controller.StopController;
-
 import java.util.List;
-
 
 public class Main {
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
-            // --- Crea il frame principale ---
-            JFrame myFrame = new JFrame();
-            myFrame.setTitle(AppConfig.APP_TITLE);
-            myFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-            myFrame.setResizable(true);
-            myFrame.setSize(AppConfig.DEFAULT_WIDTH, AppConfig.DEFAULT_HEIGHT);
-            myFrame.getContentPane().setBackground(AppConfig.BACKGROUND_COLOR);
+            JFrame frame = new JFrame();
+            frame.setTitle(AppConfig.APP_TITLE);
+            frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+            frame.setResizable(true);
+            frame.setSize(AppConfig.DEFAULT_WIDTH, AppConfig.DEFAULT_HEIGHT);
+            frame.getContentPane().setBackground(AppConfig.BACKGROUND_COLOR);
 
-            // carico dati fermate
-            final String stops_csv = "src/main/rome_static_gtfs/stops.csv";
-            List<StopModel> stops = new StopController().getStops(stops_csv);
+            List<StopModel> stops = new StopController().getStops("src/main/rome_static_gtfs/stops.csv");
+            System.out.println("--- MAIN --- fermate caricate con successo");
 
-            System.out.println("--- MAIN --- fermate caricate con successo da:\n\t"+ stops_csv);
-
-            // --- Crea il modello, la view e il controller della mappa ---
             MapModel model = new MapModel();
             MapView mapView = new MapView();
+
+            frame.add(mapView);
+            frame.setVisible(true);
+
             new MapController(model, mapView, stops);
 
-            // --- Aggiungi la view della mappa al frame ---
-            myFrame.add(mapView);
-
-            // --- Mostra il frame ---
-            myFrame.setVisible(true);
+            SwingUtilities.invokeLater(mapView::refreshWaypoints);
         });
     }
 }
+
