@@ -25,13 +25,13 @@ public class Main {
             // carico dati fermate
             final String stops_csv = "src/main/rome_static_gtfs/stops.csv";
             List<StopModel> stops = new StopController().getStops(stops_csv);
-            System.out.println("fermate caricate con successo");
-            System.out.println(stops.getFirst().getName());
+
+            System.out.println("--- MAIN --- fermate caricate con successo da:\n\t"+ stops_csv);
 
             // --- Crea il modello, la view e il controller della mappa ---
             MapModel model = new MapModel();
             MapView mapView = new MapView();
-            new MapController(model, mapView);
+            new MapController(model, mapView, stops);
 
             // --- Aggiungi la view della mappa al frame ---
             myFrame.add(mapView);

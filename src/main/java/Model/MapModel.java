@@ -10,14 +10,15 @@ import java.util.List;
  */
 public class MapModel {
 
+
     private GeoPosition center;
     private int zoom;
-    private final List<GeoPosition> markers;
+    private List<StopModel> stops;
 
     public MapModel() {
         this.center = new GeoPosition(41.9028, 12.4964); // Roma
         this.zoom = 7;
-        this.markers = new ArrayList<>();
+        this.stops = new ArrayList<>();
     }
 
     public GeoPosition getCenter() {
@@ -38,11 +39,16 @@ public class MapModel {
         this.zoom = zoom;
     }
 
-    public List<GeoPosition> getMarkers() {
-        return markers;
+    public List<StopModel> getStops() {
+        return stops;
     }
 
-    public void addMarker(GeoPosition pos) {
-        markers.add(pos);
+    public void setStops(List<StopModel> stops) {
+        this.stops = stops;
+    }
+
+
+    public void addStop(StopModel stop) {
+        stops.add(stop);
     }
 }
