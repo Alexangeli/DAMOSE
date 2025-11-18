@@ -1,6 +1,6 @@
 package Service;
 
-import Model.TripsModel;
+import Model.Parsing.TripsModel;
 import com.opencsv.CSVReader;
 import com.opencsv.exceptions.CsvValidationException;
 

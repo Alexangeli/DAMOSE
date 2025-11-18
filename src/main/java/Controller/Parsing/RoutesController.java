@@ -1,6 +1,6 @@
-package Controller;
+package Controller.Parsing;
 
-import Model.RoutesModel;
+import Model.Parsing.RoutesModel;
 import Service.RoutesService;
 
 import java.util.List;

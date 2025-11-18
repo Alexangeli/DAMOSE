@@ -1,6 +1,6 @@
 package Service;
 
-import Model.ShapesModel;
+import Model.Parsing.ShapesModel;
 import com.opencsv.CSVReader;
 import com.opencsv.exceptions.CsvValidationException;
 

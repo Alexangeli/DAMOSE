@@ -1,6 +1,6 @@
-package Controller;
+package Controller.Parsing;
 
-import Model.ShapesModel;
+import Model.Parsing.ShapesModel;
 import Service.ShapesService;
 import java.util.List;
 

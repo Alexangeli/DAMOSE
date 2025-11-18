@@ -1,7 +1,7 @@
 package TestParsing.TestController;
 
-import Controller.StopTimesController;
-import Model.StopTimesModel;
+import Controller.Parsing.StopTimesController;
+import Model.Parsing.StopTimesModel;
 import org.junit.Test;
 
 import java.util.List;

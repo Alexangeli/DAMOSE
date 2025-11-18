@@ -1,6 +1,6 @@
 package Service;
 
-import Model.RoutesModel;
+import Model.Parsing.RoutesModel;
 import com.opencsv.CSVReader;
 import com.opencsv.exceptions.CsvValidationException;
 

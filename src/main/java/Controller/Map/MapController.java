@@ -1,10 +1,9 @@
-package Controller;
+package Controller.Map;
 
 import Model.MapModel;
 import View.MapView;
 
 import org.jxmapviewer.input.PanMouseInputListener;
-import org.jxmapviewer.input.ZoomMouseWheelListenerCenter;
 import org.jxmapviewer.viewer.GeoPosition;
 
 import javax.swing.event.MouseInputListener;

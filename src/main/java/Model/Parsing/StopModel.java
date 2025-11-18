@@ -1,4 +1,4 @@
-package Model;
+package Model.Parsing;
 
 // Creatore: Alessandro Angeli
 
@@ -16,8 +16,6 @@ public class StopModel {  // Classe che rappresenta una fermata di un mezzo di t
 
     private String id; // Identificativo univoco della fermata.
     private String code;
-
-
     private String name;   // Nome della fermata.
     private String description;
     private String latitude;    // Latitudine della fermata (coordinate geografiche).

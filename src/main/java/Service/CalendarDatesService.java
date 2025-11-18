@@ -1,6 +1,6 @@
 package Service;
 
-import Model.CalendarDatesModel;
+import Model.Parsing.CalendarDatesModel;
 import com.opencsv.CSVReader;
 import com.opencsv.exceptions.CsvValidationException;
 

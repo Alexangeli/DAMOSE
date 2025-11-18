@@ -1,7 +1,7 @@
 package TestParsing.TestController;
 
-import Controller.ShapesController;
-import Model.ShapesModel;
+import Controller.Parsing.ShapesController;
+import Model.Parsing.ShapesModel;
 import org.junit.Test;
 
 import java.util.List;

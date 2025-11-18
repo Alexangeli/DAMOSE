@@ -1,7 +1,7 @@
 package TestParsing.TestController;
 
-import Controller.CalendarDatesController;
-import Model.CalendarDatesModel;
+import Controller.Parsing.CalendarDatesController;
+import Model.Parsing.CalendarDatesModel;
 import org.junit.Test;
 
 import java.util.List;

@@ -1,6 +1,6 @@
-package Controller;
+package Controller.Parsing;
 
-import Model.StopModel;
+import Model.Parsing.StopModel;
 import Service.StopService;
 import java.util.List;
 

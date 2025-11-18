@@ -3,7 +3,7 @@ import javax.swing.*;
 
 import Model.MapModel;
 import View.MapView;
-import Controller.MapController;
+import Controller.Map.MapController;
 
 public class Main {
     public static void main(String[] args) {

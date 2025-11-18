@@ -1,6 +1,6 @@
-package Controller;
+package Controller.Parsing;
 
-import Model.TripsModel;
+import Model.Parsing.TripsModel;
 import Service.TripsService;
 import java.util.List;
 

@@ -1,6 +1,6 @@
 package Service;
 
-import Model.AgencyModel;
+import Model.Parsing.AgencyModel;
 import com.opencsv.CSVReader;
 import com.opencsv.exceptions.CsvValidationException;
 

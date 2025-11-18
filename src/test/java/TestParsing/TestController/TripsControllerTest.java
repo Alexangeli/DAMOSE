@@ -1,7 +1,7 @@
 package TestParsing.TestController;
 
-import Controller.TripsController;
-import Model.TripsModel;
+import Controller.Parsing.TripsController;
+import Model.Parsing.TripsModel;
 import org.junit.Test;
 
 import java.util.List;

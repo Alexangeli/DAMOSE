@@ -1,8 +1,7 @@
 package TestParsing.TestController;
 
-import Controller.RoutesController;
-import Model.CalendarDatesModel;
-import Model.RoutesModel;
+import Controller.Parsing.RoutesController;
+import Model.Parsing.RoutesModel;
 import org.junit.Test;
 
 import java.util.List;

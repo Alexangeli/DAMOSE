@@ -1,6 +1,6 @@
-package Controller;
+package Controller.Parsing;
 
-import Model.AgencyModel;
+import Model.Parsing.AgencyModel;
 import Service.AgencyService;
 
 import java.util.*;
