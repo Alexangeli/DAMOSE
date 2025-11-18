@@ -3,7 +3,7 @@ import javax.swing.*;
 
 import Model.MapModel;
 import View.MapView;
-import Controller.Map.MapController;
+import Controller.MapController;
 
 public class Main {
     public static void main(String[] args) {
@@ -26,6 +26,7 @@ public class Main {
 
             // --- Mostra il frame ---
             myFrame.setVisible(true);
+
         });
     }
 }

@@ -7,7 +7,6 @@ package Model.Parsing;
  * Ogni oggetto di questa classe contiene tutte le informazioni associate a una singola fermata,
  * come l’identificativo univoco, il nome, le coordinate geografiche e le caratteristiche
  * specifiche (ad esempio l’accessibilità per sedie a rotelle).
- *
  * Questa classe è parte del package Model e serve principalmente come struttura dati
  * per mappare i campi letti dal file CSV delle fermate (stops.txt nel formato GTFS).
  */

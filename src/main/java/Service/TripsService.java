@@ -19,21 +19,40 @@ import java.util.List;
  */
 public class TripsService {
 
+    // ====== CACHE DEI DATI ======
+    private static List<TripsModel> cachedTrips = null;
+
+    // ====== DATA ACCESS ======
+
     /**
-     * Legge i dati dei viaggi (trips) da un file CSV e li converte in una lista di {@link TripsModel}.
-     *
-     * @param filePath percorso del file CSV contenente i dati dei viaggi
-     * @return una lista di oggetti TripsModel con i dati letti
+     * Restituisce tutti i viaggi (Trips) usando la cache.
+     * Se non presenti in cache, li carica dal file.
      */
-    public static List<TripsModel> readFromCSV(String filePath) {
+    public static List<TripsModel> getAllTrips(String filePath) {
+        if (cachedTrips == null) {
+            cachedTrips = readFromCSV(filePath);
+        }
+        return cachedTrips;
+    }
+
+    /**
+     * Forza il ricaricamento della cache dal file.
+     */
+    public static void reloadTrips(String filePath) {
+        cachedTrips = readFromCSV(filePath);
+    }
+
+    /**
+     * Lettura diretta da CSV (privata).
+     */
+    private static List<TripsModel> readFromCSV(String filePath) {
         List<TripsModel> tripsList = new ArrayList<>();
 
         try (CSVReader reader = new CSVReader(new InputStreamReader(new FileInputStream(filePath), "UTF-8"))) {
-
             String[] nextLine;
-            reader.readNext(); // Salta l'intestazione del CSV
-
+            reader.readNext(); // Salta intestazione
             while ((nextLine = reader.readNext()) != null) {
+                if (nextLine.length < 10) continue; // evitiamo IndexOutOfBounds su righe errate
                 TripsModel trip = new TripsModel();
                 trip.setRoute_id(nextLine[0].trim());
                 trip.setService_id(nextLine[1].trim());
@@ -45,16 +64,11 @@ public class TripsService {
                 trip.setShape_id(nextLine[7].trim());
                 trip.setWheelchair_accessible(nextLine[8].trim());
                 trip.setExceptional(nextLine[9].trim());
-
                 tripsList.add(trip);
             }
-
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (CsvValidationException e) {
-            throw new RuntimeException(e);
+        } catch (IOException | CsvValidationException e) {
+            System.err.println("Errore nella lettura/CSV trips: " + e.getMessage());
         }
-
         return tripsList;
     }
 }

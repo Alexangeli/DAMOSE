@@ -13,58 +13,61 @@ import java.util.List;
 
 // Creatore: Alessandro Angeli
 
-/**
- * Classe di servizio che gestisce la lettura dei dati relativi alle forme dei percorsi (Shapes)
- * dal file CSV del dataset GTFS.
- *
- * Ogni riga del file rappresenta un punto geografico appartenente a una linea (shape),
- * con coordinate di latitudine e longitudine, ordine sequenziale e distanza percorsa cumulativa.
- *
- * Il metodo readFromCSV() legge il file CSV e restituisce una lista di oggetti ShapesModel,
- * ciascuno corrispondente a un punto della forma di un percorso.
- */
-public class ShapesService {
 
-    // Metodo che legge un file CSV e restituisce una lista di oggetti ShapesModel
-    public static List<ShapesModel> readFromCSV(String filePath) {
-        // Lista dove verranno salvati tutti i punti (shapes) letti dal CSV
-        List<ShapesModel> shapesList = new ArrayList<>();
 
-        // try-with-resources: apre il file CSV e si assicura di chiuderlo automaticamente dopo la lettura
-        try (CSVReader reader = new CSVReader(new InputStreamReader(new FileInputStream(filePath), StandardCharsets.UTF_8))) {
+    /**
+     * Service per la gestione delle Shapes GTFS.
+     * Legge i punti delle shapes da file CSV, gestisce la cache.
+     */
+    public class ShapesService {
 
-            String[] nextLine;
+        // ====== CACHE DEI DATI ======
+        private static List<ShapesModel> cachedShapes = null;
 
-            // Legge la prima riga (intestazione) e la salta
-            reader.readNext();
+        // ====== DATA ACCESS ======
 
-            // Cicla su ogni riga del file finché non arriva alla fine
-            while ((nextLine = reader.readNext()) != null) {
-                // Crea un nuovo oggetto ShapesModel per ogni riga
-                ShapesModel shape = new ShapesModel();
-
-                // Assegna i valori letti dal CSV agli attributi dell'oggetto
-                shape.setShape_id(nextLine[0].trim());
-                shape.setShape_pt_lat(nextLine[1].trim());
-                shape.setShape_pt_lon(nextLine[2].trim());
-                shape.setShape_pt_sequence(nextLine[3].trim());
-                shape.setShape_dist_traveled(nextLine[4].trim());
-
-                // Aggiunge l’oggetto ShapesModel alla lista
-                shapesList.add(shape);
+        /**
+         * Restituisce tutte le shapes dal CSV (usando cache se disponibile).
+         */
+        public static List<ShapesModel> getAllShapes(String filePath) {
+            if (cachedShapes == null) {
+                cachedShapes = readFromCSV(filePath);
             }
-
-            // Gestione delle eccezioni di I/O (es. file non trovato)
-        } catch (IOException e) {
-            e.printStackTrace();
-
-            // Gestione di errori legati alla validazione del CSV (es. formato errato)
-        } catch (CsvValidationException e) {
-            throw new RuntimeException(e);
+            return cachedShapes;
         }
 
-        // Restituisce la lista completa delle shapes lette dal file
-        return shapesList;
+        /**
+         * Forza il ricaricamento della cache dal file.
+         */
+        public static void reloadShapes(String filePath) {
+            cachedShapes = readFromCSV(filePath);
+        }
+
+        /**
+         * Parsing diretto (privato) dal CSV.
+         */
+        private static List<ShapesModel> readFromCSV(String filePath) {
+            List<ShapesModel> shapesList = new ArrayList<>();
+            try (CSVReader reader = new CSVReader(
+                    new InputStreamReader(new FileInputStream(filePath), StandardCharsets.UTF_8))) {
+
+                String[] nextLine;
+                reader.readNext(); // Salta intestazione
+
+                while ((nextLine = reader.readNext()) != null) {
+                    if (nextLine.length < 5) continue; // skip riga malformata
+                    ShapesModel shape = new ShapesModel();
+                    shape.setShape_id(nextLine[0].trim());
+                    shape.setShape_pt_lat(nextLine[1].trim());
+                    shape.setShape_pt_lon(nextLine[2].trim());
+                    shape.setShape_pt_sequence(nextLine[3].trim());
+                    shape.setShape_dist_traveled(nextLine[4].trim());
+                    shapesList.add(shape);
+                }
+            } catch (IOException | CsvValidationException e) {
+                System.err.println("Errore nella lettura/CSV shapes: " + e.getMessage());
+            }
+            return shapesList;
+        }
     }
-}
 

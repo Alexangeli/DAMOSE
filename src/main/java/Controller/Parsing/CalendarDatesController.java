@@ -11,6 +11,6 @@ import java.util.List;
 
 public class CalendarDatesController {
     public List<CalendarDatesModel> getCalendarDates(String filePath) {
-        return CalendarDatesService.readFromCSV(filePath);
+        return CalendarDatesService.getAllCalendarDates(filePath);
     }
 }

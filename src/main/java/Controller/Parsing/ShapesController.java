@@ -14,6 +14,6 @@ public class ShapesController {
     // Metodo che chiama il service per leggere le shape dal file CSV indicato dal percorso.
     // Restituisce una lista di oggetti ShapesModel.
     public List<ShapesModel> getShapes(String filePath) {
-        return ShapesService.readFromCSV(filePath);
+        return ShapesService.getAllShapes(filePath);
     }
 }

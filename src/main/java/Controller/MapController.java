@@ -1,6 +1,7 @@
-package Controller.Map;
+package Controller;
 
 import Model.MapModel;
+
 import View.MapView;
 
 import org.jxmapviewer.input.PanMouseInputListener;
@@ -9,6 +10,7 @@ import org.jxmapviewer.viewer.GeoPosition;
 import javax.swing.event.MouseInputListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+
 
 /**
  * CONTROLLER - collega la logica (Model) con la grafica (View)
@@ -71,4 +73,8 @@ public class MapController {
     public void refreshView() {
         view.updateView(model.getCenter(), model.getZoom(), model.getMarkers());
     }
+
 }
+
+
+

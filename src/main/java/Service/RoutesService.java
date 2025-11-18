@@ -25,25 +25,39 @@ import java.util.List;
  */
 public class RoutesService {
 
-    // Metodo che legge un file CSV e restituisce una lista di oggetti RoutesModel
-    public static List<RoutesModel> readFromCSV(String filePath) {
-        // Lista dove verranno salvate tutte le routes lette dal CSV
+    // ====== CACHE DEI DATI ======
+    private static List<RoutesModel> cachedRoutes = null;
+
+    // ====== DATA ACCESS ======
+
+    /**
+     * Restituisce tutte le route dal CSV (usando cache se disponibile).
+     */
+    public static List<RoutesModel> getAllRoutes(String filePath) {
+        if (cachedRoutes == null) {
+            cachedRoutes = readFromCSV(filePath);
+        }
+        return cachedRoutes;
+    }
+
+    /**
+     * Forza il ricaricamento della cache dal file.
+     */
+    public static void reloadRoutes(String filePath) {
+        cachedRoutes = readFromCSV(filePath);
+    }
+
+    /**
+     * Parsing diretto (privato) dal CSV.
+     */
+    private static List<RoutesModel> readFromCSV(String filePath) {
         List<RoutesModel> routesList = new ArrayList<>();
-
-        // try-with-resources: apre il file CSV e si assicura di chiuderlo automaticamente
         try (CSVReader reader = new CSVReader(new InputStreamReader(new FileInputStream(filePath), "UTF-8"))) {
-
             String[] nextLine;
-
-            // Legge la prima riga (intestazione) e la salta
-            reader.readNext();
-
-            // Cicla su ogni riga del file finché non arriva alla fine
+            reader.readNext(); // Salta intestazione
             while ((nextLine = reader.readNext()) != null) {
-                // Crea un nuovo oggetto RoutesModel per ogni riga
+                if (nextLine.length < 8) continue; // skip riga malformata
                 RoutesModel route = new RoutesModel();
-
-                // Assegna i valori letti dal CSV agli attributi dell'oggetto
                 route.setRoute_id(nextLine[0].trim());
                 route.setAgency_id(nextLine[1].trim());
                 route.setRoute_short_name(nextLine[2].trim());
@@ -52,21 +66,11 @@ public class RoutesService {
                 route.setRoute_url(nextLine[5].trim());
                 route.setRoute_color(nextLine[6].trim());
                 route.setRoute_text_color(nextLine[7].trim());
-
-                // Aggiunge l’oggetto RoutesModel alla lista
                 routesList.add(route);
             }
-
-            // Gestione delle eccezioni di I/O (es. file non trovato)
-        } catch (IOException e) {
-            e.printStackTrace();
-
-            // Gestione di errori legati alla validazione del CSV (es. formato errato)
-        } catch (CsvValidationException e) {
-            throw new RuntimeException(e);
+        } catch (IOException | CsvValidationException e) {
+            System.err.println("Errore nella lettura/CSV routes: " + e.getMessage());
         }
-
-        // Restituisce la lista completa delle routes lette dal file
         return routesList;
     }
 }

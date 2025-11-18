@@ -11,6 +11,6 @@ import java.util.List;
 // e restituirli come lista di oggetti TripsModel.
 public class TripsController {
     public List<TripsModel> getTrips(String filePath) {
-        return TripsService.readFromCSV(filePath);
+        return TripsService.getAllTrips(filePath);
     }
 }

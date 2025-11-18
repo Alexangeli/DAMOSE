@@ -12,6 +12,6 @@ public class StopController {
 
     // Legge il file CSV indicato dal percorso e restituisce una lista di oggetti StopModel.
     public List<StopModel> getStops(String filePath) {
-        return StopService.readFromCSV(filePath);
+        return StopService.getAllStops(filePath);
     }
 }

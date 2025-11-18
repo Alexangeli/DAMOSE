@@ -19,21 +19,41 @@ import java.util.List;
  */
 public class StopTimesService {
 
+    // ======= CACHE DATI =======
+    private static List<StopTimesModel> cachedStopTimes = null;
+
+    // ======= DATA ACCESS =======
+
     /**
-     * Legge i dati di StopTimes da un file CSV e li converte in una lista di {@link StopTimesModel}.
-     *
-     * @param filePath percorso del file CSV da leggere
-     * @return una lista di oggetti StopTimesModel contenenti i dati letti
+     * Restituisce tutte le StopTimes usando la cache.
+     * Se la cache è vuota, carica dal file.
      */
-    public static List<StopTimesModel> readFromCSV(String filePath) {
+    public static List<StopTimesModel> getAllStopTimes(String filePath) {
+        if (cachedStopTimes == null) {
+            cachedStopTimes = readFromCSV(filePath);
+        }
+        return cachedStopTimes;
+    }
+
+    /**
+     * Forza il ricaricamento dal file.
+     */
+    public static void reloadStopTimes(String filePath) {
+        cachedStopTimes = readFromCSV(filePath);
+    }
+
+    /**
+     * Lettura diretta dal CSV (privato).
+     */
+    private static List<StopTimesModel> readFromCSV(String filePath) {
         List<StopTimesModel> stopsTimesList = new ArrayList<>();
 
         try (CSVReader reader = new CSVReader(new InputStreamReader(new FileInputStream(filePath), "UTF-8"))) {
-
             String[] nextLine;
-            reader.readNext(); // Salta l'intestazione del CSV
+            reader.readNext(); // Salta intestazione
 
             while ((nextLine = reader.readNext()) != null) {
+                if (nextLine.length < 10) continue; // skip riga malformata
                 StopTimesModel stopTimes = new StopTimesModel();
                 stopTimes.setTrip_id(nextLine[0].trim());
                 stopTimes.setArrival_time(nextLine[1].trim());
@@ -45,16 +65,11 @@ public class StopTimesService {
                 stopTimes.setDrop_off_type(nextLine[7].trim());
                 stopTimes.setShape_dist_traveled(nextLine[8].trim());
                 stopTimes.setTimepoint(nextLine[9].trim());
-
                 stopsTimesList.add(stopTimes);
             }
-
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (CsvValidationException e) {
-            throw new RuntimeException(e);
+        } catch (IOException | CsvValidationException e) {
+            System.err.println("Errore nella lettura/CSV di stop_times: " + e.getMessage());
         }
-
         return stopsTimesList;
     }
 }
