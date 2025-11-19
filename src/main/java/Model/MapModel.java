@@ -1,5 +1,6 @@
 package Model;
 
+import Model.Parsing.StopModel;
 import org.jxmapviewer.viewer.GeoPosition;
 
 import java.util.ArrayList;
@@ -50,5 +51,13 @@ public class MapModel {
 
     public void addStop(StopModel stop) {
         stops.add(stop);
+    }
+
+    public List<StopModel> getMarkers(){
+        return stops;
+    }
+
+    public void addMarker(StopModel stop){
+        addStop(stop);
     }
 }

@@ -1,5 +1,6 @@
 package Model;
 
+import Model.Parsing.StopModel;
 import org.jxmapviewer.viewer.DefaultWaypoint;
 
 public class StopWaypoint extends DefaultWaypoint {

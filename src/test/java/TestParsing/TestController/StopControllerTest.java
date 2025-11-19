@@ -2,7 +2,7 @@ package TestParsing.TestController;
 
 import static org.junit.Assert.assertEquals;
 import Controller.StopController;
-import Model.StopModel;
+import Model.Parsing.StopModel;
 import org.junit.Test;
 
 import java.util.List;

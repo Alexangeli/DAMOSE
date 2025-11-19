@@ -47,18 +47,6 @@ public class MapController {
             refreshView();
         });
 
-        // Click destro aggiunge marker
-        map.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                if (e.getButton() == MouseEvent.BUTTON3) {
-                    GeoPosition clickedPos = map.convertPointToGeoPosition(e.getPoint());
-                    model.addMarker(clickedPos);
-                    refreshView();
-                }
-            }
-        });
-
         // Dopo ogni movimento aggiorna il centro nel modello
         map.addPropertyChangeListener("centerPosition", evt -> {
             GeoPosition pos = (GeoPosition) evt.getNewValue();

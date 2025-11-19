@@ -1,6 +1,6 @@
 package View;
 
-import Model.StopModel;
+import Model.Parsing.StopModel;
 import Model.StopWaypoint;
 import org.jxmapviewer.JXMapViewer;
 import org.jxmapviewer.viewer.GeoPosition;
