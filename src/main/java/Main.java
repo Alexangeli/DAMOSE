@@ -18,8 +18,10 @@ public class Main {
 
             // --- Crea il modello, la view e il controller della mappa ---
             MapModel model = new MapModel();
+            System.out.println("---MAIN--- Map model loaded");
             MapView mapView = new MapView();
             new MapController(model, mapView);
+            System.out.println("---MAIN--- Map Controller loaded");
 
             // --- Aggiungi la view della mappa al frame ---
             myFrame.add(mapView);

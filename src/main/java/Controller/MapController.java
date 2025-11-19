@@ -1,7 +1,6 @@
 package Controller;
 
 import Model.MapModel;
-
 import View.MapView;
 
 import org.jxmapviewer.input.PanMouseInputListener;
@@ -11,9 +10,8 @@ import javax.swing.event.MouseInputListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 
-
 /**
- * CONTROLLER - collega la logica (Model) con la grafica (View)
+ * CONTROLLER — unica logica dell'app
  */
 public class MapController {
 
@@ -28,53 +26,40 @@ public class MapController {
         refreshView();
     }
 
-    /**
-     * Configura le interazioni utente sulla mappa
-     */
     private void setupInteractions() {
         var map = view.getMapViewer();
 
-        // Drag per muovere la mappa
-        MouseInputListener panListener = new PanMouseInputListener(map);
+        // Panning
+        MouseInputListener panListener = new PanMouseInputListener(map) {
+            @Override
+            public void mouseDragged(MouseEvent e) {
+                super.mouseDragged(e);
+                updateCenterFromView();
+            }
+        };
         map.addMouseListener(panListener);
         map.addMouseMotionListener(panListener);
 
-        // Zoom con rotella del mouse, ma controllato
+        // Zoom
         map.addMouseWheelListener(e -> {
-            int currentZoom = model.getZoom();
-            int rotation = e.getWheelRotation();
-            model.setZoom(currentZoom + rotation);
+            int newZoom = model.clampZoom(model.getZoom() + e.getWheelRotation());
+            model.setZoom(newZoom);
             refreshView();
         });
+        
 
-        // Click destro aggiunge marker
-        map.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                if (e.getButton() == MouseEvent.BUTTON3) {
-                    GeoPosition clickedPos = map.convertPointToGeoPosition(e.getPoint());
-                    model.addMarker(clickedPos);
-                    refreshView();
-                }
-            }
-        });
-
-        // Dopo ogni movimento aggiorna il centro nel modello
-        map.addPropertyChangeListener("centerPosition", evt -> {
-            GeoPosition pos = (GeoPosition) evt.getNewValue();
-            model.setCenter(pos);
-            refreshView();
-        });
+        // Qualsiasi variazione del centro nella view → sincronizza con il model
+        map.addPropertyChangeListener("centerPosition", evt -> updateCenterFromView());
     }
 
-    /**
-     * Sincronizza la View con i dati del Model
-     */
+    private void updateCenterFromView() {
+        GeoPosition viewCenter = view.getMapViewer().getCenterPosition();
+        model.setCenter(viewCenter);
+        refreshView();
+    }
+
     public void refreshView() {
         view.updateView(model.getCenter(), model.getZoom(), model.getMarkers());
     }
-
 }
-
-
 
