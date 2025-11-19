@@ -1,7 +1,7 @@
 package Controller;
 
 import Model.MapModel;
-import Model.StopModel;
+
 import View.MapView;
 
 import org.jxmapviewer.input.PanMouseInputListener;
@@ -10,7 +10,7 @@ import org.jxmapviewer.viewer.GeoPosition;
 import javax.swing.event.MouseInputListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.util.List;
+
 
 /**
  * CONTROLLER - collega la logica (Model) con la grafica (View)
@@ -20,11 +20,9 @@ public class MapController {
     private final MapModel model;
     private final MapView view;
 
-
-    public MapController(MapModel model, MapView view, List<StopModel> stops) {
+    public MapController(MapModel model, MapView view) {
         this.model = model;
         this.view = view;
-        model.setStops(stops);
 
         setupInteractions();
         refreshView();
@@ -49,6 +47,18 @@ public class MapController {
             refreshView();
         });
 
+        // Click destro aggiunge marker
+        map.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getButton() == MouseEvent.BUTTON3) {
+                    GeoPosition clickedPos = map.convertPointToGeoPosition(e.getPoint());
+                    model.addMarker(clickedPos);
+                    refreshView();
+                }
+            }
+        });
+
         // Dopo ogni movimento aggiorna il centro nel modello
         map.addPropertyChangeListener("centerPosition", evt -> {
             GeoPosition pos = (GeoPosition) evt.getNewValue();
@@ -57,8 +67,14 @@ public class MapController {
         });
     }
 
-
+    /**
+     * Sincronizza la View con i dati del Model
+     */
     public void refreshView() {
-        view.updateView(model.getCenter(), model.getZoom(), model.getStops());
+        view.updateView(model.getCenter(), model.getZoom(), model.getMarkers());
     }
+
 }
+
+
+
