@@ -64,18 +64,53 @@ public class MapController {
      * CLASS: MapController | METHOD: setupInteractions | messaggio
      * Configura le interazioni utente sulla mappa
      */
+    /**
+     * CLASS: MapController | METHOD: setupInteractions | messaggio
+     * Configura le interazioni utente sulla mappa
+     */
     private void setupInteractions() {
         JXMapViewer map = view.getMapViewer();
 
-        // Drag per muovere la mappa
-        map.addMouseMotionListener(new java.awt.event.MouseAdapter() {
+        System.out.println("--- MapController | setupInteractions | Configurazione interazioni ---");
+
+        // ===========================
+        // 1) Drag per muovere la mappa
+        // ===========================
+        MouseAdapter dragAdapter = new MouseAdapter() {
+            private Point prev = null;
+
+            @Override
+            public void mousePressed(MouseEvent e) {
+                prev = e.getPoint();
+            }
+
             @Override
             public void mouseDragged(MouseEvent e) {
-                refreshView();
-            }
-        });
+                if (prev != null) {
+                    Point current = e.getPoint();
+                    int dx = current.x - prev.x;
+                    int dy = current.y - prev.y;
 
-        // Zoom con rotella del mouse
+                    // Converte delta pixel in nuova posizione geografica
+                    GeoPosition center = map.getCenterPosition();
+                    Point2D centerPx = map.getTileFactory().geoToPixel(center, map.getZoom());
+                    centerPx.setLocation(centerPx.getX() - dx, centerPx.getY() - dy);
+                    GeoPosition newCenter = map.getTileFactory().pixelToGeo(centerPx, map.getZoom());
+
+                    // Aggiorna centro nel modello
+                    model.setCenter(newCenter);
+                    refreshView();
+
+                    prev = current;
+                }
+            }
+        };
+        map.addMouseListener(dragAdapter);
+        map.addMouseMotionListener(dragAdapter);
+
+        // ===========================
+        // 2) Zoom con rotella del mouse
+        // ===========================
         map.addMouseWheelListener(e -> {
             int currentZoom = model.getZoom();
             model.setZoom(currentZoom + e.getWheelRotation());
@@ -83,7 +118,9 @@ public class MapController {
             refreshView();
         });
 
-        // Click sulla mappa: cerca fermata più vicina
+        // ===========================
+        // 3) Click sulla mappa: trova fermata più vicina
+        // ===========================
         map.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
@@ -100,13 +137,15 @@ public class MapController {
             }
         });
 
-        // Click diretto sui marker
+        // ===========================
+        // 4) Click diretto sui marker
+        // ===========================
         map.addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
                 for (Map.Entry<Waypoint, StopModel> entry : waypointToStop.entrySet()) {
                     GeoPosition pos = entry.getKey().getPosition();
-                    Point2D p = map.getTileFactory().geoToPixel(pos, map.getZoom()); // <--- Point2D
+                    Point2D p = map.getTileFactory().geoToPixel(pos, map.getZoom());
                     if (Math.abs(p.getX() - e.getX()) < 6 && Math.abs(p.getY() - e.getY()) < 6) { // tolleranza pixel
                         onMarkerClick(entry.getKey());
                         break;
@@ -115,12 +154,14 @@ public class MapController {
             }
         });
 
-
-        // Aggiorna il centro nel modello dopo ogni movimento
+        // ===========================
+        // 5) Aggiorna il centro nel modello dopo ogni movimento
+        // ===========================
         map.addPropertyChangeListener("centerPosition", evt -> {
             GeoPosition pos = (GeoPosition) evt.getNewValue();
             model.setCenter(pos);
             refreshView();
+            System.out.println("--- MapController | setupInteractions | Centro aggiornato: " + pos);
         });
     }
 
