@@ -2,6 +2,8 @@ package Model.Parsing;
 
 // Creatore: Alessandro Angeli
 
+import org.jxmapviewer.viewer.GeoPosition;
+
 /**
  * Classe che rappresenta una fermata di un mezzo di trasporto (ad esempio bus, tram o metro).
  * Ogni oggetto di questa classe contiene tutte le informazioni associate a una singola fermata,
@@ -17,8 +19,8 @@ public class StopModel {  // Classe che rappresenta una fermata di un mezzo di t
     private String code;
     private String name;   // Nome della fermata.
     private String description;
-    private String latitude;    // Latitudine della fermata (coordinate geografiche).
-    private String longitude;   // Longitudine della fermata.
+    private Double latitude;    // Latitudine della fermata (coordinate geografiche).
+    private Double longitude;   // Longitudine della fermata.
     private String url;
     private String wheelchair_boarding;
     private String timezone;
@@ -64,19 +66,19 @@ public class StopModel {  // Classe che rappresenta una fermata di un mezzo di t
         this.description = description;
     }
 
-    public String getLatitude() {
+    public Double getLatitude() {
         return latitude;
     }
 
-    public void setLatitude(String latitude) {
+    public void setLatitude(Double latitude) {
         this.latitude = latitude;
     }
 
-    public String getLongitude() {
+    public Double getLongitude() {
         return longitude;
     }
 
-    public void setLongitude(String longitude) {
+    public void setLongitude(Double longitude) {
         this.longitude = longitude;
     }
 
@@ -118,6 +120,16 @@ public class StopModel {  // Classe che rappresenta una fermata di un mezzo di t
 
     public void setParent_station(String parent_location) {
         this.parent_station = parent_location;
+    }
+
+    public GeoPosition getGeoPosition() {
+        try {
+            double lat = this.latitude;
+            double lon = this.longitude;
+            return new GeoPosition(lat, lon);
+        } catch (NumberFormatException e) {
+            return null; // oppure lancia un'eccezione custom se vuoi essere più rigoroso
+        }
     }
 
 }
