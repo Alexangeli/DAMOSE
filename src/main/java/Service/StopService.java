@@ -158,7 +158,7 @@ public class StopService {
     }
 
 // metodo per calcolare la distanza tra due coordinate, creato dall'intelligenza artificiale e aggiustato in un paio di cose
-    private static double calculateDistance(GeoPosition coords1, GeoPosition coords2) {
+    public static double calculateDistance(GeoPosition coords1, GeoPosition coords2) {
         final int R = 6371; // Raggio medio della Terra in km
         double latDistance = Math.toRadians(coords2.getLatitude() - coords1.getLatitude());
         double lonDistance = Math.toRadians(coords2.getLongitude() - coords1.getLongitude());
