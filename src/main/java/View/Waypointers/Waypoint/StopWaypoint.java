@@ -1,19 +1,17 @@
-package Model;
+package View.Waypointers.Waypoint;
 
 import Model.Parsing.StopModel;
 import org.jxmapviewer.viewer.DefaultWaypoint;
-import org.jxmapviewer.viewer.GeoPosition;
 
 /**
- * MODEL — Waypoint che rappresenta una fermata reale.
- * Contiene solo dati, niente grafica.
+ * Waypoint che rappresenta una fermata reale.
  */
 public class StopWaypoint extends DefaultWaypoint {
 
     private final StopModel stop;
 
     public StopWaypoint(StopModel stop) {
-        super(stop.getGeoPosition());
+        super(stop.getGeoPosition()); // usa il costruttore di DefaultWaypoint
         this.stop = stop;
     }
 
@@ -31,3 +29,5 @@ public class StopWaypoint extends DefaultWaypoint {
                 '}';
     }
 }
+
+

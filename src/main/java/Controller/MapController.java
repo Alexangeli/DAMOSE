@@ -1,14 +1,14 @@
 package Controller;
 
+import Model.ClusterModel;
 import Model.MapModel;
 import Model.Parsing.StopModel;
-import Model.StopWaypoint;
+import Service.ClusterService;
+import View.Waypointers.Waypoint.StopWaypoint;
 import Service.StopService;
 import View.MapView;
 import org.jxmapviewer.JXMapViewer;
 import org.jxmapviewer.viewer.GeoPosition;
-import org.jxmapviewer.viewer.Waypoint;
-import org.jxmapviewer.viewer.WaypointPainter;
 
 import java.awt.*;
 import java.awt.event.MouseAdapter;
@@ -23,6 +23,8 @@ public class MapController {
     private final MapModel model;
     private final MapView view;
     private final Set<StopWaypoint> waypoints = new HashSet<>();
+    private Set<ClusterModel> clusters = new HashSet<>();
+
 
     public MapController(MapModel model, MapView view, String stopsCsvPath) {
         this.model = model;
@@ -166,6 +168,32 @@ public class MapController {
     }
 
     public void refreshView() {
-        view.updateView(model.getCenter(), model.getZoom(), waypoints);
+        int zoom = model.getZoom();
+        Set<? extends org.jxmapviewer.viewer.Waypoint> toDisplay;
+
+        if (zoom < 4) {
+            // Zoom molto vicino → mostra tutte le fermate
+            toDisplay = waypoints;
+            System.out.println("--- MapController | refreshView | Zoom " + zoom + " → tutte le fermate: " + toDisplay.size());
+        } else {
+            // Zoom più lontano → mostra cluster
+            int gridSizePx = getGridSizeForZoom(zoom);
+            clusters = ClusterService.createClusters(List.copyOf(waypoints), view.getMapViewer(), gridSizePx);
+            toDisplay = clusters;
+            System.out.println("--- MapController | refreshView | Zoom " + zoom + " → cluster: " + clusters.size() + ", griglia: " + gridSizePx + "px");
+        }
+
+        view.updateView(model.getCenter(), zoom, toDisplay);
     }
+
+    /**
+     * Restituisce la dimensione della griglia (in pixel) per il clustering in base allo zoom
+     */
+    private int getGridSizeForZoom(int zoom) {
+        if (zoom >= 8) return 120; // cluster più grandi
+        if (zoom >= 6) return 80;  // cluster medi
+        if (zoom >= 4) return 50;  // cluster piccoli
+        return 0;                  // non usato
+    }
+
 }

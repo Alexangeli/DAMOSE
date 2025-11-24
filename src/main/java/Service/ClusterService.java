@@ -1,7 +1,7 @@
 package Service;
 
 import Model.ClusterModel;
-import Model.StopWaypoint;
+import View.Waypointers.Waypoint.StopWaypoint;
 import org.jxmapviewer.JXMapViewer;
 
 import org.jxmapviewer.viewer.GeoPosition;
