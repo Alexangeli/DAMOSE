@@ -39,8 +39,6 @@ build/
 <<<<<<< Updated upstream
 
 ### ignora file gtfs
-src/rome_static_gtfs/*.csv
-<<<<<<< Updated upstream
 <<<<<<< Updated upstream
 =======
 src/rome_static_gtfs/shapes.csv
