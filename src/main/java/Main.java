@@ -20,7 +20,7 @@ public class Main {
             MapModel model = new MapModel();
             System.out.println("---MAIN--- Map model loaded");
             MapView mapView = new MapView();
-            final String routes_csv_path = "src/main/rome_static_gtfs/stops.csv";
+            final String routes_csv_path = "src/main/resources/rome_static_gtfs/stops.csv";
             new MapController(model, mapView, routes_csv_path);
             System.out.println("---MAIN--- Map Controller loaded");
 
