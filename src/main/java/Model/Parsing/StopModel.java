@@ -10,7 +10,7 @@ import org.jxmapviewer.viewer.GeoPosition;
  * come l’identificativo univoco, il nome, le coordinate geografiche e le caratteristiche
  * specifiche (ad esempio l’accessibilità per sedie a rotelle).
  * Questa classe è parte del package Model e serve principalmente come struttura dati
- * per mappare i campi letti dal file CSV delle fermate (stops.txt nel formato GTFS).
+ * per mappare i campi letti dal file CSV delle fermate (stops.csv nel formato GTFS).
  */
 
 public class StopModel {  // Classe che rappresenta una fermata di un mezzo di trasporto (bus, tram, metro, ecc.)

@@ -1,7 +1,7 @@
 package Model.Parsing;
 // Creatore: Alessandro Angeli
 
-// Classe che rappresenta le informazioni sulle fermate di un viaggio (file stop_times.txt nel formato GTFS)
+// Classe che rappresenta le informazioni sulle fermate di un viaggio (file stop_times.csv nel formato GTFS)
 public class StopTimesModel {
 
     private String trip_id;               // Identificativo del viaggio
