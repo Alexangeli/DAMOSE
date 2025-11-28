@@ -97,7 +97,7 @@ public class MapPainter extends WaypointPainter<Waypoint> {
                 // waypoint singolo (StopWaypoint o DefaultWaypoint)
                 System.out.println("---MapPainter--- doPaint | Drawing single StopWaypoint");
                 int sz = 8;
-                g.setColor(new Color(0, 90, 200, 200));
+                g.setColor(new Color(255, 0, 0, 200));
                 g.fillOval(x - sz/2, y - sz/2, sz, sz);
                 g.setColor(Color.BLACK);
                 g.drawOval(x - sz/2, y - sz/2, sz, sz);
