@@ -1,5 +1,6 @@
 package Service;
 
+import Model.Parsing.RoutesModel;
 import Model.Parsing.StopModel;
 import com.opencsv.CSVReader;
 import com.opencsv.exceptions.CsvValidationException;
@@ -126,8 +127,8 @@ public class StopService {
     }
 
     /**
-            * Cerca fermate vicine a una posizione (entro raggio in km).
-            */
+     * Cerca fermate vicine a una posizione (entro raggio in km).
+     */
     public static List<StopModel> searchNearby(GeoPosition coords, double radiusKm, String filePath) {
         List<StopModel> allStops = getAllStops(filePath);
         List<StopModel> stopsNearby = allStops.stream()
@@ -136,6 +137,18 @@ public class StopService {
                 stop -> calculateDistanceFrom(coords, stop)));
         return stopsNearby;
     }
+
+    /**
+     * Trova tutte le fermate appartenenti a una lista di routes.
+     * Usa stop_times.csv come ponte per collegare route_id → trip_id → stop_id.
+     */
+    public static List<StopModel> findStopsByRoutes(List<RoutesModel> routes, String stopTimesPath, String stopsPath) {
+        List<String> stopIds = StopTimesService.findStopIdsByRoutes(routes, stopTimesPath);
+        return getAllStops(stopsPath).stream().filter(stop -> stopIds.contains(stop.getId()))
+                .toList();
+    }
+
+
 
 // ========== HELPER =====================
 

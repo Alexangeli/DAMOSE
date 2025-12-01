@@ -73,4 +73,52 @@ public class RoutesService {
         }
         return routesList;
     }
+
+
+    //===========FILTRI==============
+
+    // metodo per filtrare tutte le fermate in base al route_type nel csv
+
+    public static List<RoutesModel> getRoutesByType(int routeType, String filePath) {
+        return getAllRoutes(filePath).stream().filter(route -> isValidRouteType(route, routeType))
+                .toList();}
+
+    private static boolean isValidRouteType(RoutesModel route, int expectedRouteType) {
+        return parseRouteType(route.getRoute_type()) == expectedRouteType;
+    }
+
+    private static int parseRouteType(String routeTypeString) {
+        try{
+            return Integer.parseInt(routeTypeString);
+        }
+        catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+
+
+    // filtro sulle route BUS
+
+    public static List<RoutesModel> getBusRoutes(String filePath) {
+        return getRoutesByType(3, filePath);
+    }
+
+    // filtro sulle route METRO
+
+    public static List<RoutesModel> getMetroRoutes(String filePath) {
+        return getRoutesByType(1, filePath);
+    }
+
+    // filtro sulle route TRAM
+
+    public static List<RoutesModel> getTramRoutes(String filePath) {
+        return getRoutesByType(0, filePath);
+    }
+
+    // filtro sulle route TRENO
+
+    public static List<RoutesModel> getTrainRoutes(String filePath) {
+        return getRoutesByType(2, filePath);
+    }
+
 }

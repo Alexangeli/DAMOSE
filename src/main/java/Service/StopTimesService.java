@@ -1,5 +1,7 @@
 package Service;
 
+import Model.Parsing.RoutesModel;
+import Model.Parsing.StopModel;
 import Model.Parsing.StopTimesModel;
 import com.opencsv.CSVReader;
 import com.opencsv.exceptions.CsvValidationException;
@@ -9,6 +11,9 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
+
+import static Service.StopService.getAllStops;
 
 // Creatore: Alessandro Angeli
 
@@ -72,4 +77,23 @@ public class StopTimesService {
         }
         return stopsTimesList;
     }
+
+    //============FILTRI=========
+
+    /**
+     * Trova tutti gli stop_id unici appartenenti a una lista di routes
+     * Filtra in base al routeId e poi lo confronta con TripId cosi da avere la fermata giusta
+     */
+    public static List<String> findStopIdsByRoutes(List<RoutesModel> routes, String stopTimesPath) {
+        List<String> routeIds = routes.stream()
+                .map(RoutesModel::getRoute_id)// prende il campo ruoteId da ogni route
+                .toList();
+
+        return getAllStopTimes(stopTimesPath).stream()
+                .filter(st -> routeIds.contains(st.getTrip_id())) // Filtra per trip della route
+                .map(StopTimesModel::getStop_id)
+                .distinct() // elimina duplicati
+                .toList();
+    }
+
 }

@@ -224,6 +224,8 @@ public class MapView extends JPanel {
         this.suggestByNameListener = listener;
     }
 
+
+
     /**
      * Mostra un messaggio nel caso in cui nessuna fermata venga trovata.
      */
@@ -237,7 +239,7 @@ public class MapView extends JPanel {
     }
 
     /**
-     * Dialog centrale per selezionare tra più fermate (es. ricerca per codice).
+     * Dialog centrale per selezionare tra più fermate (es. Ricerca per codice).
      */
     public void showStopSelection(List<StopModel> stops, Consumer<StopModel> onSelected) {
         if (stops == null || stops.isEmpty()) {
