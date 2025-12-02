@@ -1,19 +1,24 @@
 package Controller;
 
 import Model.MapModel;
-import Model.Points.StopModel;
-import Service.Points.StopService;
+import Model.Parsing.StopModel;
+import Model.RouteDirectionOption;
 import View.DashboardView;
 import View.MapView;
-
-import java.util.List;
+import View.SearchBarView;
 
 /**
  * Controller principale della dashboard.
- * Qui sta tutta la logica di:
- * - ricerca fermate (nome/codice)
- * - gestione suggerimenti
- * - centraggio mappa sulla fermata (via MapController)
+ *
+ * Responsabilità:
+ * - Crea e collega:
+ *   - DashboardView (SearchBarView + MapView)
+ *   - MapModel + MapController (gestione mappa)
+ *   - StopSearchController (ricerca fermate)
+ *   - LineSearchController (ricerca linee + direzioni)
+ *
+ * - Smista gli eventi dalla SearchBarView verso il controller corretto
+ *   in base alla modalità selezionata (STOP / LINE).
  *
  * Creatore: Simone Bonuso
  */
@@ -22,52 +27,84 @@ public class DashboardController {
     private final DashboardView dashboardView;
     private final MapController mapController;
     private final MapModel mapModel;
-    private final String stopsCsvPath;
 
-    public DashboardController(String stopsCsvPath) {
-        this.stopsCsvPath = stopsCsvPath;
+    private final StopSearchController stopSearchController;
+    private final LineSearchController lineSearchController;
 
-        // Vista principale (ricerca + mappa)
+    /**
+     * Costruttore della dashboard.
+     *
+     * @param stopsCsvPath  percorso del file CSV delle fermate (stops.csv)
+     * @param routesCsvPath percorso del file CSV delle linee (routes.csv)
+     * @param tripsCsvPath  percorso del file CSV dei viaggi (trips.csv)
+     */
+    public DashboardController(String stopsCsvPath,
+                               String routesCsvPath,
+                               String tripsCsvPath) {
+
+        // Vista principale (contiene SearchBarView + MapView)
         this.dashboardView = new DashboardView();
 
-        // Ottieni la MapView interna
+        // Estrae i componenti interni dalla view
         MapView mapView = dashboardView.getMapView();
+        SearchBarView searchBar = dashboardView.getSearchBarView();
 
         // Modello della mappa
         this.mapModel = new MapModel();
 
-        // Controller della mappa
+        // Controller della mappa (gestisce zoom, drag, marker, ecc.)
         this.mapController = new MapController(mapModel, mapView, stopsCsvPath);
 
-        // Configura la logica di ricerca
-        setupSearchLogic();
-    }
+        // Controller dedicati alla logica di ricerca
+        this.stopSearchController =
+                new StopSearchController(searchBar, mapController, stopsCsvPath);
 
-    private void setupSearchLogic() {
-        // Ricerca per NOME (bottone "Cerca" o Invio senza selezione)
-        dashboardView.setSearchByNameListener(query -> {
-            List<StopModel> results = StopService.searchStopByName(query, stopsCsvPath);
-            if (results.isEmpty()) {
-                dashboardView.showStopNotFound(query);
-            } else if (results.size() == 1) {
-                mapController.centerMapOnStop(results.get(0));
+        this.lineSearchController =
+                new LineSearchController(searchBar, mapController, routesCsvPath, tripsCsvPath);
+
+        // ================== COLLEGAMENTO CALLBACK SEARCHBAR ==================
+
+        // Cambio modalità Fermata / Linea
+        searchBar.setOnModeChanged(mode ->
+                System.out.println("---DashboardController--- modalità = " + mode));
+
+        // Quando l'utente preme CERCA (o Invio senza selezione nella lista)
+        searchBar.setOnSearch(query -> {
+            if (query == null || query.isBlank()) return;
+
+            if (searchBar.getCurrentMode() == SearchMode.STOP) {
+                // Modalità fermata
+                stopSearchController.onSearch(query);
             } else {
-                dashboardView.showNameSuggestions(results, mapController::centerMapOnStop);
+                // Modalità linea
+                lineSearchController.onSearch(query);
             }
         });
 
-        // Suggerimenti live mentre digiti (per nome)
-        dashboardView.setSuggestByNameListener(query -> {
-            List<StopModel> results = StopService.searchStopByName(query, stopsCsvPath);
-            if (results.size() > 20) {
-                results = results.subList(0, 20);
+        // Quando il testo nella barra cambia (per i suggerimenti)
+        searchBar.setOnTextChanged(text -> {
+            if (searchBar.getCurrentMode() == SearchMode.STOP) {
+                // Suggerimenti fermate
+                stopSearchController.onTextChanged(text);
+            } else {
+                // Suggerimenti linee (direzioni)
+                lineSearchController.onTextChanged(text);
             }
-            dashboardView.showNameSuggestions(results, mapController::centerMapOnStop);
         });
 
-        // (se vuoi in futuro, puoi usare anche setSearchByCodeListener qui)
+        // Selezione di un suggerimento di fermata (freccia/enter/doppio click)
+        searchBar.setOnSuggestionSelected((StopModel stop) ->
+                stopSearchController.onSuggestionSelected(stop));
+
+        // Selezione di un suggerimento di direzione di linea
+        searchBar.setOnRouteDirectionSelected((RouteDirectionOption opt) ->
+                lineSearchController.onRouteDirectionSelected(opt));
     }
 
+    /**
+     * Restituisce la vista della dashboard,
+     * da aggiungere al frame principale (JFrame).
+     */
     public DashboardView getView() {
         return dashboardView;
     }

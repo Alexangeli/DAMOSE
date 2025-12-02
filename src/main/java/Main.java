@@ -15,11 +15,15 @@ public class Main {
             myFrame.setSize(AppConfig.DEFAULT_WIDTH, AppConfig.DEFAULT_HEIGHT);
             myFrame.getContentPane().setBackground(AppConfig.BACKGROUND_COLOR);
 
-            // --- Path del CSV delle fermate ---
-            final String stopsCsvPath = "src/main/resources/rome_static_gtfs/stops.csv";
+            // --- Path dei CSV ---
+            final String stopsCsvPath  = "src/main/resources/rome_static_gtfs/stops.csv";
+            final String routesCsvPath = "src/main/resources/rome_static_gtfs/routes.csv";
+            final String tripsCsvPath  = "src/main/resources/rome_static_gtfs/trips.csv";
 
-            // --- Crea la dashboard (che crea anche MapView, MapModel, MapController) ---
-            DashboardController dashboardController = new DashboardController(stopsCsvPath);
+            // --- Crea la dashboard (che crea MapView, MapController, SearchControllers) ---
+            DashboardController dashboardController =
+                    new DashboardController(stopsCsvPath, routesCsvPath, tripsCsvPath);
+
             DashboardView dashboardView = dashboardController.getView();
 
             System.out.println("---MAIN--- Dashboard Controller loaded");
@@ -29,7 +33,7 @@ public class Main {
 
             // --- CENTRA LA FINESTRA ALLO SCHERMO ---
             myFrame.setLocationRelativeTo(null);
-            
+
             // --- Mostra il frame ---
             myFrame.setVisible(true);
         });
