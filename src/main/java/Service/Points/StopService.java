@@ -1,7 +1,8 @@
-package Service;
+package Service.Points;
 
 import Model.Parsing.RoutesModel;
-import Model.Parsing.StopModel;
+import Model.Points.StopModel;
+import Service.StopTimesService;
 import com.opencsv.CSVReader;
 import com.opencsv.exceptions.CsvValidationException;
 import org.jxmapviewer.viewer.GeoPosition;
@@ -12,7 +13,6 @@ import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.stream.Collectors;
 
 // Creatore: Alessandro Angeli
 
