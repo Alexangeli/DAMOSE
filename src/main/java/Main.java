@@ -29,6 +29,7 @@ public class Main {
 
             // --- CENTRA LA FINESTRA ALLO SCHERMO ---
             myFrame.setLocationRelativeTo(null);
+            
             // --- Mostra il frame ---
             myFrame.setVisible(true);
         });

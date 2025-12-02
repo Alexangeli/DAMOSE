@@ -1,9 +1,7 @@
 package Controller;
 
-import Controller.Parsing.RoutesController;
 import Model.ClusterModel;
 import Model.MapModel;
-import Model.Parsing.RoutesModel;
 import Model.Parsing.StopModel;
 import Service.ClusterService;
 import Service.StopService;
@@ -27,16 +25,14 @@ import static Service.StopService.getAllStops;
  * Controller della mappa.
  *
  * Gestisce:
- * - il caricamento e la gestione delle fermate (waypoints)
- * - l'interazione con la mappa (drag, zoom, click)
- * - la logica di ricerca per nome/codice e i suggerimenti
- * - il clustering delle fermate in base allo zoom
+ * - caricamento e gestione dei waypoint
+ * - drag, zoom, click mappa
+ * - clustering delle fermate in base allo zoom
  *
  * Creatore: Simone Bonuso, Andrea Brandolini, Alessandro Angeli
  */
 public class MapController {
 
-    // ============================= CAMPI PRINCIPALI =============================
     private final MapModel model;
     private final MapView view;
     private final String stopsCsvPath;
@@ -44,17 +40,11 @@ public class MapController {
     private final Set<StopWaypoint> waypoints = new HashSet<>();
     private Set<ClusterModel> clusters = new HashSet<>();
 
-    // Zoom "smooth"
-    private double targetZoom; // Zoom “smooth target”
+    private double targetZoom; // zoom "smooth target"
     private final Timer zoomTimer;
 
-    // Drag mappa
     private Point dragPrev = null; // punto precedente per drag
 
-
-
-
-    // ================================ COSTRUTTORE ================================
     public MapController(MapModel model, MapView view, String stopsCsvPath) {
         this.model = model;
         this.view = view;
@@ -62,7 +52,6 @@ public class MapController {
 
         this.targetZoom = model.getZoom();
 
-        // Timer per zoom smooth (~60 FPS)
         zoomTimer = new Timer(10, e -> smoothZoomStep());
         zoomTimer.start();
 
@@ -71,8 +60,7 @@ public class MapController {
         refreshView();
     }
 
-
-    // =========================== CARICAMENTO FERMATE ============================
+    // ===== CARICAMENTO FERMATE =====
     /**
      * Legge tutte le fermate dal CSV tramite StopService,
      * crea i relativi StopWaypoint e li aggiunge al modello.
@@ -91,56 +79,11 @@ public class MapController {
         }
     }
 
-
-    // ============================ INTERAZIONI UTENTE ============================
-    /**
-     * Configura tutte le interazioni:
-     * - ricerca per nome/codice
-     * - suggerimenti
-     * - drag mappa
-     * - zoom con rotella
-     * - click su mappa e marker
-     * - aggiornamento del centro mappa
-     */
+    // ===== INTERAZIONI CON LA MAPPA =====
     private void setupInteractions() {
         JXMapViewer map = view.getMapViewer();
 
-        // ===== Ricerca fermate per NOME (bottone / Invio) =====
-        view.setSearchByNameListener(query -> {
-            List<StopModel> results = searchStopsByName(query);
-            if (results.isEmpty()) {
-                view.showStopNotFound(query);
-            } else if (results.size() == 1) {
-                centerMapOnStop(results.get(0));
-            } else {
-                // Per il nome usiamo la lista suggerimenti sotto la barra
-                view.showNameSuggestions(results, this::centerMapOnStop);
-            }
-        });
-
-        // ===== Ricerca fermate per CODICE =====
-        view.setSearchByCodeListener(code -> {
-            List<StopModel> results = searchStopsByCode(code);
-            if (results.isEmpty()) {
-                view.showStopNotFound(code);
-            } else if (results.size() == 1) {
-                centerMapOnStop(results.get(0));
-            } else {
-                // Per il codice teniamo il dialog centrale
-                view.showStopSelection(results, this::centerMapOnStop);
-            }
-        });
-
-        // ===== Suggerimenti live mentre si digita (per nome) =====
-        view.setSuggestByNameListener(query -> {
-            List<StopModel> results = searchStopsByName(query);
-            if (results.size() > 20) {
-                results = results.subList(0, 20);
-            }
-            view.showNameSuggestions(results, this::centerMapOnStop);
-        });
-
-        // ===== Drag mappa =====
+        // Drag mappa
         MouseAdapter dragAdapter = new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
@@ -159,7 +102,6 @@ public class MapController {
                     centerPx.setLocation(centerPx.getX() - dx, centerPx.getY() - dy);
                     GeoPosition newCenter = map.getTileFactory().pixelToGeo(centerPx, model.getZoomInt());
 
-                    // Aggiorna centro mappa
                     model.setCenter(newCenter);
                     refreshView();
 
@@ -170,14 +112,14 @@ public class MapController {
         map.addMouseListener(dragAdapter);
         map.addMouseMotionListener(dragAdapter);
 
-        // ===== Zoom con rotella (smooth) =====
+        // Zoom con rotella (smooth)
         map.addMouseWheelListener(e -> {
-            double delta = -e.getPreciseWheelRotation() * 0.5; // sensibilità rotella
+            double delta = -e.getPreciseWheelRotation() * 0.5;
             targetZoom += delta;
             targetZoom = model.clampZoom(targetZoom);
         });
 
-        // ===== Click sulla mappa: trova fermata più vicina + click sui marker =====
+        // Click mappa: fermata più vicina
         map.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
@@ -210,15 +152,8 @@ public class MapController {
             model.setCenter(pos);
             refreshView();
         });
-
     }
 
-
-    // ================================ ZOOM SMOOTH ================================
-    /**
-     * Effettua un passo di interpolazione verso il targetZoom
-     * per ottenere uno zoom "smooth".
-     */
     private void smoothZoomStep() {
         double current = model.getZoom();
         if (Math.abs(current - targetZoom) < 0.01) return;
@@ -228,11 +163,6 @@ public class MapController {
         refreshView();
     }
 
-
-    // ========================== GESTIONE CLICK MARKER ===========================
-    /**
-     * Gestisce il click su un marker di fermata.
-     */
     private void onMarkerClick(StopWaypoint wp) {
         StopModel stop = wp.getStop();
         if (stop != null) {
@@ -241,11 +171,6 @@ public class MapController {
         }
     }
 
-
-    // ======================= RICERCA FERMATA PIÙ VICINA ========================
-    /**
-     * Trova la fermata più vicina a una posizione, entro un certo raggio.
-     */
     private StopModel findNearestStop(GeoPosition pos, double radiusKm) {
         List<StopModel> stops = getAllStops(stopsCsvPath);
         StopModel nearest = null;
@@ -263,44 +188,29 @@ public class MapController {
         return nearest;
     }
 
-
-    // ========================= METODI DI SUPPORTO RICERCA =======================
+    // ===== METODO USATO DALLA RICERCA =====
     /**
-     * Wrapper per la ricerca per nome via StopService.
-     */
-    public List<StopModel> searchStopsByName(String query) {
-        return StopService.searchStopByName(query, stopsCsvPath);
-    }
-
-    /**
-     * Wrapper per la ricerca per codice via StopService.
-     */
-    public List<StopModel> searchStopsByCode(String code) {
-        return StopService.searchStopByCode(code, stopsCsvPath);
-    }
-
-    /**
-     * Centra la mappa sulla fermata specificata.
+     * Centra la mappa sulla fermata specificata e applica uno zoom ravvicinato.
      */
     public void centerMapOnStop(StopModel stop) {
         if (stop == null || stop.getGeoPosition() == null) return;
         GeoPosition pos = stop.getGeoPosition();
         model.setCenter(pos);
+
+        // Zoom più vicino per vedere meglio la fermata
+        double desiredZoom = 7.0;
+        targetZoom = model.clampZoom(desiredZoom);
+        model.setZoom(targetZoom);
+
         refreshView();
     }
 
-
-    // =========================== REFRESH / CLUSTERING ===========================
-    /**
-     * Aggiorna la vista: decide se mostrare tutte le fermate o i cluster
-     * in base al livello di zoom, e chiama la MapView.
-     */
+    // ===== REFRESH / CLUSTERING =====
     public void refreshView() {
         int zoomInt = (int) Math.round(model.getZoom());
         Set<? extends org.jxmapviewer.viewer.Waypoint> toDisplay;
 
         if (zoomInt < 4) {
-            // Mostra tutte le fermate
             toDisplay = waypoints;
         } else {
             int gridSizePx = getGridSizeForZoom(zoomInt);
@@ -311,16 +221,10 @@ public class MapController {
         view.updateView(model.getCenter(), zoomInt, toDisplay);
     }
 
-    /**
-     * Restituisce la dimensione della griglia di clustering in pixel,
-     * in base al livello di zoom.
-     */
     private int getGridSizeForZoom(int zoom) {
         if (zoom >= 8) return 120;
         if (zoom >= 6) return 80;
         if (zoom >= 4) return 50;
         return 0;
     }
-
-
 }
