@@ -1,7 +1,9 @@
 package Controller;
 
+import Controller.Parsing.RoutesController;
 import Model.ClusterModel;
 import Model.MapModel;
+import Model.Parsing.RoutesModel;
 import Model.Parsing.StopModel;
 import Service.ClusterService;
 import Service.StopService;
@@ -19,6 +21,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import static Service.StopService.getAllStops;
+
 /**
  * Controller della mappa.
  *
@@ -28,7 +32,7 @@ import java.util.Set;
  * - la logica di ricerca per nome/codice e i suggerimenti
  * - il clustering delle fermate in base allo zoom
  *
- * Creatore: Simone Bonuso
+ * Creatore: Simone Bonuso, Andrea Brandolini, Alessandro Angeli
  */
 public class MapController {
 
@@ -46,6 +50,8 @@ public class MapController {
 
     // Drag mappa
     private Point dragPrev = null; // punto precedente per drag
+
+
 
 
     // ================================ COSTRUTTORE ================================
@@ -72,7 +78,9 @@ public class MapController {
      * crea i relativi StopWaypoint e li aggiunge al modello.
      */
     private void loadStops(String filePath) {
-        List<StopModel> stops = StopService.getAllStops(filePath);
+        List<StopModel> stops = getAllStops(filePath);
+        model.getMarkers().clear();
+        waypoints.clear();
         for (StopModel stop : stops) {
             GeoPosition pos = stop.getGeoPosition();
             if (pos != null) {
@@ -202,6 +210,7 @@ public class MapController {
             model.setCenter(pos);
             refreshView();
         });
+
     }
 
 
@@ -223,14 +232,12 @@ public class MapController {
     // ========================== GESTIONE CLICK MARKER ===========================
     /**
      * Gestisce il click su un marker di fermata.
-     * Ora evidenzia anche la fermata cliccata e zooma su di essa.
      */
     private void onMarkerClick(StopWaypoint wp) {
         StopModel stop = wp.getStop();
         if (stop != null) {
             System.out.println("--- Fermata cliccata: ID=" + stop.getId()
                     + ", Nome=" + stop.getName());
-            centerMapOnStop(stop);
         }
     }
 
@@ -240,7 +247,7 @@ public class MapController {
      * Trova la fermata più vicina a una posizione, entro un certo raggio.
      */
     private StopModel findNearestStop(GeoPosition pos, double radiusKm) {
-        List<StopModel> stops = StopService.getAllStops(stopsCsvPath);
+        List<StopModel> stops = getAllStops(stopsCsvPath);
         StopModel nearest = null;
         double minDist = radiusKm;
 
@@ -273,27 +280,12 @@ public class MapController {
     }
 
     /**
-     * Centra la mappa sulla fermata specificata,
-     * imposta uno zoom ravvicinato e chiede alla view
-     * di evidenziare il relativo marker.
+     * Centra la mappa sulla fermata specificata.
      */
     public void centerMapOnStop(StopModel stop) {
         if (stop == null || stop.getGeoPosition() == null) return;
-
         GeoPosition pos = stop.getGeoPosition();
-
-        // centra la mappa sulla fermata
         model.setCenter(pos);
-
-        // zoom "ravvicinato" sulla fermata (scegli il livello che preferisci)
-        double desiredZoom = 6.0;
-        targetZoom = model.clampZoom(desiredZoom);
-        model.setZoom(targetZoom);
-
-        // comunica alla view qual è la fermata evidenziata
-        view.setHighlightedStop(stop);
-
-        // ridisegna la mappa
         refreshView();
     }
 
@@ -329,4 +321,6 @@ public class MapController {
         if (zoom >= 4) return 50;
         return 0;
     }
+
+
 }

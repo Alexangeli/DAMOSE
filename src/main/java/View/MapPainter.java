@@ -8,9 +8,6 @@ import java.awt.*;
 import java.awt.geom.Point2D;
 import java.util.Set;
 
-
-
-
 import Model.ClusterModel;
 import org.jxmapviewer.JXMapViewer;
 import org.jxmapviewer.viewer.Waypoint;

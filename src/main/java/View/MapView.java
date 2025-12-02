@@ -18,6 +18,12 @@ import java.util.function.Consumer;
  * Classe responsabile della gestione della vista della mappa e
  * della barra di ricerca delle fermate.
  *
+ * Funzionalità:
+ * - Casella unica di ricerca (nome o codice)
+ * - Suggerimenti dinamici sotto la casella
+ * - Selezione tramite tastiera o mouse
+ * - Centraggio mappa sulla fermata selezionata
+ *
  * Creatore: Simone Bonuso
  */
 public class MapView extends JPanel {
@@ -29,19 +35,18 @@ public class MapView extends JPanel {
     private JTextField searchField;
     private JButton searchButton;
 
+    // ============================ CALLBACK CONTROLLER ============================
     // Callback impostate dal controller
     private Consumer<String> searchByNameListener;
     private Consumer<String> searchByCodeListener;   // tenuto per compatibilità, ma non usato dal bottone
     private Consumer<String> suggestByNameListener;
 
+    // ========================== COMPONENTI SUGGERIMENTI ==========================
     // Suggerimenti sotto la casella
     private JPanel suggestionsPanel;
     private JList<StopModel> suggestionsList;
     private DefaultListModel<StopModel> suggestionsModel;
     private Consumer<StopModel> suggestionSelectionListener;
-
-    // Fermata da evidenziare sulla mappa (marker diverso)
-    private StopModel highlightedStop;
 
 
     // ============================================================================
@@ -104,31 +109,37 @@ public class MapView extends JPanel {
 
         northPanel.add(suggestionsPanel, BorderLayout.CENTER);
 
-        // ===== Azione del pulsante CERCA =====
+        // ===================== EVENTI BARRA DI RICERCA =====================
+
+        // Azione del pulsante CERCA
         searchButton.addActionListener(e -> {
+            // quando fai una ricerca esplicita, nascondi i suggerimenti
             hideSuggestions();
 
             String query = searchField.getText();
             if (query == null || query.isBlank()) return;
 
-            // Unico entry-point: il controller decide cosa fare
+            // Unico entry-point: il controller decide se trattarlo come nome/codice
             if (searchByNameListener != null) {
                 searchByNameListener.accept(query.trim());
             }
         });
 
-        // ===== Invio nella casella =====
+        // Invio nella casella
         searchField.addActionListener(e -> {
+            // Se i suggerimenti sono visibili e c'è un elemento selezionato,
+            // usiamo SOLO quel suggerimento (nessuna showStopNotFound).
             if (suggestionsPanel.isVisible()
                     && !suggestionsModel.isEmpty()
                     && suggestionsList.getSelectedIndex() >= 0) {
                 selectSuggestion();   // centra mappa e chiude i suggerimenti
             } else {
+                // altrimenti è come premere "Cerca"
                 searchButton.doClick();
             }
         });
 
-        // ===== Frecce ↑↓ nella casella → scorrono i suggerimenti =====
+        // Frecce ↑↓ nella casella → scorrono i suggerimenti
         searchField.addKeyListener(new KeyAdapter() {
             @Override
             public void keyPressed(KeyEvent e) {
@@ -157,28 +168,7 @@ public class MapView extends JPanel {
             }
         });
 
-        // Cambiare selezione nella lista → centra la mappa
-        suggestionsList.addListSelectionListener(e -> {
-            if (e.getValueIsAdjusting()) return;
-            if (suggestionSelectionListener != null) {
-                StopModel selected = suggestionsList.getSelectedValue();
-                if (selected != null) {
-                    suggestionSelectionListener.accept(selected);
-                }
-            }
-        });
-
-        // Doppio click sulla lista → seleziona fermata e chiude i suggerimenti
-        suggestionsList.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 2) {
-                    selectSuggestion();
-                }
-            }
-        });
-
-        // Suggerimenti live mentre si digita (per il NOME)
+        // Suggerimenti live mentre digiti (per il NOME)
         searchField.getDocument().addDocumentListener(new DocumentListener() {
             @Override public void insertUpdate(DocumentEvent e) { changed(); }
             @Override public void removeUpdate(DocumentEvent e) { changed(); }
@@ -199,6 +189,7 @@ public class MapView extends JPanel {
             }
         });
 
+        // Aggiunta del pannello superiore e della mappa al layout
         add(northPanel, BorderLayout.NORTH);
         add(mapViewer, BorderLayout.CENTER);
     }
@@ -208,14 +199,13 @@ public class MapView extends JPanel {
 
     /**
      * Aggiorna la mappa con il nuovo centro, zoom e insieme di waypoint.
-     * Passa anche la fermata evidenziata al MapPainter.
      */
     public void updateView(GeoPosition center, int zoom, Set<? extends Waypoint> waypoints) {
         mapViewer.setAddressLocation(center);
         mapViewer.setCenterPosition(center);
         mapViewer.setZoom(zoom);
 
-        MapPainter painter = new MapPainter(waypoints, highlightedStop);
+        MapPainter painter = new MapPainter(waypoints);
         mapViewer.setOverlayPainter(painter);
 
         mapViewer.repaint();
@@ -226,6 +216,7 @@ public class MapView extends JPanel {
     }
 
     public void setSearchByCodeListener(Consumer<String> listener) {
+        // il bottone non la usa, ma il controller può comunque impostarla se gli serve
         this.searchByCodeListener = listener;
     }
 
@@ -233,13 +224,11 @@ public class MapView extends JPanel {
         this.suggestByNameListener = listener;
     }
 
-    /**
-     * Imposta la fermata da evidenziare sulla mappa.
-     */
-    public void setHighlightedStop(StopModel stop) {
-        this.highlightedStop = stop;
-    }
 
+
+    /**
+     * Mostra un messaggio nel caso in cui nessuna fermata venga trovata.
+     */
     public void showStopNotFound(String query) {
         JOptionPane.showMessageDialog(
                 this,
@@ -249,6 +238,9 @@ public class MapView extends JPanel {
         );
     }
 
+    /**
+     * Dialog centrale per selezionare tra più fermate (es. Ricerca per codice).
+     */
     public void showStopSelection(List<StopModel> stops, Consumer<StopModel> onSelected) {
         if (stops == null || stops.isEmpty()) {
             return;
@@ -326,6 +318,9 @@ public class MapView extends JPanel {
         dialog.setVisible(true);
     }
 
+    /**
+     * Mostra la lista di suggerimenti sotto la casella di ricerca.
+     */
     public void showNameSuggestions(List<StopModel> stops, Consumer<StopModel> onSelected) {
         suggestionsModel.clear();
 
@@ -357,6 +352,9 @@ public class MapView extends JPanel {
         suggestionsPanel.repaint();
     }
 
+    /**
+     * Conferma il suggerimento selezionato (usato da Invio e doppio click).
+     */
     private void selectSuggestion() {
         StopModel selected = suggestionsList.getSelectedValue();
         if (selected != null) {
@@ -370,6 +368,9 @@ public class MapView extends JPanel {
         }
     }
 
+    /**
+     * Restituisce il viewer della mappa.
+     */
     public JXMapViewer getMapViewer() {
         return mapViewer;
     }
