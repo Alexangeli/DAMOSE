@@ -1,10 +1,10 @@
 package Controller;
 
-import Model.ClusterModel;
+import Model.Points.ClusterModel;
 import Model.MapModel;
-import Model.Parsing.StopModel;
-import Service.ClusterService;
-import Service.StopService;
+import Model.Points.StopModel;
+import Service.Points.ClusterService;
+import Service.Points.StopService;
 import View.MapView;
 import View.Waypointers.Waypoint.StopWaypoint;
 import org.jxmapviewer.JXMapViewer;
@@ -19,7 +19,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-import static Service.StopService.getAllStops;
+import static Service.Points.StopService.getAllStops;
 
 /**
  * Controller della mappa.
@@ -198,7 +198,7 @@ public class MapController {
         model.setCenter(pos);
 
         // Zoom più vicino per vedere meglio la fermata
-        double desiredZoom = 3.0;
+        double desiredZoom = 2.0;
         targetZoom = model.clampZoom(desiredZoom);
         model.setZoom(targetZoom);
 
@@ -208,23 +208,29 @@ public class MapController {
     // ===== REFRESH / CLUSTERING =====
     public void refreshView() {
         int zoomInt = (int) Math.round(model.getZoom());
-        Set<? extends org.jxmapviewer.viewer.Waypoint> toDisplay;
+
+        Set<StopWaypoint> stopsToDisplay;
+        Set<ClusterModel> clustersToDisplay;
 
         if (zoomInt < 4) {
-            toDisplay = waypoints;
+            stopsToDisplay = waypoints;
+            clustersToDisplay = Set.of(); // vuoto
         } else {
             int gridSizePx = getGridSizeForZoom(zoomInt);
             clusters = ClusterService.createClusters(List.copyOf(waypoints), view.getMapViewer(), gridSizePx);
-            toDisplay = clusters;
+
+            stopsToDisplay = Set.of(); // vuoto
+            clustersToDisplay = clusters;
         }
 
-        view.updateView(model.getCenter(), zoomInt, toDisplay);
+        view.updateView(model.getCenter(), zoomInt, stopsToDisplay, clustersToDisplay);
     }
 
+
     private int getGridSizeForZoom(int zoom) {
-        if (zoom >= 8) return 120;
-        if (zoom >= 6) return 80;
-        if (zoom >= 4) return 50;
+        if (zoom >= 8) return 240;
+        if (zoom >= 6) return 160;
+        if (zoom >= 4) return 100;
         return 0;
     }
 }

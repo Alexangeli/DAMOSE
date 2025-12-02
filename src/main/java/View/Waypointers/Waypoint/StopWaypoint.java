@@ -1,6 +1,6 @@
 package View.Waypointers.Waypoint;
 
-import Model.Parsing.StopModel;
+import Model.Points.StopModel;
 import org.jxmapviewer.viewer.DefaultWaypoint;
 
 /**

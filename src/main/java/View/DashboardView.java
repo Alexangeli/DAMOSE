@@ -1,5 +1,7 @@
 package View;
 
+import Model.Points.StopModel;
+
 import javax.swing.*;
 import java.awt.*;
 

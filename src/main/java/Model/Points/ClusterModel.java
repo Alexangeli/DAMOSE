@@ -1,4 +1,4 @@
-package Model;
+package Model.Points;
 
 import View.Waypointers.Waypoint.StopWaypoint;
 import org.jxmapviewer.viewer.GeoPosition;
@@ -46,4 +46,6 @@ public class ClusterModel implements Waypoint {
     public int getSize() {
         return stops.size();
     }
+
+
 }

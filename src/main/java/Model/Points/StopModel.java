@@ -1,4 +1,4 @@
-package Model.Parsing;
+package Model.Points;
 
 // Creatore: Alessandro Angeli
 
