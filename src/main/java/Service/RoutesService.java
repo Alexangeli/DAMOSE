@@ -7,6 +7,7 @@ import com.opencsv.exceptions.CsvValidationException;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -52,7 +53,7 @@ public class RoutesService {
      */
     private static List<RoutesModel> readFromCSV(String filePath) {
         List<RoutesModel> routesList = new ArrayList<>();
-        try (CSVReader reader = new CSVReader(new InputStreamReader(new FileInputStream(filePath), "UTF-8"))) {
+        try (CSVReader reader = new CSVReader(new InputStreamReader(new FileInputStream(filePath), StandardCharsets.UTF_8))) {
             String[] nextLine;
             reader.readNext(); // Salta intestazione
             while ((nextLine = reader.readNext()) != null) {
@@ -77,7 +78,7 @@ public class RoutesService {
 
     //===========FILTRI==============
 
-    // metodo per filtrare tutte le fermate in base al route_type nel csv
+    // metodo per filtrare tutte le fermate in base al route_type nel route.csv
 
     public static List<RoutesModel> getRoutesByType(int routeType, String filePath) {
         return getAllRoutes(filePath).stream().filter(route -> isValidRouteType(route, routeType))
