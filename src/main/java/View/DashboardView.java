@@ -1,6 +1,6 @@
 package View;
 
-import Model.Parsing.StopModel;
+import Model.Points.StopModel;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;

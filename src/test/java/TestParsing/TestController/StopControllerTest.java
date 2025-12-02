@@ -1,8 +1,8 @@
 package TestParsing.TestController;
 
 import static org.junit.Assert.assertEquals;
-import Controller.Parsing.StopController;
-import Model.Parsing.StopModel;
+import Controller.Points.StopController;
+import Model.Points.StopModel;
 import org.junit.Test;
 
 import java.util.List;
