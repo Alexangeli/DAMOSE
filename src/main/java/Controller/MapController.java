@@ -198,7 +198,7 @@ public class MapController {
         model.setCenter(pos);
 
         // Zoom più vicino per vedere meglio la fermata
-        double desiredZoom = 7.0;
+        double desiredZoom = 3.0;
         targetZoom = model.clampZoom(desiredZoom);
         model.setZoom(targetZoom);
 
