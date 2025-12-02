@@ -1,7 +1,7 @@
 package View;
 
 import Controller.SearchMode;
-import Model.Parsing.StopModel;
+import Model.Points.StopModel;
 import Model.RouteDirectionOption;
 
 import javax.swing.*;

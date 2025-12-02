@@ -1,7 +1,7 @@
 package Controller;
 
 import Model.MapModel;
-import Model.Parsing.StopModel;
+import Model.Points.StopModel;
 import Model.RouteDirectionOption;
 import View.DashboardView;
 import View.MapView;

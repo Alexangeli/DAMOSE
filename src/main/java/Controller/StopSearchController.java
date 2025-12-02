@@ -1,7 +1,7 @@
 package Controller;
 
-import Model.Parsing.StopModel;
-import Service.StopService;
+import Model.Points.StopModel;
+import Service.Points.StopService;
 import View.SearchBarView;
 
 import javax.swing.*;
