@@ -1,9 +1,8 @@
 import config.AppConfig;
 import javax.swing.*;
 
-import Model.MapModel;
-import View.MapView;
-import Controller.MapController;
+import Controller.DashboardController;
+import View.DashboardView;
 
 public class Main {
     public static void main(String[] args) {
@@ -16,20 +15,22 @@ public class Main {
             myFrame.setSize(AppConfig.DEFAULT_WIDTH, AppConfig.DEFAULT_HEIGHT);
             myFrame.getContentPane().setBackground(AppConfig.BACKGROUND_COLOR);
 
-            // --- Crea il modello, la view e il controller della mappa ---
-            MapModel model = new MapModel();
-            System.out.println("---MAIN--- Map model loaded");
-            MapView mapView = new MapView();
-            final String routes_csv_path = "src/main/resources/rome_static_gtfs/stops.csv";
-            new MapController(model, mapView, routes_csv_path);
-            System.out.println("---MAIN--- Map Controller loaded");
+            // --- Path del CSV delle fermate ---
+            final String stopsCsvPath = "src/main/resources/rome_static_gtfs/stops.csv";
 
-            // --- Aggiungi la view della mappa al frame ---
-            myFrame.add(mapView);
+            // --- Crea la dashboard (che crea anche MapView, MapModel, MapController) ---
+            DashboardController dashboardController = new DashboardController(stopsCsvPath);
+            DashboardView dashboardView = dashboardController.getView();
 
+            System.out.println("---MAIN--- Dashboard Controller loaded");
+
+            // --- Aggiungi la Dashboard al frame ---
+            myFrame.setContentPane(dashboardView);
+
+            // --- CENTRA LA FINESTRA ALLO SCHERMO ---
+            myFrame.setLocationRelativeTo(null);
             // --- Mostra il frame ---
             myFrame.setVisible(true);
-
         });
     }
 }
