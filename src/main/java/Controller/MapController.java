@@ -222,9 +222,9 @@ public class MapController {
     }
 
     private int getGridSizeForZoom(int zoom) {
-        if (zoom >= 8) return 120;
-        if (zoom >= 6) return 80;
-        if (zoom >= 4) return 50;
+        if (zoom >= 8) return 240;
+        if (zoom >= 6) return 160;
+        if (zoom >= 4) return 100;
         return 0;
     }
 }
