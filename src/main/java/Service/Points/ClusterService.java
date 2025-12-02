@@ -1,6 +1,6 @@
-package Service;
+package Service.Points;
 
-import Model.ClusterModel;
+import Model.Points.ClusterModel;
 import View.Waypointers.Waypoint.StopWaypoint;
 import org.jxmapviewer.JXMapViewer;
 

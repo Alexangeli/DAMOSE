@@ -1,8 +1,8 @@
 package Controller;
 
 import Model.MapModel;
-import Model.Parsing.StopModel;
-import Service.StopService;
+import Model.Points.StopModel;
+import Service.Points.StopService;
 import View.DashboardView;
 import View.MapView;
 
