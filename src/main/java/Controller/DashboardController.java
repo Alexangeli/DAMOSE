@@ -4,106 +4,161 @@ import Model.MapModel;
 import Model.Points.StopModel;
 import Model.RouteDirectionOption;
 import View.DashboardView;
+import View.LineStopsView;
 import View.MapView;
 import View.SearchBarView;
 
 /**
  * Controller principale della dashboard.
  *
- * Responsabilità:
- * - Crea e collega:
- *   - DashboardView (SearchBarView + MapView)
- *   - MapModel + MapController (gestione mappa)
- *   - StopSearchController (ricerca fermate)
- *   - LineSearchController (ricerca linee + direzioni)
- *
- * - Smista gli eventi dalla SearchBarView verso il controller corretto
- *   in base alla modalità selezionata (STOP / LINE).
+ * Coordina:
+ *  - SearchBarView (barra di ricerca fermata/linea)
+ *  - MapView + MapController (mappa)
+ *  - LineStopsView (pannello sotto, riutilizzato sia per:
+ *        - fermata → linee
+ *        - linea   → fermate)
  *
  * Creatore: Simone Bonuso
  */
 public class DashboardController {
 
+    // ====== VISTE E MODELLO ======
     private final DashboardView dashboardView;
-    private final MapController mapController;
     private final MapModel mapModel;
 
+    // ====== CONTROLLER INTERNI ======
+    private final MapController mapController;
     private final StopSearchController stopSearchController;
     private final LineSearchController lineSearchController;
+    private final LineStopsController lineStopsController;   // linea → fermate
+    private final StopLinesController stopLinesController;   // fermata → linee
+
+    // ====== PATH FILE GTFS ======
+    private final String stopsCsvPath;
+    private final String routesCsvPath;
+    private final String tripsCsvPath;
+    private final String stopTimesPath;
 
     /**
-     * Costruttore della dashboard.
+     * Costruttore della Dashboard.
      *
-     * @param stopsCsvPath  percorso del file CSV delle fermate (stops.csv)
-     * @param routesCsvPath percorso del file CSV delle linee (routes.csv)
-     * @param tripsCsvPath  percorso del file CSV dei viaggi (trips.csv)
+     * @param stopsCsvPath   percorso di stops.csv
+     * @param routesCsvPath  percorso di routes.csv
+     * @param tripsCsvPath   percorso di trips.csv
+     * @param stopTimesPath  percorso di stop_times.csv
      */
     public DashboardController(String stopsCsvPath,
                                String routesCsvPath,
-                               String tripsCsvPath) {
+                               String tripsCsvPath,
+                               String stopTimesPath) {
 
-        // Vista principale (contiene SearchBarView + MapView)
+        this.stopsCsvPath  = stopsCsvPath;
+        this.routesCsvPath = routesCsvPath;
+        this.tripsCsvPath  = tripsCsvPath;
+        this.stopTimesPath = stopTimesPath;
+
+        // ====== VISTA PRINCIPALE ======
         this.dashboardView = new DashboardView();
 
-        // Estrae i componenti interni dalla view
-        MapView mapView = dashboardView.getMapView();
+        // Componenti interni della view
+        MapView mapView         = dashboardView.getMapView();
         SearchBarView searchBar = dashboardView.getSearchBarView();
+        LineStopsView lineStopsView = dashboardView.getLineStopsView();
 
-        // Modello della mappa
+        // ====== MODELLO DELLA MAPPA ======
         this.mapModel = new MapModel();
 
-        // Controller della mappa (gestisce zoom, drag, marker, ecc.)
+        // ====== CONTROLLER Mappa ======
         this.mapController = new MapController(mapModel, mapView, stopsCsvPath);
 
-        // Controller dedicati alla logica di ricerca
+        // ====== CONTROLLER Ricerche ======
+
+        // ricerca fermate
         this.stopSearchController =
                 new StopSearchController(searchBar, mapController, stopsCsvPath);
 
+        // ricerca linee (routes + trips)
         this.lineSearchController =
-                new LineSearchController(searchBar, mapController, routesCsvPath, tripsCsvPath);
+                new LineSearchController(
+                        searchBar,
+                        routesCsvPath,
+                        tripsCsvPath
+                );
 
-        // ================== COLLEGAMENTO CALLBACK SEARCHBAR ==================
+        // linea → fermate (pannello sotto)
+        this.lineStopsController =
+                new LineStopsController(
+                        lineStopsView,
+                        tripsCsvPath,
+                        stopTimesPath,
+                        stopsCsvPath
+                );
 
-        // Cambio modalità Fermata / Linea
-        searchBar.setOnModeChanged(mode ->
-                System.out.println("---DashboardController--- modalità = " + mode));
+        // fermata → linee (stesso pannello sotto riutilizzato)
+        this.stopLinesController =
+                new StopLinesController(
+                        lineStopsView,
+                        stopTimesPath,
+                        tripsCsvPath,
+                        routesCsvPath
+                );
 
-        // Quando l'utente preme CERCA (o Invio senza selezione nella lista)
+        // ====== COLLEGAMENTO CALLBACK DALLA SEARCHBAR ======
+
+        // Cambio modalità (STOP / LINE)
+        searchBar.setOnModeChanged(mode -> {
+            System.out.println("---DashboardController--- modalità = " + mode);
+            lineStopsView.clear();   // puliamo il pannello sotto ogni volta che cambiamo modalità
+            searchBar.hideSuggestions();
+        });
+
+        // Click su "Cerca"
         searchBar.setOnSearch(query -> {
             if (query == null || query.isBlank()) return;
 
             if (searchBar.getCurrentMode() == SearchMode.STOP) {
-                // Modalità fermata
+                // ricerca fermata
                 stopSearchController.onSearch(query);
             } else {
-                // Modalità linea
+                // ricerca linea
                 lineSearchController.onSearch(query);
             }
         });
 
-        // Quando il testo nella barra cambia (per i suggerimenti)
+        // Testo che cambia nella barra (per i suggerimenti)
         searchBar.setOnTextChanged(text -> {
             if (searchBar.getCurrentMode() == SearchMode.STOP) {
-                // Suggerimenti fermate
                 stopSearchController.onTextChanged(text);
             } else {
-                // Suggerimenti linee (direzioni)
                 lineSearchController.onTextChanged(text);
             }
         });
 
-        // Selezione di un suggerimento di fermata (freccia/enter/doppio click)
-        searchBar.setOnSuggestionSelected((StopModel stop) ->
-                stopSearchController.onSuggestionSelected(stop));
+        // Selezione di una fermata dai suggerimenti (STOP)
+        searchBar.setOnSuggestionSelected((StopModel stop) -> {
+            if (stop == null) return;
 
-        // Selezione di un suggerimento di direzione di linea
-        searchBar.setOnRouteDirectionSelected((RouteDirectionOption opt) ->
-                lineSearchController.onRouteDirectionSelected(opt));
+            // centra la mappa sulla fermata
+            stopSearchController.onSuggestionSelected(stop);
+
+            // mostra le linee che passano da quella fermata nel pannello sotto
+            stopLinesController.showLinesForStop(stop);
+        });
+
+        // Selezione di una linea/direzione dai suggerimenti (LINE)
+        searchBar.setOnRouteDirectionSelected((RouteDirectionOption option) -> {
+            if (option == null) return;
+
+            // logica linea selezionata (per ora solo log)
+            lineSearchController.onRouteDirectionSelected(option);
+
+            // mostra le fermate di quella linea + direzione nel pannello sotto
+            lineStopsController.showStopsFor(option);
+        });
     }
 
     /**
-     * Restituisce la vista della dashboard,
-     * da aggiungere al frame principale (JFrame).
+     * Restituisce la vista principale da inserire nel frame.
      */
     public DashboardView getView() {
         return dashboardView;
