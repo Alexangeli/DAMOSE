@@ -31,8 +31,10 @@ import java.util.*;
 public class LineSearchController {
 
     private final SearchBarView searchView;
+    private final MapController mapController;
     private final String routesCsvPath;
     private final String tripsCsvPath;
+
 
     // tutte le routes in memoria (con cache del tuo RoutesService)
     private final List<RoutesModel> allRoutes;
@@ -57,9 +59,11 @@ public class LineSearchController {
     }
 
     public LineSearchController(SearchBarView searchView,
+                                MapController mapController,
                                 String routesCsvPath,
                                 String tripsCsvPath) {
         this.searchView = searchView;
+        this.mapController = mapController;
         this.routesCsvPath = routesCsvPath;
         this.tripsCsvPath = tripsCsvPath;
 
@@ -209,10 +213,16 @@ public class LineSearchController {
      */
     public void onRouteDirectionSelected(RouteDirectionOption option) {
         if (option == null) return;
+
+        String routeId = option.getRouteId();
+        int directionInt = option.getDirectionId();
+        String directionId = String.valueOf(directionInt);
+
+        mapController.highlightRoute(routeId, directionId);
+
         System.out.println("---LineSearchController--- linea selezionata: "
                 + option.getRouteShortName()
                 + " | dir=" + option.getDirectionId()
                 + " | headsign=" + option.getHeadsign());
-        // TODO: qui il tuo codice di logica mappa/percorso
     }
 }

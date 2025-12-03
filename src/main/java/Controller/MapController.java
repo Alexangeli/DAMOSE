@@ -1,11 +1,16 @@
 package Controller;
 
+import Model.Parsing.ShapesModel;
+import Model.Parsing.TripsModel;
 import Model.Points.ClusterModel;
 import Model.MapModel;
 import Model.Points.StopModel;
 import Service.Points.ClusterService;
 import Service.Points.StopService;
+import Service.ShapesService;
+import Service.TripsService;
 import View.MapView;
+import View.Waypointers.Painter.ShapePainter;
 import View.Waypointers.Waypoint.StopWaypoint;
 import org.jxmapviewer.JXMapViewer;
 import org.jxmapviewer.viewer.GeoPosition;
@@ -45,11 +50,16 @@ public class MapController {
 
     private Point dragPrev = null; // punto precedente per drag
 
+    private final ShapePainter shapePainter;
+    final String shapesPath  = "src/main/resources/rome_static_gtfs/shapes.csv";
+    final String routesPath = "src/main/resources/rome_static_gtfs/routes.csv";
+    final String tripsPath  = "src/main/resources/rome_static_gtfs/trips.csv";
+
     public MapController(MapModel model, MapView view, String stopsCsvPath) {
         this.model = model;
         this.view = view;
         this.stopsCsvPath = stopsCsvPath;
-
+        this.shapePainter = new ShapePainter(routesPath, tripsPath);
         this.targetZoom = model.getZoom();
 
         zoomTimer = new Timer(10, e -> smoothZoomStep());
@@ -313,7 +323,7 @@ public class MapController {
             clustersToDisplay = clusters;
         }
 
-        view.updateView(model.getCenter(), zoomInt, stopsToDisplay, clustersToDisplay);
+        view.updateView(model.getCenter(), zoomInt, stopsToDisplay, clustersToDisplay, shapePainter);
     }
 
 
@@ -322,5 +332,55 @@ public class MapController {
         if (zoom >= 6) return 160;
         if (zoom >= 4) return 100;
         return 0;
+    }
+
+    public void highlightRoute(String routeId, String directionId) {  // ← directionId AGGIUNTO
+        // Trova SOLO i trip di QUESTA direzione specifica
+        List<String> shapeIds = TripsService.getAllTrips(tripsPath).stream()
+                .filter(trip -> trip.getRoute_id().equals(routeId)
+                        && trip.getDirection_id().equals(directionId))  // ← SOLO QUESTA DIREZIONE
+                .map(TripsModel::getShape_id)
+                .filter(id -> id != null && !id.isEmpty())
+                .distinct()
+                .toList();
+
+        // Trova i punti di quelle shapes
+        List<ShapesModel> shapesToDraw = ShapesService.getAllShapes(shapesPath).stream()
+                .filter(shape -> shapeIds.contains(shape.getShape_id()))
+                .toList();
+
+        shapePainter.setHighlightedShapes(shapesToDraw);
+
+
+        zoomToRouteOptimal(shapesToDraw);
+    }
+
+    private void zoomToRouteOptimal(List<ShapesModel> shapes) {
+        if (shapes.isEmpty()) return;
+
+
+        Set<GeoPosition> positions = new HashSet<>();
+        for (ShapesModel shape : shapes) {
+            positions.add(new GeoPosition(
+                    Double.parseDouble(shape.getShape_pt_lat()),
+                    Double.parseDouble(shape.getShape_pt_lon())
+            ));
+        }
+
+        view.getMapViewer().setZoom(0);
+        view.getMapViewer().calculateZoomFrom(positions);
+
+
+        int finalZoom = view.getMapViewer().getZoom() - 1;
+        finalZoom = Math.max(4, Math.min(15, finalZoom));
+
+        view.getMapViewer().setZoom(finalZoom);
+    }
+
+
+
+    public void clearRouteHighlight() {
+        shapePainter.setHighlightedShapes(List.of());
+        refreshView();
     }
 }

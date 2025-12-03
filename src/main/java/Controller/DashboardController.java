@@ -81,6 +81,7 @@ public class DashboardController {
         this.lineSearchController =
                 new LineSearchController(
                         searchBar,
+                        mapController,
                         routesCsvPath,
                         tripsCsvPath
                 );
