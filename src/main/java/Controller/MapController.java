@@ -119,18 +119,64 @@ public class MapController {
             targetZoom = model.clampZoom(targetZoom);
         });
 
-        // Click mappa: fermata più vicina
+        // Click mappa: fermata più vicina e cluster piu vicino
         map.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
                 GeoPosition clicked = map.convertPointToGeoPosition(e.getPoint());
-                StopModel nearest = findNearestStop(clicked, 0.05);
-                if (nearest != null) {
-                    System.out.println("--- Fermata più vicina: ID=" + nearest.getId()
-                            + ", Nome=" + nearest.getName());
-                } else {
-                    System.out.println("--- Nessuna fermata vicina nel raggio ---");
+
+                int currentZoom = model.getZoomInt();
+
+                if (currentZoom >= 2 && currentZoom <= 3){
+
+                } else if (currentZoom >= 4 && currentZoom <= 8) {
+
                 }
+                double radiusKm;
+                switch (currentZoom) {
+                    case 2:
+                    case 3:
+                        radiusKm = 0.05;
+                        break;
+                    case 4:
+                        radiusKm = 0.08;
+                        break;
+                    case 5:
+                        radiusKm = 0.15;
+                        break;
+                    case 6:
+                        radiusKm = 0.4;
+                        break;
+                    case 7:
+                        radiusKm = 1;
+                        break;
+                    case 8:
+                        radiusKm = 2.1;
+                        break;
+                    default:
+                        radiusKm = 0;
+
+                }
+
+                StopModel nearestStop;
+                ClusterModel nearestCluster;
+
+                if (currentZoom > 1 && currentZoom <= 3){
+                    nearestStop = findNearestStop(clicked, radiusKm);
+                    if (nearestStop != null) {
+                        System.out.println("--- Fermata più vicina: ID=" + nearestStop.getId()
+                                + ", Nome=" + nearestStop.getName());
+                    }
+                } else if (currentZoom > 3) {
+                    nearestCluster = findNearestCluster(clicked, radiusKm);
+                    if (nearestCluster != null) {
+                        System.out.println("--- Cluster con centro" + nearestCluster.getPosition()
+                                + ", con: " + nearestCluster.getSize() + " fermate");
+
+                        centerMapOnCluster(nearestCluster);
+                    }
+                }
+
             }
 
             @Override
@@ -187,7 +233,7 @@ public class MapController {
         }
         return nearest;
     }
-    
+
     //clusters è di classe
     private ClusterModel findNearestCluster(GeoPosition pos, double radiusKm) {
         ClusterModel nearest = null;
@@ -222,6 +268,17 @@ public class MapController {
         refreshView();
     }
 
+    public void centerMapOnCluster(ClusterModel cluster){
+        if (cluster == null || cluster.getPosition() == null) return;
+
+        int reducedZoom = model.getZoomInt() -1;
+        targetZoom = model.clampZoom(reducedZoom);
+        model.setZoom(reducedZoom);
+        model.setCenter(cluster.getPosition());
+        
+        refreshView();
+    }
+
     // ===== REFRESH / CLUSTERING =====
     public void refreshView() {
         int zoomInt = (int) Math.round(model.getZoom());
@@ -229,7 +286,7 @@ public class MapController {
         Set<StopWaypoint> stopsToDisplay;
         Set<ClusterModel> clustersToDisplay;
 
-        if (zoomInt < 4) {
+        if (zoomInt <= 3) {
             stopsToDisplay = waypoints;
             clustersToDisplay = Set.of(); // vuoto
         } else {
