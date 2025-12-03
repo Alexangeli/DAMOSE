@@ -3,11 +3,11 @@ package View;
 import Model.Points.ClusterModel;
 import View.Waypointers.Painter.ClusterPainter;
 import View.Waypointers.Painter.MapOverlay;
-import View.Waypointers.Painter.ShapePainter;
 import View.Waypointers.Painter.StopPainter;
 import View.Waypointers.Waypoint.StopWaypoint;
 import org.jxmapviewer.JXMapViewer;
 import org.jxmapviewer.viewer.GeoPosition;
+import org.jxmapviewer.viewer.Waypoint;
 
 import javax.swing.*;
 import java.awt.*;
@@ -38,8 +38,7 @@ public class MapView extends JPanel {
     public void updateView(GeoPosition center,
                            int zoom,
                            Set<StopWaypoint> stops,
-                           Set<ClusterModel> clusters,
-                           ShapePainter shapePainter) {
+                           Set<ClusterModel> clusters) {
         mapViewer.setAddressLocation(center);
         mapViewer.setCenterPosition(center);
         mapViewer.setZoom(zoom);
@@ -47,11 +46,7 @@ public class MapView extends JPanel {
         StopPainter stopPainter = new StopPainter(stops);
         ClusterPainter clusterPainter = new ClusterPainter(clusters);
 
-        MapOverlay overlay = new MapOverlay(
-                stopPainter,
-                clusterPainter,
-                shapePainter);
-
+        MapOverlay overlay = new MapOverlay(stopPainter, clusterPainter);
         mapViewer.setOverlayPainter(overlay);
 
         mapViewer.repaint();

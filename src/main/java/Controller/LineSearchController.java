@@ -196,15 +196,7 @@ public class LineSearchController {
      */
     public void onSearch(String query) {
         onTextChanged(query);
-
-
-        String routeId = opt.getRouteId();
-        int directionInt = opt.getDirectionId();
-        String directionId = String.valueOf(directionInt);
-
-        mapController.highlightRoute(routeId, directionId);
     }
-
 
     /**
      * Chiamato quando l'utente conferma una linea/direzione
