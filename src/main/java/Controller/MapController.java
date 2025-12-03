@@ -187,6 +187,23 @@ public class MapController {
         }
         return nearest;
     }
+    
+    //clusters è di classe
+    private ClusterModel findNearestCluster(GeoPosition pos, double radiusKm) {
+        ClusterModel nearest = null;
+        double minDist = radiusKm;
+
+        for (ClusterModel clusterX : clusters) {
+            GeoPosition clusterXPositionpPos = clusterX.getPosition();
+            if (clusterXPositionpPos == null) continue;
+            double dist = StopService.calculateDistance(pos, clusterXPositionpPos);
+            if (dist <= minDist) {
+                minDist = dist;
+                nearest = clusterX;
+            }
+        }
+        return nearest;
+    }
 
     // ===== METODO USATO DALLA RICERCA =====
     /**
