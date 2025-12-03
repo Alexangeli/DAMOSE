@@ -61,6 +61,7 @@ public class MapController {
     }
 
     // ===== CARICAMENTO FERMATE =====
+
     /**
      * Legge tutte le fermate dal CSV tramite StopService,
      * crea i relativi StopWaypoint e li aggiunge al modello.
@@ -127,7 +128,7 @@ public class MapController {
 
                 int currentZoom = model.getZoomInt();
 
-                if (currentZoom >= 2 && currentZoom <= 3){
+                if (currentZoom >= 2 && currentZoom <= 3) {
 
                 } else if (currentZoom >= 4 && currentZoom <= 8) {
 
@@ -161,7 +162,7 @@ public class MapController {
                 StopModel nearestStop;
                 ClusterModel nearestCluster;
 
-                if (currentZoom > 1 && currentZoom <= 3){
+                if (currentZoom > 1 && currentZoom <= 3) {
                     nearestStop = findNearestStop(clicked, radiusKm);
                     if (nearestStop != null) {
                         System.out.println("--- Fermata più vicina: ID=" + nearestStop.getId()
@@ -252,6 +253,7 @@ public class MapController {
     }
 
     // ===== METODO USATO DALLA RICERCA =====
+
     /**
      * Centra la mappa sulla fermata specificata e applica uno zoom ravvicinato.
      */
@@ -268,32 +270,46 @@ public class MapController {
         refreshView();
     }
 
-    public void centerMapOnCluster(ClusterModel cluster){
+    // java
+    public void centerMapOnCluster(ClusterModel cluster) {
         if (cluster == null || cluster.getPosition() == null) return;
 
-        int reducedZoom = model.getZoomInt() -1;
-        targetZoom = model.clampZoom(reducedZoom);
-        model.setZoom(reducedZoom);
-        model.setCenter(cluster.getPosition());
-        
+        GeoPosition pos = cluster.getPosition();
+        model.setCenter(pos);
+
+        int reducedZoomInt = model.getZoomInt() - 1;
+        double newZoom = model.clampZoom(reducedZoomInt);
+        targetZoom = newZoom;
+        model.setZoom(newZoom);
+
+        // Immediately update the viewer so clustering uses the new zoom/center
+        JXMapViewer map = view.getMapViewer();
+        map.setZoom(model.getZoomInt());
+        map.setCenterPosition(pos);
+
         refreshView();
     }
 
-    // ===== REFRESH / CLUSTERING =====
     public void refreshView() {
         int zoomInt = (int) Math.round(model.getZoom());
 
         Set<StopWaypoint> stopsToDisplay;
         Set<ClusterModel> clustersToDisplay;
 
+        JXMapViewer map = view.getMapViewer();
+        // Ensure the viewer reflects the desired center/zoom before clustering
+        map.setZoom(zoomInt);
+        map.setCenterPosition(model.getCenter());
+
         if (zoomInt <= 3) {
             stopsToDisplay = waypoints;
-            clustersToDisplay = Set.of(); // vuoto
+            clustersToDisplay = Set.of();
         } else {
             int gridSizePx = getGridSizeForZoom(zoomInt);
-            clusters = ClusterService.createClusters(List.copyOf(waypoints), view.getMapViewer(), gridSizePx);
+            // Now createClusters uses the updated map state
+            clusters = ClusterService.createClusters(List.copyOf(waypoints), map, gridSizePx);
 
-            stopsToDisplay = Set.of(); // vuoto
+            stopsToDisplay = Set.of();
             clustersToDisplay = clusters;
         }
 
