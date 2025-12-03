@@ -174,6 +174,7 @@ public class MapController {
                         System.out.println("--- Cluster con centro" + nearestCluster.getPosition()
                                 + ", con: " + nearestCluster.getSize() + " fermate");
 
+                        
                         centerMapOnCluster(nearestCluster);
                     }
                 }
