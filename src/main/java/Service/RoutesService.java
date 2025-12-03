@@ -88,7 +88,7 @@ public class RoutesService {
         return parseRouteType(route.getRoute_type()) == expectedRouteType;
     }
 
-    private static int parseRouteType(String routeTypeString) {
+   public static int parseRouteType(String routeTypeString) {
         try{
             return Integer.parseInt(routeTypeString);
         }

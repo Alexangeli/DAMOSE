@@ -89,6 +89,13 @@ public class LineSearchController {
     public void onRouteDirectionSelected(RouteDirectionOption opt) {
         if (opt == null) return;
 
+        String routeId = opt.getRouteId();
+        int directionInt = opt.getDirectionId();
+        String directionId = String.valueOf(directionInt);
+
+        mapController.highlightRoute(routeId, directionId);
+
+
         System.out.println("---LineSearchController--- linea selezionata: "
                 + opt.getRouteShortName()
                 + " dir=" + opt.getDirectionId()
