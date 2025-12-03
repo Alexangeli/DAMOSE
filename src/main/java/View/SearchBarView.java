@@ -7,231 +7,235 @@ import Model.RouteDirectionOption;
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import javax.swing.event.ListSelectionListener;
 import java.awt.*;
-import java.awt.event.*;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
 import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * Barra di ricerca generale (colonna a sinistra):
- *
- *  BARRA DI RICERCA
- *  [ Modalità: Fermata / Linea ]  (toggle)
- *  [ campo di testo           ]
- *  [ CERCA                    ]
- *  [ suggerimenti...          ]
- *
- * Gestisce solo UI e delega la logica ai controller.
+ * Barra di ricerca (fermate / linee) con:
+ *  - un solo campo di testo
+ *  - un solo pulsante "Cerca"
+ *  - uno switch STOP / LINEA
+ *  - lista di suggerimenti a scorrimento sotto (gestita da SuggestionsView).
  *
  * Creatore: Simone Bonuso
  */
 public class SearchBarView extends JPanel {
 
-    // UI principali
-    private final JLabel titleLabel;
-    private final JToggleButton modeToggle;   // unico switch Fermata/Linea
+    // ========================== COMPONENTI UI ==========================
+
+    private final JToggleButton modeToggle;   // switch STOP / LINE
     private final JTextField searchField;
     private final JButton searchButton;
 
-    // Lista suggerimenti (può contenere fermate o direzioni di linea)
-    private final JPanel suggestionsPanel;
-    private final DefaultListModel<Object> suggestionsModel;
-    private final JList<Object> suggestionsList;
+    private final SuggestionsView suggestions;  // nuova classe estratta
 
-    // Modalità corrente
-    private SearchMode currentMode = SearchMode.STOP;
+    // ============================ CALLBACKS ============================
 
-    // Callback verso controller
     private Consumer<SearchMode> onModeChanged;
     private Consumer<String> onSearch;
     private Consumer<String> onTextChanged;
-    private Consumer<StopModel> onStopSuggestionSelected;
+    private Consumer<StopModel> onSuggestionSelected;
     private Consumer<RouteDirectionOption> onRouteDirectionSelected;
 
+    // ============================ STATO ===============================
+
+    private SearchMode currentMode = SearchMode.STOP;
+
+    // 👉 flag per NON triggerare i suggerimenti quando cambiamo il testo via codice
+    private boolean suppressTextEvents = false;
+
+    // 👉 debounce per la ricerca live (500 ms, come prima versione fluida)
+    private final Timer debounceTimer;
+
+    // ==================================================================
+    //                            COSTRUTTORE
+    // ==================================================================
     public SearchBarView() {
-        // Colonna verticale
         setLayout(new BorderLayout());
-        JPanel content = new JPanel();
-        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-        content.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-        add(content, BorderLayout.NORTH); // il resto può restare vuoto
+        setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        // ----- Titolo -----
-        titleLabel = new JLabel("Damose");
-        titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 16f));
-        titleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        content.add(titleLabel);
-        content.add(Box.createVerticalStrut(10));
+        // ---------- Pannello top con switch + campo + bottone ----------
+        JPanel topPanel = new JPanel();
+        topPanel.setLayout(new BoxLayout(topPanel, BoxLayout.Y_AXIS));
 
-        // ----- Switch unico Fermata / Linea -----
-        modeToggle = new JToggleButton();
-        modeToggle.setAlignmentX(Component.LEFT_ALIGNMENT);
-        updateModeToggleText(); // imposta testo iniziale (Fermata)
+        // Riga: switch STOP/LINE
+        JPanel modePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        JLabel modeLabel = new JLabel("Modalità:");
+        modeToggle = new JToggleButton("Fermata"); // testo iniziale
+        modeToggle.setToolTipText("Clicca per passare a ricerca per LINEA");
+        modeToggle.addActionListener(e -> toggleMode());
+        modePanel.add(modeLabel);
+        modePanel.add(modeToggle);
 
-        modeToggle.addActionListener(e -> {
-            // se il toggle è selezionato → Modalità LINE
-            // altrimenti → STOP
-            currentMode = modeToggle.isSelected() ? SearchMode.LINE : SearchMode.STOP;
-            updateModeToggleText();
-            hideSuggestions();
-            if (onModeChanged != null) {
-                onModeChanged.accept(currentMode);
+        // Riga: campo di ricerca + bottone
+        JPanel searchPanel = new JPanel(new BorderLayout(5, 0));
+        searchField = new JTextField();
+        searchButton = new JButton("Cerca");
+        searchPanel.add(searchField, BorderLayout.CENTER);
+        searchPanel.add(searchButton, BorderLayout.EAST);
+
+        topPanel.add(modePanel);
+        topPanel.add(Box.createVerticalStrut(8));
+        topPanel.add(searchPanel);
+
+        add(topPanel, BorderLayout.NORTH);
+
+        // ---------- Suggerimenti (gestiti da SuggestionsView) ----------
+        suggestions = new SuggestionsView();
+        add(suggestions.getPanel(), BorderLayout.CENTER);
+
+        // ====================== TIMER DI DEBOUNCE ======================
+        debounceTimer = new Timer(500, e -> {
+            if (onTextChanged == null) return;
+            String text = searchField.getText();
+            if (text == null || text.isBlank()) {
+                hideSuggestions();
+                return;
             }
-        });
-
-        content.add(modeToggle);
-        content.add(Box.createVerticalStrut(10));
-
-        // ----- Campo di testo -----
-        searchField = new JTextField(20);
-        searchField.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
-        searchField.setAlignmentX(Component.LEFT_ALIGNMENT);
-        content.add(searchField);
-        content.add(Box.createVerticalStrut(8));
-
-        // ----- Bottone CERCA -----
-        searchButton = new JButton("CERCA");
-        searchButton.setAlignmentX(Component.LEFT_ALIGNMENT);
-        content.add(searchButton);
-        content.add(Box.createVerticalStrut(8));
-
-        // ----- Pannello suggerimenti -----
-        suggestionsPanel = new JPanel(new BorderLayout());
-        suggestionsModel = new DefaultListModel<>();
-        suggestionsList = new JList<>(suggestionsModel);
-        suggestionsList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        suggestionsList.setVisibleRowCount(8);
-
-        suggestionsList.setCellRenderer(new DefaultListCellRenderer() {
-            @Override
-            public Component getListCellRendererComponent(
-                    JList<?> list, Object value, int index,
-                    boolean isSelected, boolean cellHasFocus) {
-
-                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-
-                if (value instanceof StopModel stop) {
-                    String txt = stop.getName();
-                    if (stop.getCode() != null && !stop.getCode().isBlank()) {
-                        txt += " (" + stop.getCode() + ")";
-                    }
-                    setText(txt);
-                } else if (value instanceof RouteDirectionOption opt) {
-                    String shortName = opt.getRouteShortName();
-                    if (shortName == null || shortName.isBlank()) {
-                        shortName = opt.getRouteId();
-                    }
-                    String head = opt.getHeadsign();
-                    setText("Linea " + shortName + " → " + head);
-                }
-                return this;
+            String trimmed = text.trim();
+            if (trimmed.length() < 3) {
+                hideSuggestions();
+                return;
             }
+            onTextChanged.accept(trimmed);
         });
+        debounceTimer.setRepeats(false);
 
-        JScrollPane scroll = new JScrollPane(suggestionsList);
-        scroll.setPreferredSize(new Dimension(300, 160));
-        suggestionsPanel.add(scroll, BorderLayout.CENTER);
-        suggestionsPanel.setVisible(false);
-        suggestionsPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        // ====================== EVENTI BARRA DI RICERCA ======================
 
-        content.add(suggestionsPanel);
+        // Click sul pulsante "Cerca"
+        searchButton.addActionListener(e -> handleSearchButton());
 
-        // ====================== EVENTI ======================
-
-        // Bottone CERCA
-        searchButton.addActionListener(e -> {
-            if (onSearch != null) {
-                String q = searchField.getText();
-                if (q != null && !q.isBlank()) {
-                    onSearch.accept(q.trim());
-                }
-            }
-        });
-
-        // Invio nella casella
-        searchField.addActionListener(e -> {
-            if (suggestionsPanel.isVisible()
-                    && suggestionsList.getSelectedIndex() >= 0) {
-                confirmSuggestion();
-            } else if (onSearch != null) {
-                String q = searchField.getText();
-                if (q != null && !q.isBlank()) {
-                    onSearch.accept(q.trim());
-                }
-            }
-        });
-
-        // Frecce ↑↓ per scorrere suggerimenti
+        // ENTER + frecce ↑↓ dentro al campo di testo
         searchField.addKeyListener(new KeyAdapter() {
             @Override
             public void keyPressed(KeyEvent e) {
-                if (!suggestionsPanel.isVisible()) return;
-                if (suggestionsModel.isEmpty()) return;
 
-                int idx = suggestionsList.getSelectedIndex();
-                int size = suggestionsModel.size();
+                // ---- ENTER: conferma suggerimento OPPURE fa la ricerca ----
+                if (e.getKeyCode() == KeyEvent.VK_ENTER) {
+                    if (suggestions.isVisible() && suggestions.hasSuggestions()) {
+                        // se ci sono suggerimenti: seleziona il corrente (o il primo) e conferma
+                        if (suggestions.getSelectedIndex() < 0) {
+                            suggestions.selectFirstIfNone();
+                        }
+                        confirmSelectedSuggestion();   // chiude la tendina
+                    } else {
+                        // nessun suggerimento -> ricerca "piena"
+                        triggerSearch();
+                    }
+                    e.consume();
+                    return;
+                }
+
+                // ---- FRECCE: muovono solo la selezione nella lista ----
+                if (!suggestions.isVisible() || !suggestions.hasSuggestions()) {
+                    return;
+                }
+                int size = suggestions.size();
+                if (size == 0) return;
+
+                int idx = suggestions.getSelectedIndex();
                 if (idx < 0) idx = 0;
 
-                if (e.getKeyCode() == KeyEvent.VK_DOWN) {
-                    idx = (idx + 1) % size;
-                    suggestionsList.setSelectedIndex(idx);
-                    suggestionsList.ensureIndexIsVisible(idx);
-                    e.consume();
-                } else if (e.getKeyCode() == KeyEvent.VK_UP) {
-                    idx = (idx - 1 + size) % size;
-                    suggestionsList.setSelectedIndex(idx);
-                    suggestionsList.ensureIndexIsVisible(idx);
-                    e.consume();
+                switch (e.getKeyCode()) {
+                    case KeyEvent.VK_DOWN -> {
+                        idx = (idx + 1) % size;
+                        suggestions.setSelectedIndex(idx);
+                        e.consume();
+                    }
+                    case KeyEvent.VK_UP -> {
+                        idx = (idx <= 0) ? size - 1 : idx - 1;
+                        suggestions.setSelectedIndex(idx);
+                        e.consume();
+                    }
+                    default -> {}
                 }
             }
         });
 
-        // Testo che cambia → notifica il controller per suggerimenti
-        searchField.getDocument().addDocumentListener(new DocumentListener() {
-            @Override public void insertUpdate(DocumentEvent e) { changed(); }
-            @Override public void removeUpdate(DocumentEvent e) { changed(); }
-            @Override public void changedUpdate(DocumentEvent e) { changed(); }
-
-            private void changed() {
-                if (onTextChanged == null) return;
-                String txt = searchField.getText();
-                if (txt == null || txt.isBlank()) {
-                    hideSuggestions();
-                } else {
-                    onTextChanged.accept(txt.trim());
-                }
-            }
-        });
-
-        // Selezione riga nella lista → notifica il controller
-        suggestionsList.addListSelectionListener(e -> {
+        // Cambio selezione nella lista → aggiorna subito mappa / linea
+        suggestions.addListSelectionListener((ListSelectionListener) e -> {
             if (e.getValueIsAdjusting()) return;
-            Object sel = suggestionsList.getSelectedValue();
-            if (sel instanceof StopModel stop && onStopSuggestionSelected != null) {
-                onStopSuggestionSelected.accept(stop);
-            } else if (sel instanceof RouteDirectionOption opt && onRouteDirectionSelected != null) {
-                onRouteDirectionSelected.accept(opt);
+            Object value = suggestions.getSelectedValue();
+            if (value == null) return;
+
+            if (currentMode == SearchMode.STOP && value instanceof StopModel stop) {
+                if (onSuggestionSelected != null) {
+                    onSuggestionSelected.accept(stop);
+                }
+            } else if (currentMode == SearchMode.LINE && value instanceof RouteDirectionOption opt) {
+                if (onRouteDirectionSelected != null) {
+                    onRouteDirectionSelected.accept(opt);
+                }
             }
         });
 
-        // Doppio click → conferma
-        suggestionsList.addMouseListener(new MouseAdapter() {
+        // Doppio click sulla lista → conferma suggerimento (chiude)
+        suggestions.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
-            public void mouseClicked(MouseEvent e) {
+            public void mouseClicked(java.awt.event.MouseEvent e) {
                 if (e.getClickCount() == 2) {
-                    confirmSuggestion();
+                    confirmSelectedSuggestion();
                 }
+            }
+        });
+
+        // Testo che cambia (per i suggerimenti live) con debounce
+        searchField.getDocument().addDocumentListener(new DocumentListener() {
+            @Override public void insertUpdate(DocumentEvent e) { textChanged(); }
+            @Override public void removeUpdate(DocumentEvent e) { textChanged(); }
+            @Override public void changedUpdate(DocumentEvent e) { textChanged(); }
+
+            private void textChanged() {
+                // se stiamo cambiando il testo via codice (setText da conferma),
+                // NON dobbiamo riaprire i suggerimenti
+                if (suppressTextEvents) {
+                    return;
+                }
+
+                String text = searchField.getText();
+                if (text == null || text.isBlank()) {
+                    hideSuggestions();
+                    debounceTimer.stop();
+                    return;
+                }
+                String trimmed = text.trim();
+                if (trimmed.length() < 3) {
+                    hideSuggestions();
+                    debounceTimer.stop();
+                    return;
+                }
+
+                // la ricerca vera parte dopo 500ms di "pausa"
+                if (debounceTimer.isRunning()) {
+                    debounceTimer.stop();
+                }
+                debounceTimer.start();
             }
         });
     }
 
-    // ====================== METODI DI SUPPORTO ======================
+    // ==================================================================
+    //                     GESTIONE MODALITÀ / TOGGLE
+    // ==================================================================
 
-    private void updateModeToggleText() {
+    private void toggleMode() {
         if (currentMode == SearchMode.STOP) {
-            modeToggle.setText("Modalità: Fermata");
+            currentMode = SearchMode.LINE;
+            modeToggle.setText("Linea");
+            modeToggle.setToolTipText("Clicca per passare a ricerca per FERMATA");
         } else {
-            modeToggle.setText("Modalità: Linea");
+            currentMode = SearchMode.STOP;
+            modeToggle.setText("Fermata");
+            modeToggle.setToolTipText("Clicca per passare a ricerca per LINEA");
+        }
+        hideSuggestions();
+        if (onModeChanged != null) {
+            onModeChanged.accept(currentMode);
         }
     }
 
@@ -239,80 +243,114 @@ public class SearchBarView extends JPanel {
         return currentMode;
     }
 
-    // ====================== API per i controller ======================
+    // ==================================================================
+    //                      LOGICA CERCA / INVIO
+    // ==================================================================
 
-    public void setOnModeChanged(Consumer<SearchMode> listener) {
-        this.onModeChanged = listener;
-    }
-
-    public void setOnSearch(Consumer<String> listener) {
-        this.onSearch = listener;
-    }
-
-    public void setOnTextChanged(Consumer<String> listener) {
-        this.onTextChanged = listener;
-    }
-
-    public void setOnSuggestionSelected(Consumer<StopModel> listener) {
-        this.onStopSuggestionSelected = listener;
-    }
-
-    public void setOnRouteDirectionSelected(Consumer<RouteDirectionOption> listener) {
-        this.onRouteDirectionSelected = listener;
-    }
-
-    // ===== Suggerimenti fermate =====
-    public void showStopSuggestions(List<StopModel> stops) {
-        suggestionsModel.clear();
-        if (stops == null || stops.isEmpty()) {
-            hideSuggestions();
-            return;
+    /**
+     * Click su "Cerca".
+     *
+     * - Se ci sono suggerimenti → conferma il primo
+     * - Altrimenti → onSearch(query).
+     */
+    private void handleSearchButton() {
+        if (suggestions.isVisible() && suggestions.hasSuggestions()) {
+            if (suggestions.getSelectedIndex() < 0) {
+                suggestions.selectFirstIfNone();
+            }
+            confirmSelectedSuggestion();
+        } else {
+            triggerSearch();
         }
-        for (StopModel s : stops) {
-            suggestionsModel.addElement(s);
-        }
-        suggestionsPanel.setVisible(true);
-        suggestionsList.setSelectedIndex(0);
     }
 
-    // ===== Suggerimenti direzioni linea =====
-    public void showRouteDirectionSuggestions(List<RouteDirectionOption> options) {
-        suggestionsModel.clear();
-        if (options == null || options.isEmpty()) {
-            hideSuggestions();
-            return;
-        }
-        for (RouteDirectionOption opt : options) {
-            suggestionsModel.addElement(opt);
-        }
-        suggestionsPanel.setVisible(true);
-        suggestionsList.setSelectedIndex(0);
+    private void triggerSearch() {
+        if (onSearch == null) return;
+        String text = searchField.getText();
+        if (text == null || text.isBlank()) return;
+        onSearch.accept(text.trim());
     }
 
-    public void hideSuggestions() {
-        suggestionsModel.clear();
-        suggestionsPanel.setVisible(false);
-    }
+    /**
+     * Conferma il suggerimento selezionato (ENTER / doppio click / Cerca con lista aperta):
+     *  - in STOP → chiude tendina + centra su fermata + chiama StopLinesController (via callback)
+     *  - in LINE → chiude tendina + seleziona direzione di linea
+     */
+    private void confirmSelectedSuggestion() {
+        Object value = suggestions.getSelectedValue();
+        if (value == null) return;
 
-    private void confirmSuggestion() {
-        Object sel = suggestionsList.getSelectedValue();
-        if (sel instanceof StopModel stop) {
+        if (currentMode == SearchMode.STOP && value instanceof StopModel stop) {
+            hideSuggestions();   // chiudo subito la tendina
+
+            // blocchiamo i DocumentEvent mentre cambiamo il testo, così NON si riapre la tendina
+            suppressTextEvents = true;
             searchField.setText(stop.getName());
-            if (onStopSuggestionSelected != null) {
-                onStopSuggestionSelected.accept(stop);
+            suppressTextEvents = false;
+
+            if (onSuggestionSelected != null) {
+                onSuggestionSelected.accept(stop);
             }
-        } else if (sel instanceof RouteDirectionOption opt) {
-            String txt = opt.getRouteShortName();
-            if (txt == null || txt.isBlank()) {
-                txt = opt.getRouteId();
+            searchField.requestFocusInWindow();
+            searchField.setCaretPosition(searchField.getText().length());
+
+        } else if (currentMode == SearchMode.LINE && value instanceof RouteDirectionOption opt) {
+            hideSuggestions();   // chiudo subito la tendina
+
+            String lineText = opt.getRouteShortName();
+            if (opt.getHeadsign() != null && !opt.getHeadsign().isBlank()) {
+                lineText += " → " + opt.getHeadsign();
             }
-            searchField.setText(txt);
+
+            suppressTextEvents = true;
+            searchField.setText(lineText);
+            suppressTextEvents = false;
+
             if (onRouteDirectionSelected != null) {
                 onRouteDirectionSelected.accept(opt);
             }
+            searchField.requestFocusInWindow();
+            searchField.setCaretPosition(searchField.getText().length());
         }
-        hideSuggestions();
-        searchField.requestFocusInWindow();
-        searchField.setCaretPosition(searchField.getText().length());
+    }
+
+    // ==================================================================
+    //                     METODI USATI DAI CONTROLLER
+    // ==================================================================
+
+    public void hideSuggestions() {
+        suggestions.hide();
+    }
+
+    public void showStopSuggestions(List<StopModel> stops) {
+        suggestions.showStops(stops);
+    }
+
+    public void showLineSuggestions(List<RouteDirectionOption> options) {
+        suggestions.showLineOptions(options);
+    }
+
+    // ==================================================================
+    //                         SETTER CALLBACKS
+    // ==================================================================
+
+    public void setOnModeChanged(Consumer<SearchMode> onModeChanged) {
+        this.onModeChanged = onModeChanged;
+    }
+
+    public void setOnSearch(Consumer<String> onSearch) {
+        this.onSearch = onSearch;
+    }
+
+    public void setOnTextChanged(Consumer<String> onTextChanged) {
+        this.onTextChanged = onTextChanged;
+    }
+
+    public void setOnSuggestionSelected(Consumer<StopModel> onSuggestionSelected) {
+        this.onSuggestionSelected = onSuggestionSelected;
+    }
+
+    public void setOnRouteDirectionSelected(Consumer<RouteDirectionOption> onRouteDirectionSelected) {
+        this.onRouteDirectionSelected = onRouteDirectionSelected;
     }
 }

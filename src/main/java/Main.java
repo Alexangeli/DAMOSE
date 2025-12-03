@@ -6,8 +6,10 @@ import View.DashboardView;
 
 public class Main {
     public static void main(String[] args) {
+
         SwingUtilities.invokeLater(() -> {
-            // --- Crea il frame principale ---
+
+            // ===================== FRAME PRINCIPALE =====================
             JFrame myFrame = new JFrame();
             myFrame.setTitle(AppConfig.APP_TITLE);
             myFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -15,26 +17,31 @@ public class Main {
             myFrame.setSize(AppConfig.DEFAULT_WIDTH, AppConfig.DEFAULT_HEIGHT);
             myFrame.getContentPane().setBackground(AppConfig.BACKGROUND_COLOR);
 
-            // --- Path dei CSV ---
-            final String stopsCsvPath  = "src/main/resources/rome_static_gtfs/stops.csv";
-            final String routesCsvPath = "src/main/resources/rome_static_gtfs/routes.csv";
-            final String tripsCsvPath  = "src/main/resources/rome_static_gtfs/trips.csv";
+            // ===================== PATH GTFS =====================
+            final String stopsCsvPath     = "src/main/resources/rome_static_gtfs/stops.csv";
+            final String routesCsvPath    = "src/main/resources/rome_static_gtfs/routes.csv";
+            final String tripsCsvPath     = "src/main/resources/rome_static_gtfs/trips.csv";
+            final String stopTimesCsvPath = "src/main/resources/rome_static_gtfs/stop_times.csv";
 
-            // --- Crea la dashboard (che crea MapView, MapController, SearchControllers) ---
-            DashboardController dashboardController =
-                    new DashboardController(stopsCsvPath, routesCsvPath, tripsCsvPath);
+            // ===================== CONTROLLER PRINCIPALE =====================
+            DashboardController controller =
+                    new DashboardController(
+                            stopsCsvPath,
+                            routesCsvPath,
+                            tripsCsvPath,
+                            stopTimesCsvPath
+                    );
 
-            DashboardView dashboardView = dashboardController.getView();
+            DashboardView dashboardView = controller.getView();
 
-            System.out.println("---MAIN--- Dashboard Controller loaded");
+            System.out.println("Avvio");
 
-            // --- Aggiungi la Dashboard al frame ---
+            // ===================== MOSTRA LA DASHBOARD =====================
             myFrame.setContentPane(dashboardView);
 
-            // --- CENTRA LA FINESTRA ALLO SCHERMO ---
+            // Centra la finestra nello schermo
             myFrame.setLocationRelativeTo(null);
 
-            // --- Mostra il frame ---
             myFrame.setVisible(true);
         });
     }
