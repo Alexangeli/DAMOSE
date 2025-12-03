@@ -1,35 +1,27 @@
 package View;
 
-import Model.Points.StopModel;
-
 import javax.swing.*;
 import java.awt.*;
 
-/**
- * Vista principale della dashboard.
- *
- * Layout:
- * - SearchBarView sulla sinistra (colonna)
- * - MapView al centro (occupa il resto dello spazio)
- *
- * Creatore: Simone Bonuso
- */
 public class DashboardView extends JPanel {
 
     private final SearchBarView searchBarView;
     private final MapView mapView;
+    private final LineStopsView lineStopsView;
 
     public DashboardView() {
         setLayout(new BorderLayout());
 
         searchBarView = new SearchBarView();
         mapView = new MapView();
+        lineStopsView = new LineStopsView();
 
-        // Barra di ricerca a sinistra
-        searchBarView.setPreferredSize(new Dimension(350, 0)); // larghezza fissa, altezza elastica
-        add(searchBarView, BorderLayout.WEST);
+        JPanel leftPanel = new JPanel(new BorderLayout());
+        leftPanel.add(searchBarView, BorderLayout.NORTH);
+        leftPanel.add(lineStopsView, BorderLayout.CENTER);
+        leftPanel.setPreferredSize(new Dimension(350, 0));
 
-        // Mappa che riempie il resto
+        add(leftPanel, BorderLayout.WEST);
         add(mapView, BorderLayout.CENTER);
     }
 
@@ -39,5 +31,9 @@ public class DashboardView extends JPanel {
 
     public MapView getMapView() {
         return mapView;
+    }
+
+    public LineStopsView getLineStopsView() {
+        return lineStopsView;
     }
 }
