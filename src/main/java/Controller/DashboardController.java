@@ -92,7 +92,8 @@ public class DashboardController {
                         lineStopsView,
                         tripsCsvPath,
                         stopTimesPath,
-                        stopsCsvPath
+                        stopsCsvPath,
+                        mapController
                 );
 
         // fermata → linee (stesso pannello sotto riutilizzato)

@@ -4,6 +4,9 @@ import Model.Parsing.StopModel;      // SOLO per showLineStops (fermate di una l
 import Model.Parsing.RoutesModel;    // SOLO per showLinesAtStop (linee che passano da una fermata)
 
 import javax.swing.*;
+
+import Controller.MapController;
+
 import java.awt.*;
 import java.util.List;
 
@@ -17,7 +20,7 @@ import java.util.List;
  * Creatore: Simone Bonuso
  */
 public class LineStopsView extends JPanel {
-
+    
     private final JLabel titleLabel;
     private final DefaultListModel<String> listModel;
     private final JList<String> list;
@@ -43,7 +46,7 @@ public class LineStopsView extends JPanel {
      * Modalità LINEA:
      * mostra tutte le fermate della linea/direzione selezionata.
      */
-    public void showLineStops(String label, List<StopModel> stops) {
+    public void showLineStops(String label, List<StopModel> stops, MapController mapController) {
         titleLabel.setText(label != null ? label : "Fermate della linea");
         listModel.clear();
 
@@ -58,7 +61,10 @@ public class LineStopsView extends JPanel {
                 i++;
             }
         }
-
+        //funzione che nasconde cluster/fermate
+        //mapController passando stops
+            //centrare e zooommare
+        mapController.hideUselessStops(stops);
         revalidate();
         repaint();
     }

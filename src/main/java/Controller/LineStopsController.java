@@ -19,15 +19,18 @@ public class LineStopsController {
     private final String tripsCsvPath;
     private final String stopTimesPath;
     private final String stopsCsvPath;
+    private final MapController mapController;
 
     public LineStopsController(LineStopsView view,
                                String tripsCsvPath,
                                String stopTimesPath,
-                               String stopsCsvPath) {
+                               String stopsCsvPath,
+                               MapController mapController) {
         this.view = view;
         this.tripsCsvPath = tripsCsvPath;
         this.stopTimesPath = stopTimesPath;
         this.stopsCsvPath = stopsCsvPath;
+        this.mapController = mapController;
     }
 
     /**
@@ -60,6 +63,6 @@ public class LineStopsController {
             label += " → " + headsign;
         }
 
-        view.showLineStops(label, stops);
+        view.showLineStops(label, stops, mapController);
     }
 }

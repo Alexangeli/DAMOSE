@@ -383,4 +383,52 @@ public class MapController {
         shapePainter.setHighlightedShapes(List.of());
         refreshView();
     }
+
+        /**
+     * Mostra SOLO le fermate passate in input, nascondendo tutte le altre.
+     * Usa gli ID GTFS delle fermate (stop_id) per filtrare quelle già caricate dal CSV.
+     *
+     * @param stops lista di fermate GTFS (Model.Parsing.StopModel) da mantenere visibili
+     */
+    public void hideUselessStops(List<Model.Parsing.StopModel> stops) {
+        if (stops == null || stops.isEmpty()) {
+            // se lista vuota, non faccio nulla per evitare di svuotare completamente la mappa
+            System.out.println("[MapController] hideUselessStops chiamato con lista vuota.");
+            return;
+        }
+
+        // 1) Costruisco l'insieme degli stop_id da TENERE
+        Set<String> allowedIds = new HashSet<>();
+        for (Model.Parsing.StopModel s : stops) {
+            if (s != null && s.getId() != null) {
+                allowedIds.add(s.getId());
+            }
+        }
+
+        // 2) Rileggo tutte le fermate (Model.Points.StopModel) dal CSV
+        //    e filtro solo quelle con id contenuto in allowedIds
+        List<StopModel> allStops = getAllStops(stopsCsvPath);
+
+        // 3) Svuoto i marker e i waypoint correnti
+        model.getMarkers().clear();
+        waypoints.clear();
+
+        // 4) Aggiungo SOLO le fermate che voglio tenere
+        for (StopModel stop : allStops) {
+            if (!allowedIds.contains(stop.getId())) {
+                continue;
+            }
+
+            GeoPosition pos = stop.getGeoPosition();
+            if (pos != null) {
+                model.addMarker(pos);
+                waypoints.add(new StopWaypoint(stop));
+            }
+        }
+
+        System.out.println("[MapController] hideUselessStops → fermate visibili: " + waypoints.size());
+
+        // 5) Ridisegno la mappa con i nuovi waypoint
+        refreshView();
+    }
 }
