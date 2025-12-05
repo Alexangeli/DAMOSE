@@ -52,8 +52,11 @@ public class MapController {
 
     private final ShapePainter shapePainter;
     final String shapesPath  = "src/main/resources/rome_static_gtfs/shapes.csv";
-    final String routesPath = "src/main/resources/rome_static_gtfs/routes.csv";
-    final String tripsPath  = "src/main/resources/rome_static_gtfs/trips.csv";
+    final String routesPath  = "src/main/resources/rome_static_gtfs/routes.csv";
+    final String tripsPath   = "src/main/resources/rome_static_gtfs/trips.csv";
+
+    // 👉 nuova: posizione della fermata evidenziata (marker speciale)
+    private GeoPosition highlightedPosition = null;
 
     public MapController(MapModel model, MapView view, String stopsCsvPath) {
         this.model = model;
@@ -256,7 +259,7 @@ public class MapController {
         return nearest;
     }
 
-    // ===== METODO USATO DALLA RICERCA (StopModel POINTS) =====
+    // ===== METODI USATI DALLA RICERCA =====
 
     /**
      * Centra la mappa sulla fermata specificata (Model.Points.StopModel)
@@ -266,6 +269,7 @@ public class MapController {
         if (stop == null || stop.getGeoPosition() == null) return;
         GeoPosition pos = stop.getGeoPosition();
         model.setCenter(pos);
+        highlightedPosition = pos;   // evidenziamo anche questa fermata
 
         // Zoom più vicino per vedere meglio la fermata
         double desiredZoom = 2.0;
@@ -277,16 +281,17 @@ public class MapController {
 
     /**
      * 👉 NUOVO: centra la mappa su una fermata GTFS (Model.Parsing.StopModel)
-     * usando i campi stop_lat / stop_lon (getLatitude(), getLongitude()).
+     * usando lat/lon del CSV.
      */
     public void centerMapOnGtfsStop(Model.Parsing.StopModel stop) {
         if (stop == null) return;
         try {
-            double lat = stop.getLatitude();   // double
-            double lon = stop.getLongitude();  // double
+            double lat = stop.getLatitude();
+            double lon = stop.getLongitude();
             GeoPosition pos = new GeoPosition(lat, lon);
 
             model.setCenter(pos);
+            highlightedPosition = pos;   // marker speciale su questa
 
             double desiredZoom = 2.0;   // regola se vuoi più vicino/lontano
             targetZoom = model.clampZoom(desiredZoom);
@@ -342,9 +347,15 @@ public class MapController {
             clustersToDisplay = clusters;
         }
 
-        view.updateView(model.getCenter(), zoomInt, stopsToDisplay, clustersToDisplay, shapePainter);
+        view.updateView(
+                model.getCenter(),
+                zoomInt,
+                stopsToDisplay,
+                clustersToDisplay,
+                shapePainter,
+                highlightedPosition   // 👉 passa la fermata evidenziata alla view
+        );
     }
-
 
     private int getGridSizeForZoom(int zoom) {
         if (zoom >= 8) return 240;

@@ -8,7 +8,6 @@ import View.Waypointers.Painter.StopPainter;
 import View.Waypointers.Waypoint.StopWaypoint;
 import org.jxmapviewer.JXMapViewer;
 import org.jxmapviewer.viewer.GeoPosition;
-import org.jxmapviewer.viewer.Waypoint;
 
 import javax.swing.*;
 import java.awt.*;
@@ -16,7 +15,7 @@ import java.util.Set;
 
 /**
  * Vista della mappa.
- * Contiene solo il JXMapViewer e il metodo updateView().
+ * Contiene solo il JXMapViewer e il metodo updateView() e il costruttore StopPainter per permettere di evidenziare la fermata in questione
  *
  * Creatore: Simone Bonuso, Andrea Brandolini
  */
@@ -40,12 +39,13 @@ public class MapView extends JPanel {
                            int zoom,
                            Set<StopWaypoint> stops,
                            Set<ClusterModel> clusters,
-                           ShapePainter shapePainter) {
+                           ShapePainter shapePainter,
+                           GeoPosition highlightedPosition) {   // 👈 nuovo parametro
         mapViewer.setAddressLocation(center);
         mapViewer.setCenterPosition(center);
         mapViewer.setZoom(zoom);
 
-        StopPainter stopPainter = new StopPainter(stops);
+        StopPainter stopPainter = new StopPainter(stops, highlightedPosition);
         ClusterPainter clusterPainter = new ClusterPainter(clusters);
 
         MapOverlay overlay = new MapOverlay(stopPainter, clusterPainter, shapePainter);
