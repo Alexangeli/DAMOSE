@@ -9,8 +9,7 @@ import java.util.List;
 
 /**
  * Controller per il pannello sotto in modalità LINEA:
- * mostra le fermate della linea/direzione selezionata
- * e gestisce il click su una fermata per zoommare sulla mappa.
+ * mostra le fermate della linea/direzione selezionata.
  *
  * Creatore: Simone Bonuso
  */
@@ -21,6 +20,7 @@ public class LineStopsController {
     private final String stopTimesPath;
     private final String stopsCsvPath;
 
+    // per nascondere le fermate inutili sulla mappa
     private final MapController mapController;
 
     public LineStopsController(LineStopsView view,
@@ -33,10 +33,7 @@ public class LineStopsController {
         this.stopTimesPath = stopTimesPath;
         this.stopsCsvPath = stopsCsvPath;
         this.mapController = mapController;
-
-        // 👉 quando l’utente clicca una fermata nella lista,
-        //    zoomma sulla fermata corrispondente
-        this.view.setOnStopClicked(this::onStopClicked);
+        // ⚠️ NIENTE più setOnStopClicked: lo zoom è gestito dentro LineStopsView
     }
 
     /**
@@ -60,21 +57,12 @@ public class LineStopsController {
                 stopsCsvPath
         );
 
-        // riempi la casella con le fermate
-        view.showLineStops(label, stops);
+        // riempi la casella con le fermate e passa il MapController
+        view.showLineStops(label, stops, mapController);
 
-        // sulla mappa mostra SOLO le fermate di questa linea
-        mapController.hideUselessStops(stops);
-    }
-
-    /**
-     * Chiamato quando viene cliccata una fermata nella lista
-     * delle fermate della linea.
-     */
-    private void onStopClicked(StopModel stop) {
-        if (stop == null) return;
-
-        // usa il metodo del MapController che zoomma sulla fermata GTFS
-        mapController.centerMapOnGtfsStop(stop);
+        // sulla mappa mostra SOLO le fermate di questa linea (se vuoi tenerlo)
+        if (stops != null && !stops.isEmpty()) {
+            mapController.hideUselessStops(stops);
+        }
     }
 }
