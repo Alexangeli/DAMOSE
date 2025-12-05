@@ -138,11 +138,6 @@ public class MapController {
 
                 int currentZoom = model.getZoomInt();
 
-                if (currentZoom >= 2 && currentZoom <= 3) {
-
-                } else if (currentZoom >= 4 && currentZoom <= 8) {
-
-                }
                 double radiusKm;
                 switch (currentZoom) {
                     case 2:
@@ -166,7 +161,6 @@ public class MapController {
                         break;
                     default:
                         radiusKm = 0;
-
                 }
 
                 StopModel nearestStop;
@@ -262,10 +256,11 @@ public class MapController {
         return nearest;
     }
 
-    // ===== METODO USATO DALLA RICERCA =====
+    // ===== METODO USATO DALLA RICERCA (StopModel POINTS) =====
 
     /**
-     * Centra la mappa sulla fermata specificata e applica uno zoom ravvicinato.
+     * Centra la mappa sulla fermata specificata (Model.Points.StopModel)
+     * e applica uno zoom ravvicinato.
      */
     public void centerMapOnStop(StopModel stop) {
         if (stop == null || stop.getGeoPosition() == null) return;
@@ -278,6 +273,30 @@ public class MapController {
         model.setZoom(targetZoom);
 
         refreshView();
+    }
+
+    /**
+     * 👉 NUOVO: centra la mappa su una fermata GTFS (Model.Parsing.StopModel)
+     * usando i campi stop_lat / stop_lon (getLatitude(), getLongitude()).
+     */
+    public void centerMapOnGtfsStop(Model.Parsing.StopModel stop) {
+        if (stop == null) return;
+        try {
+            double lat = stop.getLatitude();   // double
+            double lon = stop.getLongitude();  // double
+            GeoPosition pos = new GeoPosition(lat, lon);
+
+            model.setCenter(pos);
+
+            double desiredZoom = 2.0;   // regola se vuoi più vicino/lontano
+            targetZoom = model.clampZoom(desiredZoom);
+            model.setZoom(targetZoom);
+
+            refreshView();
+        } catch (Exception e) {
+            System.err.println("[MapController] centerMapOnGtfsStop: coordinate non valide per stop "
+                    + stop.getId() + " (" + e.getMessage() + ")");
+        }
     }
 
     // java
@@ -351,13 +370,11 @@ public class MapController {
 
         shapePainter.setHighlightedShapes(shapesToDraw);
 
-
         zoomToRouteOptimal(shapesToDraw);
     }
 
     private void zoomToRouteOptimal(List<ShapesModel> shapes) {
         if (shapes.isEmpty()) return;
-
 
         Set<GeoPosition> positions = new HashSet<>();
         for (ShapesModel shape : shapes) {
@@ -370,21 +387,18 @@ public class MapController {
         view.getMapViewer().setZoom(0);
         view.getMapViewer().calculateZoomFrom(positions);
 
-
         int finalZoom = view.getMapViewer().getZoom() - 1;
         finalZoom = Math.max(4, Math.min(15, finalZoom));
 
         view.getMapViewer().setZoom(finalZoom);
     }
 
-
-
     public void clearRouteHighlight() {
         shapePainter.setHighlightedShapes(List.of());
         refreshView();
     }
 
-        /**
+    /**
      * Mostra SOLO le fermate passate in input, nascondendo tutte le altre.
      * Usa gli ID GTFS delle fermate (stop_id) per filtrare quelle già caricate dal CSV.
      *

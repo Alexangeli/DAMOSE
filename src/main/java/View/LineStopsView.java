@@ -4,11 +4,12 @@ import Model.Parsing.StopModel;      // SOLO per showLineStops (fermate di una l
 import Model.Parsing.RoutesModel;    // SOLO per showLinesAtStop (linee che passano da una fermata)
 
 import javax.swing.*;
-
-import Controller.MapController;
-
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.util.Collections;
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * Pannello informativo a sinistra: mostra
@@ -20,10 +21,16 @@ import java.util.List;
  * Creatore: Simone Bonuso
  */
 public class LineStopsView extends JPanel {
-    
+
     private final JLabel titleLabel;
     private final DefaultListModel<String> listModel;
     private final JList<String> list;
+
+    // 👉 lista parallela ai testi, per recuperare il vero StopModel al click
+    private List<StopModel> currentStops = Collections.emptyList();
+
+    // 👉 callback da chiamare quando l’utente clicca una fermata
+    private Consumer<StopModel> onStopClicked;
 
     public LineStopsView() {
         setLayout(new BorderLayout());
@@ -40,17 +47,42 @@ public class LineStopsView extends JPanel {
 
         JScrollPane scroll = new JScrollPane(list);
         add(scroll, BorderLayout.CENTER);
+
+        // ====== CLICK SULLA LISTA → NOTIFICA LA FERMATA ======
+        list.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                // puoi usare anche getClickCount() == 2 per doppio click
+                if (e.getClickCount() == 1) {
+                    int index = list.locationToIndex(e.getPoint());
+                    if (index >= 0 && index < currentStops.size() && onStopClicked != null) {
+                        StopModel stop = currentStops.get(index);
+                        onStopClicked.accept(stop);
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * Imposta il listener da chiamare quando viene cliccata
+     * una fermata nella lista (modalità LINEA).
+     */
+    public void setOnStopClicked(Consumer<StopModel> onStopClicked) {
+        this.onStopClicked = onStopClicked;
     }
 
     /**
      * Modalità LINEA:
      * mostra tutte le fermate della linea/direzione selezionata.
      */
-    public void showLineStops(String label, List<StopModel> stops, MapController mapController) {
+    public void showLineStops(String label, List<StopModel> stops) {
         titleLabel.setText(label != null ? label : "Fermate della linea");
         listModel.clear();
 
+        // memorizziamo la lista di StopModel in parallelo ai testi
         if (stops != null) {
+            currentStops = stops;
             int i = 1;
             for (StopModel s : stops) {
                 String txt = s.getName();
@@ -60,11 +92,10 @@ public class LineStopsView extends JPanel {
                 listModel.addElement(i + ". " + txt);
                 i++;
             }
+        } else {
+            currentStops = Collections.emptyList();
         }
-        //funzione che nasconde cluster/fermate
-        //mapController passando stops
-            //centrare e zooommare
-        mapController.hideUselessStops(stops);
+
         revalidate();
         repaint();
     }
@@ -77,6 +108,7 @@ public class LineStopsView extends JPanel {
         String label = "Linee che passano per: " + stopName;
         titleLabel.setText(label);
         listModel.clear();
+        currentStops = Collections.emptyList();  // qui non usiamo StopModel
 
         if (routes != null && !routes.isEmpty()) {
             for (RoutesModel r : routes) {
@@ -102,6 +134,7 @@ public class LineStopsView extends JPanel {
     public void clear() {
         titleLabel.setText("Nessuna selezione");
         listModel.clear();
+        currentStops = Collections.emptyList();
         revalidate();
         repaint();
     }

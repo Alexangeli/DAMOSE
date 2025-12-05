@@ -8,8 +8,9 @@ import View.LineStopsView;
 import java.util.List;
 
 /**
- * Controller che, in modalità LINEA, mostra tutte le fermate
- * della linea/direzione selezionata nella LineStopsView.
+ * Controller per il pannello sotto in modalità LINEA:
+ * mostra le fermate della linea/direzione selezionata
+ * e gestisce il click su una fermata per zoommare sulla mappa.
  *
  * Creatore: Simone Bonuso
  */
@@ -19,6 +20,7 @@ public class LineStopsController {
     private final String tripsCsvPath;
     private final String stopTimesPath;
     private final String stopsCsvPath;
+
     private final MapController mapController;
 
     public LineStopsController(LineStopsView view,
@@ -31,10 +33,15 @@ public class LineStopsController {
         this.stopTimesPath = stopTimesPath;
         this.stopsCsvPath = stopsCsvPath;
         this.mapController = mapController;
+
+        // 👉 quando l’utente clicca una fermata nella lista,
+        //    zoomma sulla fermata corrispondente
+        this.view.setOnStopClicked(this::onStopClicked);
     }
 
     /**
-     * Chiamato quando, in modalità LINEA, l'utente seleziona una route/direzione.
+     * Chiamato dal DashboardController quando l’utente
+     * seleziona una linea/direzione (da SearchBar).
      */
     public void showStopsFor(RouteDirectionOption option) {
         if (option == null) {
@@ -42,27 +49,32 @@ public class LineStopsController {
             return;
         }
 
-        String routeId     = option.getRouteId();       // deve essere quello di routes.csv
-        int directionId    = option.getDirectionId();   // 0 o 1
-        String routeShort  = option.getRouteShortName();
-        String headsign    = option.getHeadsign();
-
-        System.out.println("---LineStopsController--- showStopsFor | routeId=" +
-                routeId + " dir=" + directionId);
+        String label = "Linea " + option.getRouteShortName()
+                + " → " + option.getHeadsign();
 
         List<StopModel> stops = TripStopsService.getStopsForRouteDirection(
-                routeId,
-                directionId,
+                option.getRouteId(),
+                option.getDirectionId(),
                 tripsCsvPath,
                 stopTimesPath,
                 stopsCsvPath
         );
 
-        String label = "Fermate linea " + routeShort;
-        if (headsign != null && !headsign.isBlank()) {
-            label += " → " + headsign;
-        }
+        // riempi la casella con le fermate
+        view.showLineStops(label, stops);
 
-        view.showLineStops(label, stops, mapController);
+        // sulla mappa mostra SOLO le fermate di questa linea
+        mapController.hideUselessStops(stops);
+    }
+
+    /**
+     * Chiamato quando viene cliccata una fermata nella lista
+     * delle fermate della linea.
+     */
+    private void onStopClicked(StopModel stop) {
+        if (stop == null) return;
+
+        // usa il metodo del MapController che zoomma sulla fermata GTFS
+        mapController.centerMapOnGtfsStop(stop);
     }
 }
