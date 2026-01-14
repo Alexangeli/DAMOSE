@@ -78,4 +78,17 @@ public final class DB {
         closeQuietly(stmt);
         closeQuietly(conn);
     }
+
+    /**
+     * Restituisce una connessione SQLite in-memory
+     * Solo per test, non tocca il DB reale
+     */
+    public static Connection getMemoryConnection() throws SQLException {
+        Connection conn = DriverManager.getConnection("jdbc:sqlite::memory:");
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute("PRAGMA foreign_keys = ON");
+        }
+        return conn;
+    }
+
 }
