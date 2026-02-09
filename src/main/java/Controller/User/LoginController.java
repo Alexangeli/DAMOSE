@@ -2,6 +2,7 @@ package Controller.User;
 
 
 import Model.User.User;
+import Model.User.Session;
 import db.DAO.UserDAO;
 import Util.PasswordUtil;
 
@@ -24,6 +25,7 @@ public class LoginController {
         try {
             User user = userDAO.findByUsername(username);
             if (user != null && PasswordUtil.verify(password, user.getPasswordHash())) {
+                Session.login(user);
                 return user;
             }
         } catch (SQLException e) {
@@ -39,6 +41,7 @@ public class LoginController {
         try {
             User user = userDAO.findByUsername(conn, username);
             if (user != null && PasswordUtil.verify(password, user.getPasswordHash())) {
+                Session.login(user);
                 return user;
             }
         } catch (SQLException e) {
@@ -47,4 +50,3 @@ public class LoginController {
         return null;
     }
 }
-
