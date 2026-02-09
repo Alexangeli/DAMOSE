@@ -2,7 +2,6 @@ import config.AppConfig;
 import javax.swing.*;
 
 import Controller.DashboardController;
-import Controller.User.LogoutController;
 import Model.User.Session;
 import View.AppShellView;
 import View.DashboardView;
@@ -42,48 +41,63 @@ public class Main {
 
             System.out.println("Avvio");
 
-            // ===================== LOGOUT CONTROLLER =====================
-            LogoutController logoutController = new LogoutController();
+            // ===================== JPOPUPMENU (account) =====================
+            JPopupMenu accountMenu = new JPopupMenu();
+            JMenuItem profileItem = new JMenuItem("Profilo");
+            JMenuItem logoutItem  = new JMenuItem("Logout");
 
-            // ===================== MOSTRA LA DASHBOARD =====================
+            accountMenu.add(profileItem);
+            accountMenu.addSeparator();
+            accountMenu.add(logoutItem);
 
+            // Azione "Profilo" (placeholder)
+            profileItem.addActionListener(e -> {
+                JOptionPane.showMessageDialog(
+                        myFrame,
+                        "Profilo utente: " + (Session.isLoggedIn() ? Session.getCurrentUser().getUsername() : "Guest"),
+                        "Profilo",
+                        JOptionPane.INFORMATION_MESSAGE
+                );
+            });
+
+            // ===================== MOSTRA LA DASHBOARD + FLOATING BUTTON =====================
             AtomicReference<AppShellView> shellRef = new AtomicReference<>();
 
             AppShellView shell = new AppShellView(dashboardView, () -> {
-<<<<<<< Updated upstream
-=======
-                AuthDialog dlg = new AuthDialog(myFrame, () -> {
-                    // aggiorna rendering del floating button (LOGIN -> immagine profilo)
-                    shellRef.get().refreshAuthButton();
->>>>>>> Stashed changes
 
-                // Se NON loggato: apri dialog login/register
+                // Se NON loggato → apri dialog login/register
                 if (!Session.isLoggedIn()) {
                     AuthDialog dlg = new AuthDialog(myFrame, () -> {
-                        shellRef.get().refreshUserStatus();
+                        // dopo login: aggiorna bottone (rettangolo -> cerchio foto)
+                        shellRef.get().refreshAuthButton();
+
+                        // abilita preferiti solo se loggato
                         dashboardView.getFavoritesButton().setEnabled(Session.isLoggedIn());
                     });
                     dlg.setVisible(true);
                     return;
                 }
 
-                // Se loggato: mostra menu account con Logout
-                JPopupMenu menu = new JPopupMenu();
+                // Se loggato → mostra popup menu
+                // Mostriamo il menu vicino all'angolo alto-destro della finestra
+                int x = myFrame.getWidth() - 220; // offset “comodo”
+                int y = 60;
 
-                JMenuItem logoutItem = new JMenuItem("Logout");
-                logoutItem.addActionListener(e -> {
-                    logoutController.logout();
-                    shellRef.get().refreshUserStatus();
-                    dashboardView.getFavoritesButton().setEnabled(Session.isLoggedIn());
-                });
-
-                menu.add(logoutItem);
-
-                // Mostra il menu in alto a destra (posizione semplice e robusta)
-                menu.show(myFrame, myFrame.getWidth() - 160, 55);
+                accountMenu.show(myFrame.getRootPane(), x, y);
             });
 
             shellRef.set(shell);
+
+            // Logout action (serve shellRef e dashboardView)
+            logoutItem.addActionListener(e -> {
+                Session.logout();
+
+                // torna al bottone LOGIN
+                shellRef.get().refreshAuthButton();
+
+                // disabilita preferiti
+                dashboardView.getFavoritesButton().setEnabled(Session.isLoggedIn());
+            });
 
             // Stato iniziale: guest => preferiti disabilitati
             dashboardView.getFavoritesButton().setEnabled(Session.isLoggedIn());
