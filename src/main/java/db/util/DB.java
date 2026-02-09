@@ -16,7 +16,7 @@ import java.sql.Statement;
  */
 public final class DB {
 
-    private static final String URL = "jdbc:sqlite:/Users/simonebonuso/Desktop/simone/uni/damose/DAMOSE/app.db";
+    private static final String URL = "jdbc:sqlite:/Users/andreabrandolini/Desktop/Progettone/DAMOSE/app.db";
 
     // Costruttore privato: impedisce istanziazione
     private DB() {
