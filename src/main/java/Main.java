@@ -2,7 +2,12 @@ import config.AppConfig;
 import javax.swing.*;
 
 import Controller.DashboardController;
+import Model.User.Session;
+import View.AppShellView;
 import View.DashboardView;
+import View.User.AuthDialog;
+
+import java.util.concurrent.atomic.AtomicReference;
 
 public class Main {
     public static void main(String[] args) {
@@ -37,7 +42,25 @@ public class Main {
             System.out.println("Avvio");
 
             // ===================== MOSTRA LA DASHBOARD =====================
-            myFrame.setContentPane(dashboardView);
+
+            AtomicReference<AppShellView> shellRef = new AtomicReference<>();
+
+            AppShellView shell = new AppShellView(dashboardView, () -> {
+                AuthDialog dlg = new AuthDialog(myFrame, () -> {
+                    shellRef.get().refreshUserStatus();
+
+                    // Esempio: preferiti disponibili solo se loggato
+                    dashboardView.getFavoritesButton().setEnabled(Session.isLoggedIn());
+                });
+                dlg.setVisible(true);
+            });
+
+            shellRef.set(shell);
+
+            // Stato iniziale: guest => preferiti disabilitati
+            dashboardView.getFavoritesButton().setEnabled(Session.isLoggedIn());
+
+            myFrame.setContentPane(shell);
 
             // Centra la finestra nello schermo
             myFrame.setLocationRelativeTo(null);
