@@ -11,13 +11,17 @@ public class AppShellView extends JPanel {
     private final JComponent centerContent;
     private final JButton authFloatingButton;
 
+    // riferimento per forzare il layout quando cambia login/logout
+    private final JLayeredPane layeredPane;
+
     public AppShellView(JComponent centerContent, Runnable onUserClick) {
         this.centerContent = centerContent;
         this.authFloatingButton = createFloatingAuthButton();
 
         setLayout(new BorderLayout());
 
-        JLayeredPane layeredPane = new JLayeredPane() {
+        // LayeredPane per sovrapporre contenuto + bottone flottante
+        layeredPane = new JLayeredPane() {
             @Override
             public void doLayout() {
                 int w = getWidth();
@@ -35,8 +39,8 @@ public class AppShellView extends JPanel {
 
                 if (!Session.isLoggedIn()) {
                     // GUEST: rettangolo LOGIN
-                    int baseW = 140;
-                    int baseH = 50;
+                    int baseW = 180;
+                    int baseH = 52;
                     int btnW = (int) Math.round(baseW * scaleFactor);
                     int btnH = (int) Math.round(baseH * scaleFactor);
 
@@ -60,13 +64,33 @@ public class AppShellView extends JPanel {
 
         add(layeredPane, BorderLayout.CENTER);
 
+        // click → gestito dal Main
         authFloatingButton.addActionListener(e -> onUserClick.run());
     }
 
-    /** Chiamalo dopo login/logout per aggiornare forma/render. */
+    /**
+     * Da chiamare dopo login/logout:
+     * forza repaint + ricalcolo layout (dimensione/posizione cambia)
+     */
     public void refreshAuthButton() {
+        authFloatingButton.repaint();
+
+        layeredPane.revalidate();
+        layeredPane.doLayout();
+        layeredPane.repaint();
+
         revalidate();
         repaint();
+    }
+
+    // ====== getter utili per ancorare il popup menu al bottone ======
+
+    public JComponent getRootLayerForPopups() {
+        return layeredPane;
+    }
+
+    public Rectangle getAuthButtonBoundsOnLayer() {
+        return authFloatingButton.getBounds();
     }
 
     private JButton createFloatingAuthButton() {
@@ -97,7 +121,7 @@ public class AppShellView extends JPanel {
                 if (url == null) {
                     throw new IllegalStateException(
                             "Immagine profilo non trovata: /immagini_profilo/immagine_profilo.png " +
-                            "(mettila in src/main/resources/immagini_profilo/immagine_profilo.png)"
+                                    "(mettila in src/main/resources/immagini_profilo/immagine_profilo.png)"
                     );
                 }
                 ImageIcon ii = new ImageIcon(url);
@@ -153,9 +177,9 @@ public class AppShellView extends JPanel {
                 g2.translate(-cx, -cy);
 
                 if (!Session.isLoggedIn()) {
-                    // ===================== GUEST: rettangolo arancione LOGIN =====================
-                    int arc = (int) (Math.min(w, h) * 0.45);
-                    arc = Math.max(16, Math.min(arc, 26));
+                    // GUEST: rettangolo arancione LOGIN
+                    int arc = (int) (Math.min(w, h) * 0.55);
+                    arc = Math.max(18, Math.min(arc, 28));
 
                     Color base = new Color(0xFF, 0x7A, 0x00);
                     Color hoverColor = new Color(0xFF, 0x8F, 0x33);
@@ -164,11 +188,11 @@ public class AppShellView extends JPanel {
                     g2.fillRoundRect(0, 0, w, h, arc, arc);
 
                     g2.setColor(new Color(255, 255, 255, 210));
-                    g2.setStroke(new BasicStroke(Math.max(1.5f, Math.min(w, h) * 0.06f)));
+                    g2.setStroke(new BasicStroke(Math.max(2f, Math.min(w, h) * 0.08f)));
                     g2.drawRoundRect(1, 1, w - 2, h - 2, arc, arc);
 
                     g2.setColor(Color.WHITE);
-                    float fontSize = (float) Math.max(14f, h * 0.42f);
+                    float fontSize = (float) Math.max(16f, h * 0.46f);
                     g2.setFont(getFont().deriveFont(Font.BOLD, fontSize));
 
                     String text = "LOGIN";
@@ -178,22 +202,20 @@ public class AppShellView extends JPanel {
                     g2.drawString(text, tx, ty);
 
                 } else {
-                    // ===================== LOGGATO: cerchio con foto profilo =====================
+                    // LOGGATO: cerchio con foto profilo
                     int size = Math.min(w, h);
-
-                    // cerchio base (leggera cornice)
                     Ellipse2D circle = new Ellipse2D.Double(0, 0, size, size);
 
-                    // bordo bianco (stile simile)
+                    // bordo bianco
                     g2.setColor(new Color(255, 255, 255, 230));
-                    g2.setStroke(new BasicStroke(Math.max(2f, size * 0.05f)));
+                    g2.setStroke(new BasicStroke(Math.max(2f, size * 0.06f)));
                     g2.draw(circle);
 
-                    // clip circolare per ritaglio foto
+                    // clip circolare
                     Shape oldClip = g2.getClip();
                     g2.setClip(circle);
 
-                    // “cover” per riempire il cerchio senza bande (tipo object-fit: cover)
+                    // cover (riempi il cerchio)
                     double s = Math.max((double) size / imgW, (double) size / imgH);
                     int drawW = (int) Math.round(imgW * s);
                     int drawH = (int) Math.round(imgH * s);
@@ -203,7 +225,6 @@ public class AppShellView extends JPanel {
 
                     g2.drawImage(profileImg, ix, iy, drawW, drawH, this);
 
-                    // ripristina clip
                     g2.setClip(oldClip);
                 }
 
