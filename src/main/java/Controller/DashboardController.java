@@ -3,10 +3,15 @@ package Controller;
 import Model.MapModel;
 import Model.Points.StopModel;
 import Model.RouteDirectionOption;
+import Service.FavoritesService;
 import View.DashboardView;
+import View.FavoritesView;
 import View.LineStopsView;
 import View.MapView;
 import View.SearchBarView;
+
+import javax.swing.*;
+import java.awt.*;
 
 /**
  * Controller principale della dashboard.
@@ -14,9 +19,10 @@ import View.SearchBarView;
  * Coordina:
  *  - SearchBarView (barra di ricerca fermata/linea)
  *  - MapView + MapController (mappa)
- *  - LineStopsView (pannello sotto, riutilizzato sia per:
+ *  - LineStopsView (pannello sotto/sinistra, riutilizzato sia per:
  *        - fermata → linee
  *        - linea   → fermate)
+ *  - FavoritesView (in un popup modale aperto con il bottone ★)
  *
  * Creatore: Simone Bonuso
  */
@@ -32,6 +38,7 @@ public class DashboardController {
     private final LineSearchController lineSearchController;
     private final LineStopsController lineStopsController;   // linea → fermate
     private final StopLinesController stopLinesController;   // fermata → linee
+    private final FavoritesController favoritesController;   // preferiti
 
     // ====== PATH FILE GTFS ======
     private final String stopsCsvPath;
@@ -61,9 +68,10 @@ public class DashboardController {
         this.dashboardView = new DashboardView();
 
         // Componenti interni della view
-        MapView mapView         = dashboardView.getMapView();
-        SearchBarView searchBar = dashboardView.getSearchBarView();
+        MapView mapView             = dashboardView.getMapView();
+        SearchBarView searchBar     = dashboardView.getSearchBarView();
         LineStopsView lineStopsView = dashboardView.getLineStopsView();
+        JButton favoritesButton     = dashboardView.getFavoritesButton(); // ★
 
         // ====== MODELLO DELLA MAPPA ======
         this.mapModel = new MapModel();
@@ -86,7 +94,7 @@ public class DashboardController {
                         tripsCsvPath
                 );
 
-        // linea → fermate (pannello sotto)
+        // linea → fermate (pannello sotto/sinistra)
         this.lineStopsController =
                 new LineStopsController(
                         lineStopsView,
@@ -104,6 +112,19 @@ public class DashboardController {
                         tripsCsvPath,
                         routesCsvPath
                 );
+
+        // ====== PREFERITI (solo popup, non influisce sulla UI a sinistra) ======
+        FavoritesView favoritesView = new FavoritesView();
+        this.favoritesController = new FavoritesController(
+                favoritesView,
+                mapController,
+                lineStopsController
+        );
+
+        // bottone ★ → apri popup al centro dello schermo
+        favoritesButton.addActionListener(e -> {
+            showFavoritesDialog(favoritesView);
+        });
 
         // ====== COLLEGAMENTO CALLBACK DALLA SEARCHBAR ======
 
@@ -136,27 +157,48 @@ public class DashboardController {
             }
         });
 
-        // Selezione di una fermata dai suggerimenti (STOP)
+        // Selezione di un suggerimento di fermata (freccia/enter/doppio click)
         searchBar.setOnSuggestionSelected((StopModel stop) -> {
             if (stop == null) return;
 
-            // centra la mappa sulla fermata
+            // Zoom sulla fermata
             stopSearchController.onSuggestionSelected(stop);
 
-            // mostra le linee che passano da quella fermata nel pannello sotto
-            stopLinesController.showLinesForStop(stop);
+            // In modalità FERMATA, mostra le linee che passano da quella fermata nel pannello sotto
+            if (searchBar.getCurrentMode() == SearchMode.STOP) {
+                stopLinesController.showLinesForStop(stop);
+            }
         });
 
         // Selezione di una linea/direzione dai suggerimenti (LINE)
         searchBar.setOnRouteDirectionSelected((RouteDirectionOption option) -> {
             if (option == null) return;
 
-            // logica linea selezionata (per ora solo log)
+            // logica linea selezionata
             lineSearchController.onRouteDirectionSelected(option);
 
             // mostra le fermate di quella linea + direzione nel pannello sotto
             lineStopsController.showStopsFor(option);
         });
+
+        // (OPZIONALE) se vuoi aggiungere automaticamente ai preferiti l'ultima scelta,
+        // puoi usare favoritesController.addStopFavorite(...) o addLineFavorite(...)
+        // nei callback qui sopra.
+    }
+
+    /**
+     * Mostra un JDialog modale con la lista dei preferiti.
+     */
+    private void showFavoritesDialog(FavoritesView favoritesView) {
+        // parent: la finestra che contiene la dashboard (può essere null la prima volta)
+        Window parent = SwingUtilities.getWindowAncestor(dashboardView);
+        JDialog dialog = new JDialog(parent, "Preferiti", Dialog.ModalityType.APPLICATION_MODAL);
+
+        dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+        dialog.setContentPane(favoritesView);
+        dialog.pack();
+        dialog.setLocationRelativeTo(parent); // al centro della finestra principale
+        dialog.setVisible(true);
     }
 
     /**
