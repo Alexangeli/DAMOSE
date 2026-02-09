@@ -16,22 +16,34 @@ public class LoginView extends JPanel {
     private final Navigation nav;
     private final LoginController loginController = new LoginController();
 
+    // ✅ campi come membri
+    private JTextField username;
+    private JPasswordField password;
+    private JLabel msg;
+
     public LoginView(Navigation nav) {
         this.nav = nav;
         buildUI();
+    }
+
+    /** ✅ reset della form login */
+    public void resetForm() {
+        if (username != null) username.setText("");
+        if (password != null) password.setText("");
+        if (msg != null) msg.setText(" ");
     }
 
     private void buildUI() {
         setLayout(new GridBagLayout());
         setBackground(Color.WHITE);
 
-        JTextField username = new JTextField(18);
-        JPasswordField password = new JPasswordField(18);
+        username = new JTextField(18);
+        password = new JPasswordField(18);
 
         JButton loginBtn = new JButton("Accedi");
         JButton goRegisterBtn = new JButton("Registrati");
 
-        JLabel msg = new JLabel(" ");
+        msg = new JLabel(" ");
         msg.setForeground(new Color(176, 0, 32));
 
         GridBagConstraints c = new GridBagConstraints();
@@ -87,7 +99,11 @@ public class LoginView extends JPanel {
             nav.onLoginSuccess(user);
         });
 
-        goRegisterBtn.addActionListener(e -> nav.goToRegister());
+        goRegisterBtn.addActionListener(e -> {
+            resetForm(); // ✅ pulisci quando vai a register
+            nav.goToRegister();
+        });
+
         password.addActionListener(e -> loginBtn.doClick());
     }
 }

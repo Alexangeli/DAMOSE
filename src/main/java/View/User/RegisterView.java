@@ -15,24 +15,43 @@ public class RegisterView extends JPanel {
     private final Navigation nav;
     private final RegisterController registerController = new RegisterController();
 
+    // ✅ campi come membri, così possiamo resettarli
+    private JTextField username;
+    private JTextField email;
+    private JPasswordField pass1;
+    private JPasswordField pass2;
+    private JLabel msg;
+
     public RegisterView(Navigation nav) {
         this.nav = nav;
         buildUI();
+    }
+
+    /** ✅ reset completo della form */
+    public void resetForm() {
+        if (username != null) username.setText("");
+        if (email != null) email.setText("");
+        if (pass1 != null) pass1.setText("");
+        if (pass2 != null) pass2.setText("");
+        if (msg != null) {
+            msg.setForeground(new Color(176, 0, 32));
+            msg.setText(" ");
+        }
     }
 
     private void buildUI() {
         setLayout(new GridBagLayout());
         setBackground(Color.WHITE);
 
-        JTextField username = new JTextField(18);
-        JTextField email = new JTextField(18);
-        JPasswordField pass1 = new JPasswordField(18);
-        JPasswordField pass2 = new JPasswordField(18);
+        username = new JTextField(18);
+        email = new JTextField(18);
+        pass1 = new JPasswordField(18);
+        pass2 = new JPasswordField(18);
 
         JButton registerBtn = new JButton("Crea account");
         JButton goLoginBtn = new JButton("Torna al login");
 
-        JLabel msg = new JLabel(" ");
+        msg = new JLabel(" ");
         msg.setForeground(new Color(176, 0, 32));
 
         GridBagConstraints c = new GridBagConstraints();
@@ -101,13 +120,21 @@ public class RegisterView extends JPanel {
             if (ok) {
                 msg.setForeground(new Color(27, 94, 32));
                 msg.setText("Registrazione completata! Ora fai login.");
+
+                // ✅ IMPORTANTISSIMO: reset prima di cambiare schermata
+                resetForm();
                 nav.goToLogin();
             } else {
                 msg.setText("Registrazione fallita: username già usato o errore DB.");
             }
         });
 
-        goLoginBtn.addActionListener(e -> nav.goToLogin());
+        goLoginBtn.addActionListener(e -> {
+            // ✅ se torni al login, pulisci questa form
+            resetForm();
+            nav.goToLogin();
+        });
+
         pass2.addActionListener(e -> registerBtn.doClick());
     }
 }
