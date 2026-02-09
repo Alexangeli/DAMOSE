@@ -3,6 +3,7 @@ package TestDb.DAO;
 import Model.User.User;
 import db.DAO.UserDAO;
 import db.util.DB;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -34,17 +35,23 @@ public class UserDAOTest {
         }
     }
 
+    @After
+    public void tearDown() throws SQLException {
+        if (conn != null) conn.close();
+    }
+
     @Test
     public void shouldInsertAndFindUser() throws SQLException {
         User user = new User("testuser", "test@example.com", "hash123");
 
-        // Inseriamo l'utente
-        boolean created = userDAO.create(user);
+        // ✅ Inseriamo l'utente nel DB in-memory (usa overload con conn)
+        boolean created = userDAO.create(conn, user);
         assertTrue("L'utente dovrebbe essere creato", created);
 
-        // Recuperiamo lo stesso utente
-        User fetched = userDAO.findByUsername("testuser");
+        // ✅ Recuperiamo lo stesso utente dal DB in-memory (usa overload con conn)
+        User fetched = userDAO.findByUsername(conn, "testuser");
         assertNotNull("L'utente creato dovrebbe essere trovato", fetched);
+
         assertEquals("Username dovrebbe coincidere", "testuser", fetched.getUsername());
         assertEquals("Email dovrebbe coincidere", "test@example.com", fetched.getEmail());
         assertEquals("Password hash dovrebbe coincidere", "hash123", fetched.getPasswordHash());
@@ -52,7 +59,8 @@ public class UserDAOTest {
 
     @Test
     public void shouldReturnNullForNonexistentUser() throws SQLException {
-        User fetched = userDAO.findByUsername("nonexistent");
+        // ✅ Cerca nel DB in-memory
+        User fetched = userDAO.findByUsername(conn, "nonexistent");
         assertNull("Utente inesistente dovrebbe restituire null", fetched);
     }
 }

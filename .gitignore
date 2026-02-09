@@ -65,3 +65,4 @@ src/main/resources/rome_static_gtfs/agency.csv
 app.db
 src/main/java/Main.java
 src/main/java/db/util/DB.java
+app.db
