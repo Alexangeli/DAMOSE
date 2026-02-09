@@ -20,7 +20,6 @@ public class AuthDialog extends JDialog {
             }
 
             @Override public void onLoginSuccess(User user) {
-                Session.login(user);     // ✅ usa la vostra Session
                 onAuthChanged.run();
                 dispose();
             }

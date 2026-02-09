@@ -2,6 +2,7 @@ import config.AppConfig;
 import javax.swing.*;
 
 import Controller.DashboardController;
+import Controller.User.LogoutController;
 import Model.User.Session;
 import View.AppShellView;
 import View.DashboardView;
@@ -41,18 +42,39 @@ public class Main {
 
             System.out.println("Avvio");
 
+            // ===================== LOGOUT CONTROLLER =====================
+            LogoutController logoutController = new LogoutController();
+
             // ===================== MOSTRA LA DASHBOARD =====================
 
             AtomicReference<AppShellView> shellRef = new AtomicReference<>();
 
             AppShellView shell = new AppShellView(dashboardView, () -> {
-                AuthDialog dlg = new AuthDialog(myFrame, () -> {
-                    shellRef.get().refreshUserStatus();
 
-                    // Esempio: preferiti disponibili solo se loggato
+                // Se NON loggato: apri dialog login/register
+                if (!Session.isLoggedIn()) {
+                    AuthDialog dlg = new AuthDialog(myFrame, () -> {
+                        shellRef.get().refreshUserStatus();
+                        dashboardView.getFavoritesButton().setEnabled(Session.isLoggedIn());
+                    });
+                    dlg.setVisible(true);
+                    return;
+                }
+
+                // Se loggato: mostra menu account con Logout
+                JPopupMenu menu = new JPopupMenu();
+
+                JMenuItem logoutItem = new JMenuItem("Logout");
+                logoutItem.addActionListener(e -> {
+                    logoutController.logout();
+                    shellRef.get().refreshUserStatus();
                     dashboardView.getFavoritesButton().setEnabled(Session.isLoggedIn());
                 });
-                dlg.setVisible(true);
+
+                menu.add(logoutItem);
+
+                // Mostra il menu in alto a destra (posizione semplice e robusta)
+                menu.show(myFrame, myFrame.getWidth() - 160, 55);
             });
 
             shellRef.set(shell);
