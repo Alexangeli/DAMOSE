@@ -50,6 +50,12 @@ public class Main {
             AtomicReference<AppShellView> shellRef = new AtomicReference<>();
 
             AppShellView shell = new AppShellView(dashboardView, () -> {
+<<<<<<< Updated upstream
+=======
+                AuthDialog dlg = new AuthDialog(myFrame, () -> {
+                    // aggiorna rendering del floating button (LOGIN -> immagine profilo)
+                    shellRef.get().refreshAuthButton();
+>>>>>>> Stashed changes
 
                 // Se NON loggato: apri dialog login/register
                 if (!Session.isLoggedIn()) {

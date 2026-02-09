@@ -63,3 +63,4 @@ src/main/resources/rome_static_gtfs/routes.csv
 src/main/resources/rome_static_gtfs/calendar_dates.csv
 src/main/resources/rome_static_gtfs/agency.csv
 app.db
+src/main/java/Main.java

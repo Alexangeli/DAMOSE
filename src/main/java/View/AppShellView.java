@@ -4,6 +4,7 @@ import Model.User.Session;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.geom.Ellipse2D;
 
 public class AppShellView extends JPanel {
 
@@ -16,7 +17,6 @@ public class AppShellView extends JPanel {
 
         setLayout(new BorderLayout());
 
-        // LayeredPane per sovrapporre contenuto + bottone flottante
         JLayeredPane layeredPane = new JLayeredPane() {
             @Override
             public void doLayout() {
@@ -28,23 +28,29 @@ public class AppShellView extends JPanel {
 
                 // bottone floating top-right
                 int margin = 18;
-
-                // dimensioni dinamiche (rettangolare)
-                int baseW = 140;
-                int baseH = 50;
                 int minSide = Math.min(w, h);
 
                 double scaleFactor = minSide / 900.0;
                 scaleFactor = Math.max(0.75, Math.min(1.15, scaleFactor));
 
-                int btnW = (int) Math.round(baseW * scaleFactor);
-                int btnH = (int) Math.round(baseH * scaleFactor);
+                if (!Session.isLoggedIn()) {
+                    // GUEST: rettangolo LOGIN
+                    int baseW = 140;
+                    int baseH = 50;
+                    int btnW = (int) Math.round(baseW * scaleFactor);
+                    int btnH = (int) Math.round(baseH * scaleFactor);
 
-                authFloatingButton.setSize(btnW, btnH);
+                    authFloatingButton.setSize(btnW, btnH);
+                    authFloatingButton.setLocation(w - btnW - margin, margin);
 
-                int x = w - btnW - margin;
-                int y = margin;
-                authFloatingButton.setLocation(x, y);
+                } else {
+                    // LOGGATO: cerchio profilo
+                    int baseSize = 54;
+                    int size = (int) Math.round(baseSize * scaleFactor);
+
+                    authFloatingButton.setSize(size, size);
+                    authFloatingButton.setLocation(w - size - margin, margin);
+                }
             }
         };
         layeredPane.setOpaque(false);
@@ -54,26 +60,15 @@ public class AppShellView extends JPanel {
 
         add(layeredPane, BorderLayout.CENTER);
 
-        // click → apri login/register (AuthDialog) dal Main
         authFloatingButton.addActionListener(e -> onUserClick.run());
     }
 
-    /**
-     * Chiamalo dopo login/logout per aggiornare il rendering del bottone
-     * (da LOGIN → immagine profilo).
-     */
+    /** Chiamalo dopo login/logout per aggiornare forma/render. */
     public void refreshAuthButton() {
-        authFloatingButton.repaint();
+        revalidate();
+        repaint();
     }
 
-    /**
-     * Bottone flottante rettangolare stile ★:
-     * - rounded rect
-     * - hover zoom fluido
-     * - bordo bianco
-     * - se guest: testo LOGIN
-     * - se loggato: immagine profilo (default)
-     */
     private JButton createFloatingAuthButton() {
         return new JButton() {
 
@@ -97,8 +92,7 @@ public class AppShellView extends JPanel {
 
                 setToolTipText("Account");
 
-                // Carica immagine profilo default:
-                // src/main/resources/immagini_profilo/immagine_profilo.png
+                // immagine profilo default
                 java.net.URL url = AppShellView.class.getResource("/immagini_profilo/immagine_profilo.png");
                 if (url == null) {
                     throw new IllegalStateException(
@@ -141,7 +135,6 @@ public class AppShellView extends JPanel {
 
             @Override
             protected void paintComponent(Graphics g) {
-
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
@@ -159,26 +152,21 @@ public class AppShellView extends JPanel {
                 g2.scale(scale, scale);
                 g2.translate(-cx, -cy);
 
-                // arc proporzionato (rettangolare, non cerchio)
-                int arc = (int) (Math.min(w, h) * 0.45);
-                arc = Math.max(16, Math.min(arc, 26));
-
-                // Colori come bottone ★ (arancione)
-                Color base = new Color(0xFF, 0x7A, 0x00);
-                Color hoverColor = new Color(0xFF, 0x8F, 0x33);
-
-                // background
-                g2.setColor(hover ? hoverColor : base);
-                g2.fillRoundRect(0, 0, w, h, arc, arc);
-
-                // bordo bianco
-                g2.setColor(new Color(255, 255, 255, 210));
-                g2.setStroke(new BasicStroke(Math.max(1.5f, Math.min(w, h) * 0.06f)));
-                g2.drawRoundRect(1, 1, w - 2, h - 2, arc, arc);
-
-                // contenuto interno:
                 if (!Session.isLoggedIn()) {
-                    // ===== GUEST: testo LOGIN =====
+                    // ===================== GUEST: rettangolo arancione LOGIN =====================
+                    int arc = (int) (Math.min(w, h) * 0.45);
+                    arc = Math.max(16, Math.min(arc, 26));
+
+                    Color base = new Color(0xFF, 0x7A, 0x00);
+                    Color hoverColor = new Color(0xFF, 0x8F, 0x33);
+
+                    g2.setColor(hover ? hoverColor : base);
+                    g2.fillRoundRect(0, 0, w, h, arc, arc);
+
+                    g2.setColor(new Color(255, 255, 255, 210));
+                    g2.setStroke(new BasicStroke(Math.max(1.5f, Math.min(w, h) * 0.06f)));
+                    g2.drawRoundRect(1, 1, w - 2, h - 2, arc, arc);
+
                     g2.setColor(Color.WHITE);
                     float fontSize = (float) Math.max(14f, h * 0.42f);
                     g2.setFont(getFont().deriveFont(Font.BOLD, fontSize));
@@ -187,23 +175,36 @@ public class AppShellView extends JPanel {
                     FontMetrics fm = g2.getFontMetrics();
                     int tx = (w - fm.stringWidth(text)) / 2;
                     int ty = (h - fm.getHeight()) / 2 + fm.getAscent();
-
                     g2.drawString(text, tx, ty);
 
                 } else {
-                    // ===== LOGGATO: immagine profilo (default) =====
-                    // Contain: preserva aspect ratio, niente distorsione
-                    double maxW = w * 0.70;
-                    double maxH = h * 0.75;
+                    // ===================== LOGGATO: cerchio con foto profilo =====================
+                    int size = Math.min(w, h);
 
-                    double s = Math.min(maxW / imgW, maxH / imgH);
+                    // cerchio base (leggera cornice)
+                    Ellipse2D circle = new Ellipse2D.Double(0, 0, size, size);
+
+                    // bordo bianco (stile simile)
+                    g2.setColor(new Color(255, 255, 255, 230));
+                    g2.setStroke(new BasicStroke(Math.max(2f, size * 0.05f)));
+                    g2.draw(circle);
+
+                    // clip circolare per ritaglio foto
+                    Shape oldClip = g2.getClip();
+                    g2.setClip(circle);
+
+                    // “cover” per riempire il cerchio senza bande (tipo object-fit: cover)
+                    double s = Math.max((double) size / imgW, (double) size / imgH);
                     int drawW = (int) Math.round(imgW * s);
                     int drawH = (int) Math.round(imgH * s);
 
-                    int ix = (w - drawW) / 2;
-                    int iy = (h - drawH) / 2;
+                    int ix = (size - drawW) / 2;
+                    int iy = (size - drawH) / 2;
 
                     g2.drawImage(profileImg, ix, iy, drawW, drawH, this);
+
+                    // ripristina clip
+                    g2.setClip(oldClip);
                 }
 
                 g2.dispose();
