@@ -5,18 +5,11 @@ import Controller.DashboardController;
 import Model.User.Session;
 import View.AppShellView;
 import View.DashboardView;
-<<<<<<< Updated upstream
-import View.User.AuthDialog;
-import View.User.AccountPopupMenu;
-=======
 import View.User.Account.AuthDialog;
->>>>>>> Stashed changes
 
-import java.awt.*;
-import java.awt.event.ActionListener;
 import java.util.concurrent.atomic.AtomicReference;
 
-public class  Main {
+public class Main {
     public static void main(String[] args) {
 
         SwingUtilities.invokeLater(() -> {
@@ -48,94 +41,67 @@ public class  Main {
 
             System.out.println("Avvio");
 
-            // ===================== SHELL + FLOATING ACCOUNT BUTTON =====================
-            AtomicReference<AppShellView> shellRef = new AtomicReference<>();
-            AtomicReference<AccountPopupMenu> menuRef = new AtomicReference<>();
+            // ===================== JPOPUPMENU (account) =====================
+            JPopupMenu accountMenu = new JPopupMenu();
+            JMenuItem profileItem = new JMenuItem("Profilo");
+            JMenuItem logoutItem  = new JMenuItem("Logout");
 
-            // Funzione comoda per aprire login
-            Runnable openAuthDialog = () -> {
-                AuthDialog dlg = new AuthDialog(myFrame, () -> {
-                    shellRef.get().refreshAuthButton();
-                });
-                dlg.setVisible(true);
-            };
+            accountMenu.add(profileItem);
+            accountMenu.addSeparator();
+            accountMenu.add(logoutItem);
+
+            // Azione "Profilo" (placeholder)
+            profileItem.addActionListener(e -> {
+                JOptionPane.showMessageDialog(
+                        myFrame,
+                        "Profilo utente: " + (Session.isLoggedIn() ? Session.getCurrentUser().getUsername() : "Guest"),
+                        "Profilo",
+                        JOptionPane.INFORMATION_MESSAGE
+                );
+            });
+
+            // ===================== MOSTRA LA DASHBOARD + FLOATING BUTTON =====================
+            AtomicReference<AppShellView> shellRef = new AtomicReference<>();
 
             AppShellView shell = new AppShellView(dashboardView, () -> {
 
-                // Se guest → apri login/register
+                // Se NON loggato → apri dialog login/register
                 if (!Session.isLoggedIn()) {
-                    openAuthDialog.run();
+                    AuthDialog dlg = new AuthDialog(myFrame, () -> {
+                        // dopo login: aggiorna bottone (rettangolo -> cerchio foto)
+                        shellRef.get().refreshAuthButton();
+
+                        // abilita preferiti solo se loggato
+                        dashboardView.getFavoritesButton().setEnabled(Session.isLoggedIn());
+                    });
+                    dlg.setVisible(true);
                     return;
                 }
 
-                // Se loggato → mostra menu (bianco, rounded, piccolo) ancorato al bottone profilo
-                AccountPopupMenu menu = menuRef.get();
-                if (menu != null) {
+                // Se loggato → mostra popup menu
+                // Mostriamo il menu vicino all'angolo alto-destro della finestra
+                int x = myFrame.getWidth() - 220; // offset “comodo”
+                int y = 60;
 
-                    // ---- scala dinamica in base alla finestra (come i bottoni) ----
-                    int wFrame = myFrame.getWidth();
-                    int hFrame = myFrame.getHeight();
-                    int minSide = Math.min(wFrame, hFrame);
-
-                    double scaleFactor = minSide / 900.0;
-                    scaleFactor = Math.max(0.75, Math.min(1.15, scaleFactor));
-                    menu.setUiScale(scaleFactor);
-
-                    // ---- ancoraggio al bottone floating ----
-                    Rectangle b = shellRef.get().getAuthButtonBoundsOnLayer();
-                    JComponent anchor = shellRef.get().getRootLayerForPopups();
-
-                    // posizione: sotto e leggermente a sinistra del cerchio
-                    int x = b.x - (int) Math.round(165 * scaleFactor);
-                    int y = b.y + b.height + (int) Math.round(8 * scaleFactor);
-
-                    menu.show(anchor, x, y);
-                }
+                accountMenu.show(myFrame.getRootPane(), x, y);
             });
 
             shellRef.set(shell);
 
-            // ===================== MENU ACCOUNT (Profilo / Log-out) =====================
-            AccountPopupMenu accountMenu = new AccountPopupMenu(
-                    // PROFILO
-                    () -> JOptionPane.showMessageDialog(
-                            myFrame,
-                            "Profilo utente: " + Session.getCurrentUser().getUsername(),
-                            "Profilo",
-                            JOptionPane.INFORMATION_MESSAGE
-                    ),
-                    // LOGOUT
-                    () -> {
-                        Session.logout();
-                        shellRef.get().refreshAuthButton(); // torna al rettangolo LOGIN
-                    }
-            );
-            menuRef.set(accountMenu);
+            // Logout action (serve shellRef e dashboardView)
+            logoutItem.addActionListener(e -> {
+                Session.logout();
 
-            // ===================== ★ PREFERITI: se guest → apri login =====================
-            JButton favBtn = dashboardView.getFavoritesButton();
+                // torna al bottone LOGIN
+                shellRef.get().refreshAuthButton();
 
-            // Prendo i listener già presenti (quello del DashboardController che apre i preferiti)
-            ActionListener[] existing = favBtn.getActionListeners();
-            // Li rimuovo
-            for (ActionListener al : existing) {
-                favBtn.removeActionListener(al);
-            }
-            // Wrapper: se guest → login; altrimenti → esegue i listener originali (apri preferiti)
-            favBtn.addActionListener(e -> {
-                if (!Session.isLoggedIn()) {
-                    openAuthDialog.run();
-                    return;
-                }
-                for (ActionListener al : existing) {
-                    al.actionPerformed(e);
-                }
+                // disabilita preferiti
+                dashboardView.getFavoritesButton().setEnabled(Session.isLoggedIn());
             });
 
-            // Non disabilitare ★, altrimenti non è cliccabile da guest
-            favBtn.setEnabled(true);
+            // Stato iniziale: guest => preferiti disabilitati
+            dashboardView.getFavoritesButton().setEnabled(Session.isLoggedIn());
 
-            // ===================== MOSTRA APP =====================
             myFrame.setContentPane(shell);
 
             // Centra la finestra nello schermo
