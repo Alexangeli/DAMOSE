@@ -1,8 +1,8 @@
 package TestUser.Controller;
 
-import Controller.User.LoginController;
-import Controller.User.LogoutController;
-import Controller.User.RegisterController;
+import Controller.User.account.LoginController;
+import Controller.User.account.LogoutController;
+import Controller.User.account.RegisterController;
 import Model.User.Session;
 import db.util.DB;
 import org.junit.After;

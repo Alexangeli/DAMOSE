@@ -1,4 +1,4 @@
-package Controller.User;
+package Controller.User.account;
 
 import Model.User.Session;
 

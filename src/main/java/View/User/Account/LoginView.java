@@ -1,6 +1,6 @@
-package View.User;
+package View.User.Account;
 
-import Controller.User.LoginController;
+import Controller.User.account.LoginController;
 import Model.User.User;
 
 import javax.swing.*;

@@ -1,11 +1,11 @@
 package Controller;
 
+import Controller.User.Fav.FavoritesController;
 import Model.MapModel;
 import Model.Points.StopModel;
 import Model.RouteDirectionOption;
-import Service.FavoritesService;
 import View.DashboardView;
-import View.FavoritesView;
+import View.User.Fav.FavoritesView;
 import View.LineStopsView;
 import View.MapView;
 import View.SearchBarView;

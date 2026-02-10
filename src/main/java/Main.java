@@ -5,11 +5,11 @@ import Controller.DashboardController;
 import Model.User.Session;
 import View.AppShellView;
 import View.DashboardView;
-import View.User.AuthDialog;
-import View.User.AccountDropdown;
+import View.User.Account.AccountDropdown;
+import View.User.Account.AuthDialog;
 
 import java.awt.*;
-import java.awt.event.*;
+import java.awt.event.ActionListener;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class Main {
@@ -54,127 +54,95 @@ public class Main {
             DashboardView dashboardView = controller.getView();
             System.out.println("Avvio");
 
-            // ===================== RIFERIMENTI MUTABILI (per callback lambda) =====================
-            // Le lambda devono poter “vedere” shell e dropdown anche se vengono creati dopo.
-            // AtomicReference evita problemi di “variabile non inizializzata” nelle lambda.
+            // ===================== SHELL + FLOATING ACCOUNT BUTTON =====================
             AtomicReference<AppShellView> shellRef = new AtomicReference<>();
-            AtomicReference<AccountDropdown> dropdownRef = new AtomicReference<>();
+            AtomicReference<AccountDropdown> menuRef = new AtomicReference<>();
 
-            // ===================== DIALOG LOGIN/REGISTER (non obbligatorio) =====================
-            // Funzione utility: apre il dialog di autenticazione.
-            // OnSuccess (callback): aggiorna UI (bottone login -> profilo) e ricalcola posizione dropdown.
+            // Funzione comoda per aprire login
             Runnable openAuthDialog = () -> {
                 AuthDialog dlg = new AuthDialog(myFrame, () -> {
-                    // Aggiorna il bottone in alto a destra (LOGIN -> foto profilo).
                     shellRef.get().refreshAuthButton();
-                    // Se il dropdown fosse visibile (o per la prossima apertura), ricalcola scala/posizione.
-                    updateDropdownPosition(myFrame, dashboardView, shellRef.get(), dropdownRef.get());
                 });
                 dlg.setVisible(true);
             };
 
-            // ===================== DROPDOWN ACCOUNT (Profilo / Log-out) =====================
-            // Dropdown minimal, gestito come finestra/popup “floating”.
-            // - onProfile: azione “Profilo” (qui placeholder con JOptionPane)
-            // - onLogout : esegue Session.logout(), aggiorna UI e chiude il dropdown
-            AccountDropdown dropdown = new AccountDropdown(
-                    myFrame,
+            AppShellView shell = new AppShellView(dashboardView, () -> {
+
+                // Se guest → apri login/register
+                if (!Session.isLoggedIn()) {
+                    openAuthDialog.run();
+                    return;
+                }
+
+                // Se loggato → mostra menu (bianco, rounded, piccolo) ancorato al bottone profilo
+                AccountDropdown menu = menuRef.get();
+                if (menu != null) {
+
+                    // ---- scala dinamica in base alla finestra (come i bottoni) ----
+                    int wFrame = myFrame.getWidth();
+                    int hFrame = myFrame.getHeight();
+                    int minSide = Math.min(wFrame, hFrame);
+
+                    double scaleFactor = minSide / 900.0;
+                    scaleFactor = Math.max(0.75, Math.min(1.15, scaleFactor));
+                    menu.setUiScale(scaleFactor);
+
+                    // ---- ancoraggio al bottone floating ----
+                    Rectangle b = shellRef.get().getAuthButtonBoundsOnLayer();
+                    JComponent anchor = shellRef.get().getRootLayerForPopups();
+
+                    // posizione: sotto e leggermente a sinistra del cerchio
+                    int x = b.x - (int) Math.round(165 * scaleFactor);
+                    int y = b.y + b.height + (int) Math.round(8 * scaleFactor);
+
+                    menu.showAtScreen(x, y);
+                }
+            });
+
+            shellRef.set(shell);
+
+            // ===================== MENU ACCOUNT (Profilo / Log-out) =====================
+            AccountDropdown accountMenu = new AccountDropdown(myFrame,
+                    // PROFILO
                     () -> JOptionPane.showMessageDialog(
                             myFrame,
                             "Profilo utente: " + Session.getCurrentUser().getUsername(),
                             "Profilo",
                             JOptionPane.INFORMATION_MESSAGE
                     ),
+
+                    // LOGOUT
                     () -> {
-                        // Logout: pulisce la sessione in-memory (non tocca backend/DB).
                         Session.logout();
-                        // Torna al bottone rettangolare "LOGIN".
-                        shellRef.get().refreshAuthButton();
-                        // Chiude il dropdown se aperto.
-                        dropdownRef.get().hide();
+                        shellRef.get().refreshAuthButton(); // torna al rettangolo LOGIN
                     }
             );
-            dropdownRef.set(dropdown);
+            menuRef.set(accountMenu);
 
-            // ===================== APP SHELL (wrapper della dashboard + bottone account floating) =====================
-            // AppShellView:
-            // - mostra al centro la dashboard
-            // - sovrappone in alto a destra il bottone account:
-            //   * se guest: rettangolo LOGIN
-            //   * se loggato: cerchio foto profilo
-            // Il click sul bottone viene gestito qui tramite la lambda passata.
-            AppShellView shell = new AppShellView(dashboardView, () -> {
-
-                // Se non loggato: al click apri login/register.
-                if (!Session.isLoggedIn()) {
-                    openAuthDialog.run();
-                    return;
-                }
-
-                // Se loggato: toggle del dropdown account.
-                AccountDropdown dd = dropdownRef.get();
-                if (dd == null) return;
-
-                // toggle: se visibile lo chiudo, altrimenti lo apro.
-                if (dd.isVisible()) {
-                    dd.hide();
-                    return;
-                }
-
-                // Calcola posizione/scala e mostra il menu alle coordinate screen calcolate.
-                updateDropdownPosition(myFrame, dashboardView, shellRef.get(), dd);
-                dd.showAtScreen(lastScreenX, lastScreenY);
-            });
-
-            // Salva il riferimento alla shell per usarlo nelle callback.
-            shellRef.set(shell);
-
-            // ===================== ★ PREFERITI: guest -> login, loggato -> comportamento originale =====================
-            // DashboardController ha già messo un ActionListener sulla stella ★ che apre la dialog dei preferiti.
-            // Noi vogliamo:
-            // - se guest: aprire login/register
-            // - se loggato: eseguire il comportamento originale (apertura preferiti)
+            // ===================== ★ PREFERITI: se guest → apri login =====================
             JButton favBtn = dashboardView.getFavoritesButton();
 
-            // Salvo i listener originali già presenti.
+            // Prendo i listener già presenti (quello del DashboardController che apre i preferiti)
             ActionListener[] existing = favBtn.getActionListeners();
-            // Li rimuovo per sostituire con un wrapper che controlla la sessione.
-            for (ActionListener al : existing) favBtn.removeActionListener(al);
-
-            // Wrapper: decide cosa fare in base allo stato di Session.
+            // Li rimuovo
+            for (ActionListener al : existing) {
+                favBtn.removeActionListener(al);
+            }
+            // Wrapper: se guest → login; altrimenti → esegue i listener originali (apri preferiti)
             favBtn.addActionListener(e -> {
                 if (!Session.isLoggedIn()) {
-                    // Guest: al click sulla stella mando al login (non obbligatorio, ma necessario per usare i preferiti).
                     openAuthDialog.run();
                     return;
                 }
-                // Loggato: ripristino comportamento originale (apre dialog preferiti).
-                for (ActionListener al : existing) al.actionPerformed(e);
+                for (ActionListener al : existing) {
+                    al.actionPerformed(e);
+                }
             });
 
-            // Non disabilitare mai ★: deve restare cliccabile anche da guest (per rimandare al login).
+            // Non disabilitare ★, altrimenti non è cliccabile da guest
             favBtn.setEnabled(true);
 
-            // ===================== REATTIVITÀ DROPDOWN: move/resize + timer =====================
-            // Se la finestra si sposta o si ridimensiona, e il dropdown è visibile,
-            // ricalcolo posizione/scala per farlo “seguire” l’icona profilo.
-            myFrame.addComponentListener(new ComponentAdapter() {
-                @Override public void componentMoved(ComponentEvent e) {
-                    updateDropdownPosition(myFrame, dashboardView, shellRef.get(), dropdownRef.get());
-                }
-                @Override public void componentResized(ComponentEvent e) {
-                    updateDropdownPosition(myFrame, dashboardView, shellRef.get(), dropdownRef.get());
-                }
-            });
-
-            // Timer leggero: aiuta a seguire micro-cambi di layout (es. repaint, variazioni minime).
-            Timer followTimer = new Timer(60, e ->
-                    updateDropdownPosition(myFrame, dashboardView, shellRef.get(), dropdownRef.get())
-            );
-            followTimer.start();
-
-            // ===================== MOSTRA UI =====================
-            // Imposto la shell come contenuto del frame (shell contiene la dashboard + bottone account).
+            // ===================== MOSTRA APP =====================
             myFrame.setContentPane(shell);
             // Centro la finestra sullo schermo
             myFrame.setLocationRelativeTo(null);
