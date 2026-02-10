@@ -11,7 +11,6 @@ public class AppShellView extends JPanel {
     private final JComponent centerContent;
     private final JButton authFloatingButton;
 
-    // riferimento per forzare il layout quando cambia login/logout
     private final JLayeredPane layeredPane;
 
     public AppShellView(JComponent centerContent, Runnable onUserClick) {
@@ -20,17 +19,14 @@ public class AppShellView extends JPanel {
 
         setLayout(new BorderLayout());
 
-        // LayeredPane per sovrapporre contenuto + bottone flottante
         layeredPane = new JLayeredPane() {
             @Override
             public void doLayout() {
                 int w = getWidth();
                 int h = getHeight();
 
-                // contenuto a tutto schermo
                 centerContent.setBounds(0, 0, w, h);
 
-                // bottone floating top-right
                 int margin = 18;
                 int minSide = Math.min(w, h);
 
@@ -38,7 +34,6 @@ public class AppShellView extends JPanel {
                 scaleFactor = Math.max(0.75, Math.min(1.15, scaleFactor));
 
                 if (!Session.isLoggedIn()) {
-                    // GUEST: rettangolo LOGIN
                     int baseW = 180;
                     int baseH = 52;
                     int btnW = (int) Math.round(baseW * scaleFactor);
@@ -48,7 +43,6 @@ public class AppShellView extends JPanel {
                     authFloatingButton.setLocation(w - btnW - margin, margin);
 
                 } else {
-                    // LOGGATO: cerchio profilo
                     int baseSize = 54;
                     int size = (int) Math.round(baseSize * scaleFactor);
 
@@ -64,14 +58,9 @@ public class AppShellView extends JPanel {
 
         add(layeredPane, BorderLayout.CENTER);
 
-        // click → gestito dal Main
         authFloatingButton.addActionListener(e -> onUserClick.run());
     }
 
-    /**
-     * Da chiamare dopo login/logout:
-     * forza repaint + ricalcolo layout (dimensione/posizione cambia)
-     */
     public void refreshAuthButton() {
         authFloatingButton.repaint();
 
@@ -82,8 +71,6 @@ public class AppShellView extends JPanel {
         revalidate();
         repaint();
     }
-
-    // ====== getter utili per ancorare il popup menu al bottone ======
 
     public JComponent getRootLayerForPopups() {
         return layeredPane;
@@ -113,15 +100,12 @@ public class AppShellView extends JPanel {
                 setFocusPainted(false);
                 setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
                 setFocusable(false);
-
                 setToolTipText("Account");
 
-                // immagine profilo default
                 java.net.URL url = AppShellView.class.getResource("/immagini_profilo/immagine_profilo.png");
                 if (url == null) {
                     throw new IllegalStateException(
-                            "Immagine profilo non trovata: /immagini_profilo/immagine_profilo.png " +
-                                    "(mettila in src/main/resources/immagini_profilo/immagine_profilo.png)"
+                            "Immagine profilo non trovata: /immagini_profilo/immagine_profilo.png"
                     );
                 }
                 ImageIcon ii = new ImageIcon(url);
@@ -129,7 +113,7 @@ public class AppShellView extends JPanel {
                 imgW = ii.getIconWidth();
                 imgH = ii.getIconHeight();
 
-                // animazione hover (come ★)
+                // animazione IDENTICA alla stella
                 animTimer = new Timer(16, e -> {
                     double diff = targetScale - scale;
                     if (Math.abs(diff) < 0.01) {
@@ -159,6 +143,7 @@ public class AppShellView extends JPanel {
 
             @Override
             protected void paintComponent(Graphics g) {
+
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
@@ -169,64 +154,94 @@ public class AppShellView extends JPanel {
                     return;
                 }
 
-                // scala hover al centro
-                int cx = w / 2;
-                int cy = h / 2;
-                g2.translate(cx, cy);
-                g2.scale(scale, scale);
-                g2.translate(-cx, -cy);
-
                 if (!Session.isLoggedIn()) {
-                    // GUEST: rettangolo arancione LOGIN
-                    int arc = (int) (Math.min(w, h) * 0.55);
+                    // ===================== LOGIN (stile ★) =====================
+                    int shadowOffsetX = 15;
+                    int shadowOffsetY = 4;
+
+                    int safeW = w - shadowOffsetX;
+                    int safeH = h - shadowOffsetY;
+                    if (safeW <= 0 || safeH <= 0) {
+                        g2.dispose();
+                        return;
+                    }
+
+                    int baseWidth = safeW;
+                    int baseHeight = safeH;
+
+                    int arc = (int) (baseHeight * 0.60);
                     arc = Math.max(18, Math.min(arc, 28));
+
+                    int cx = baseWidth / 2;
+                    int cy = baseHeight / 2;
+
+                    g2.translate(shadowOffsetX / 2.0, shadowOffsetY / 2.0);
+                    g2.translate(cx, cy);
+                    g2.scale(scale, scale);
+                    g2.translate(-cx, -cy);
 
                     Color base = new Color(0xFF, 0x7A, 0x00);
                     Color hoverColor = new Color(0xFF, 0x8F, 0x33);
 
                     g2.setColor(hover ? hoverColor : base);
-                    g2.fillRoundRect(0, 0, w, h, arc, arc);
+                    g2.fillRoundRect(0, 0, baseWidth, baseHeight, arc, arc);
 
                     g2.setColor(new Color(255, 255, 255, 210));
-                    g2.setStroke(new BasicStroke(Math.max(2f, Math.min(w, h) * 0.08f)));
-                    g2.drawRoundRect(1, 1, w - 2, h - 2, arc, arc);
+                    g2.setStroke(new BasicStroke(Math.max(1.5f, Math.min(baseWidth, baseHeight) * 0.03f)));
+                    g2.drawRoundRect(1, 1, baseWidth - 2, baseHeight - 2, arc, arc);
 
                     g2.setColor(Color.WHITE);
-                    float fontSize = (float) Math.max(16f, h * 0.46f);
+                    float fontSize = Math.max(16f, baseHeight * 0.58f);
                     g2.setFont(getFont().deriveFont(Font.BOLD, fontSize));
 
                     String text = "LOGIN";
                     FontMetrics fm = g2.getFontMetrics();
-                    int tx = (w - fm.stringWidth(text)) / 2;
-                    int ty = (h - fm.getHeight()) / 2 + fm.getAscent();
+                    int tx = (baseWidth - fm.stringWidth(text)) / 2;
+                    int ty = (baseHeight - fm.getHeight()) / 2 + fm.getAscent();
                     g2.drawString(text, tx, ty);
 
-                } else {
-                    // LOGGATO: cerchio con foto profilo
-                    int size = Math.min(w, h);
-                    Ellipse2D circle = new Ellipse2D.Double(0, 0, size, size);
-
-                    // bordo bianco
-                    g2.setColor(new Color(255, 255, 255, 230));
-                    g2.setStroke(new BasicStroke(Math.max(2f, size * 0.06f)));
-                    g2.draw(circle);
-
-                    // clip circolare
-                    Shape oldClip = g2.getClip();
-                    g2.setClip(circle);
-
-                    // cover (riempi il cerchio)
-                    double s = Math.max((double) size / imgW, (double) size / imgH);
-                    int drawW = (int) Math.round(imgW * s);
-                    int drawH = (int) Math.round(imgH * s);
-
-                    int ix = (size - drawW) / 2;
-                    int iy = (size - drawH) / 2;
-
-                    g2.drawImage(profileImg, ix, iy, drawW, drawH, this);
-
-                    g2.setClip(oldClip);
+                    g2.dispose();
+                    return;
                 }
+
+                // ===================== PROFILO (safe area come ★) =====================
+
+                int shadowOffset = 7; // safe area anche qui (evita clipping su hover)
+                int size = Math.min(w - shadowOffset, h - shadowOffset);
+                if (size <= 0) {
+                    g2.dispose();
+                    return;
+                }
+
+                int cx = size / 2;
+                int cy = size / 2;
+
+                g2.translate(shadowOffset / 2.0, shadowOffset / 2.0);
+                g2.translate(cx, cy);
+                g2.scale(scale, scale);
+                g2.translate(-cx, -cy);
+
+                Ellipse2D circle = new Ellipse2D.Double(0, 0, size, size);
+
+                // bordo bianco
+                g2.setColor(new Color(255, 255, 255, 230));
+                g2.setStroke(new BasicStroke(Math.max(2f, size * 0.06f)));
+                g2.draw(circle);
+
+                // clip circolare
+                Shape oldClip = g2.getClip();
+                g2.setClip(circle);
+
+                // cover (riempi il cerchio)
+                double s = Math.max((double) size / imgW, (double) size / imgH);
+                int drawW = (int) Math.round(imgW * s);
+                int drawH = (int) Math.round(imgH * s);
+
+                int ix = (size - drawW) / 2;
+                int iy = (size - drawH) / 2;
+
+                g2.drawImage(profileImg, ix, iy, drawW, drawH, this);
+                g2.setClip(oldClip);
 
                 g2.dispose();
             }
