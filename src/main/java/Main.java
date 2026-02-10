@@ -5,14 +5,18 @@ import Controller.DashboardController;
 import Model.User.Session;
 import View.AppShellView;
 import View.DashboardView;
+<<<<<<< Updated upstream
 import View.User.AuthDialog;
 import View.User.AccountPopupMenu;
+=======
+import View.User.Account.AuthDialog;
+>>>>>>> Stashed changes
 
 import java.awt.*;
 import java.awt.event.ActionListener;
 import java.util.concurrent.atomic.AtomicReference;
 
-public class Main {
+public class  Main {
     public static void main(String[] args) {
 
         SwingUtilities.invokeLater(() -> {

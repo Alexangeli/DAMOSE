@@ -1,4 +1,4 @@
-package Service;
+package Service.User.Fav;
 
 import Model.Favorites.FavoriteItem;
 

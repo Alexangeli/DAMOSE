@@ -1,6 +1,6 @@
-package View.User;
+package View.User.Account;
 
-import Controller.User.RegisterController;
+import Controller.User.account.RegisterController;
 
 import javax.swing.*;
 import java.awt.*;

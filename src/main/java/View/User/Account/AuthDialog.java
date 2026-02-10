@@ -1,4 +1,4 @@
-package View.User;
+package View.User.Account;
 
 import Model.User.User;
 

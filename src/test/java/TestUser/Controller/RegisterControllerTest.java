@@ -1,6 +1,6 @@
 package TestUser.Controller;
 
-import Controller.User.RegisterController;
+import Controller.User.account.RegisterController;
 import db.util.DB;
 import org.junit.After;
 import org.junit.Before;
