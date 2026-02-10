@@ -1,10 +1,13 @@
-package Controller;
+package Controller.SearchMode;
 
 import Model.Points.StopModel;
 import Service.Points.StopService;
-import View.SearchBarView;
+import View.SearchBar.SearchBarView;
 
 import javax.swing.*;
+
+import Controller.Map.MapController;
+
 import java.util.List;
 
 /**

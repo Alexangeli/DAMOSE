@@ -1,4 +1,4 @@
-package View;
+package View.Map;
 
 import Model.Points.ClusterModel;
 import View.Waypointers.Painter.ClusterPainter;

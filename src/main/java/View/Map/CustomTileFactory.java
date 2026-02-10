@@ -1,4 +1,4 @@
-package View;
+package View.Map;
 
 import org.jxmapviewer.viewer.DefaultTileFactory;
 import org.jxmapviewer.viewer.TileFactory;

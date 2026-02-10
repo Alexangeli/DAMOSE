@@ -1,4 +1,4 @@
-package Service;
+package Service.Parsing;
 
 import Model.Parsing.RoutesModel;
 import Model.Parsing.StopTimesModel;

@@ -1,15 +1,15 @@
-package Controller;
+package Controller.Map;
 
+import Model.Map.MapModel;
 import Model.Parsing.ShapesModel;
 import Model.Parsing.TripsModel;
 import Model.Points.ClusterModel;
-import Model.MapModel;
 import Model.Points.StopModel;
+import Service.Parsing.ShapesService;
+import Service.Parsing.TripsService;
 import Service.Points.ClusterService;
 import Service.Points.StopService;
-import Service.ShapesService;
-import Service.TripsService;
-import View.MapView;
+import View.Map.MapView;
 import View.Waypointers.Painter.ShapePainter;
 import View.Waypointers.Waypoint.StopWaypoint;
 import org.jxmapviewer.JXMapViewer;

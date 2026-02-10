@@ -2,7 +2,8 @@ package Service.Points;
 
 import Model.Parsing.RoutesModel;
 import Model.Points.StopModel;
-import Service.StopTimesService;
+import Service.Parsing.StopTimesService;
+
 import com.opencsv.CSVReader;
 import com.opencsv.exceptions.CsvValidationException;
 import org.jxmapviewer.viewer.GeoPosition;

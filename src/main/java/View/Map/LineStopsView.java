@@ -1,10 +1,12 @@
-package View;
+package View.Map;
 
-import Controller.MapController;
 import Model.Parsing.RoutesModel;    // SOLO per showLinesAtStop (linee che passano da una fermata)
 import Model.Parsing.StopModel;      // SOLO per showLineStops (fermate di una linea)
 
 import javax.swing.*;
+
+import Controller.Map.MapController;
+
 import java.awt.*;
 import java.util.Collections;
 import java.util.List;

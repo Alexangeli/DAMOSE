@@ -1,7 +1,8 @@
 package Controller.Parsing;
 
 import Model.Parsing.TripsModel;
-import Service.TripsService;
+import Service.Parsing.TripsService;
+
 import java.util.List;
 
 // Creatore: Alessandro Angeli

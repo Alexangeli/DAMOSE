@@ -1,4 +1,4 @@
-package View;
+package View.User.Account;
 
 import Model.User.Session;
 

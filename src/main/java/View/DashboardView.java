@@ -3,6 +3,11 @@ package View;
 import config.AppConfig;
 
 import javax.swing.*;
+
+import View.Map.LineStopsView;
+import View.Map.MapView;
+import View.SearchBar.SearchBarView;
+
 import java.awt.*;
 
 /**

@@ -1,4 +1,4 @@
-package Model;
+package Model.Map;
 
 /**
  * Opzione di direzione per una linea:

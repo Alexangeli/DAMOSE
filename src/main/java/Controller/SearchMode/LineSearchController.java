@@ -1,12 +1,14 @@
-package Controller;
+package Controller.SearchMode;
 
-import Model.RouteDirectionOption;
+import Model.Map.RouteDirectionOption;
 import Model.Parsing.RoutesModel;
-import Service.RoutesService;
-import View.SearchBarView;
+import Service.Parsing.RoutesService;
+import View.SearchBar.SearchBarView;
 
 import com.opencsv.CSVReader;
 import com.opencsv.exceptions.CsvValidationException;
+
+import Controller.Map.MapController;
 
 import java.io.FileInputStream;
 import java.io.IOException;

@@ -1,14 +1,20 @@
 package Controller;
 
+import Controller.Map.MapController;
+import Controller.SearchMode.LineSearchController;
+import Controller.SearchMode.SearchMode;
+import Controller.SearchMode.StopSearchController;
+import Controller.StopLines.LineStopsController;
+import Controller.StopLines.StopLinesController;
 import Controller.User.Fav.FavoritesController;
-import Model.MapModel;
 import Model.Points.StopModel;
-import Model.RouteDirectionOption;
+import Model.Map.MapModel;
+import Model.Map.RouteDirectionOption;
 import View.DashboardView;
+import View.Map.LineStopsView;
+import View.Map.MapView;
 import View.User.Fav.FavoritesView;
-import View.LineStopsView;
-import View.MapView;
-import View.SearchBarView;
+import View.SearchBar.SearchBarView;
 
 import javax.swing.*;
 import java.awt.*;
@@ -55,9 +61,9 @@ public class DashboardController {
      * @param stopTimesPath  percorso di stop_times.csv
      */
     public DashboardController(String stopsCsvPath,
-                               String routesCsvPath,
-                               String tripsCsvPath,
-                               String stopTimesPath) {
+                            String routesCsvPath,
+                            String tripsCsvPath,
+                            String stopTimesPath) {
 
         this.stopsCsvPath  = stopsCsvPath;
         this.routesCsvPath = routesCsvPath;

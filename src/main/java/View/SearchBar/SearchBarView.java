@@ -1,13 +1,15 @@
-package View;
+package View.SearchBar;
 
-import Controller.SearchMode;
+import Model.Map.RouteDirectionOption;
 import Model.Points.StopModel;
-import Model.RouteDirectionOption;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.event.ListSelectionListener;
+
+import Controller.SearchMode.SearchMode;
+
 import java.awt.*;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;

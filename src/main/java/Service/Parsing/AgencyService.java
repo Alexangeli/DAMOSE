@@ -1,4 +1,4 @@
-package Service;
+package Service.Parsing;
 
 import Model.Parsing.AgencyModel;
 import com.opencsv.CSVReader;

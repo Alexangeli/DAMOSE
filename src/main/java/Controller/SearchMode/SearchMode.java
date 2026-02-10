@@ -1,4 +1,4 @@
-package Controller;
+package Controller.SearchMode;
 
 /**
  * Modalità di ricerca selezionabile dalla UI:

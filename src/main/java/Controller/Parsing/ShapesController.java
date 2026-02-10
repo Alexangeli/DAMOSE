@@ -1,7 +1,8 @@
 package Controller.Parsing;
 
 import Model.Parsing.ShapesModel;
-import Service.ShapesService;
+import Service.Parsing.ShapesService;
+
 import java.util.List;
 
 // Creatore: Alessandro Angeli

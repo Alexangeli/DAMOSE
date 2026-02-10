@@ -1,4 +1,4 @@
-package Service;
+package Service.Parsing;
 
 import Model.Parsing.CalendarDatesModel;
 import com.opencsv.CSVReader;

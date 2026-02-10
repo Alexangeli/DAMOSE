@@ -1,7 +1,8 @@
 package Controller.Parsing;
 
 import Model.Parsing.StopTimesModel;
-import Service.StopTimesService;
+import Service.Parsing.StopTimesService;
+
 import java.util.List;
 
 // Creatore: Alessandro Angeli

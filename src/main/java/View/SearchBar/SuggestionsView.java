@@ -1,7 +1,7 @@
-package View;
+package View.SearchBar;
 
+import Model.Map.RouteDirectionOption;
 import Model.Points.StopModel;
-import Model.RouteDirectionOption;
 
 import javax.swing.*;
 import javax.swing.event.ListSelectionListener;

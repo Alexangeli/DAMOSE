@@ -1,11 +1,13 @@
-package Controller;
+package Controller.StopLines;
 
+import Model.Map.RouteDirectionOption;
 import Model.Parsing.StopModel;
-import Model.RouteDirectionOption;
-import Service.TripStopsService;
-import View.LineStopsView;
+import Service.Parsing.TripStopsService;
+import View.Map.LineStopsView;
 
 import java.util.List;
+
+import Controller.Map.MapController;
 
 /**
  * Controller per il pannello sotto in modalità LINEA:

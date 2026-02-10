@@ -1,7 +1,8 @@
 package View.Waypointers.Painter;
 
 import Model.Parsing.ShapesModel;
-import Service.ShapeColorService;
+import Service.Parsing.ShapeColorService;
+
 import org.jxmapviewer.JXMapViewer;
 import org.jxmapviewer.viewer.Waypoint;
 import org.jxmapviewer.viewer.WaypointPainter;

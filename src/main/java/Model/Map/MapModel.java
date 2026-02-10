@@ -1,4 +1,4 @@
-package Model;
+package Model.Map;
 
 import org.jxmapviewer.viewer.GeoPosition;
 

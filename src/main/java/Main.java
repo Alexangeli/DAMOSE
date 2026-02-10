@@ -4,7 +4,7 @@ import javax.swing.*;
 import Controller.DashboardController;
 import Model.User.Session;
 
-import View.AppShellView;
+import View.User.Account.AppShellView;
 import View.DashboardView;
 
 import View.User.Account.AccountDropdown;
