@@ -61,9 +61,9 @@ public class DashboardController {
      * @param stopTimesPath  percorso di stop_times.csv
      */
     public DashboardController(String stopsCsvPath,
-                            String routesCsvPath,
-                            String tripsCsvPath,
-                            String stopTimesPath) {
+                               String routesCsvPath,
+                               String tripsCsvPath,
+                               String stopTimesPath) {
 
         this.stopsCsvPath  = stopsCsvPath;
         this.routesCsvPath = routesCsvPath;
@@ -202,7 +202,13 @@ public class DashboardController {
 
         dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
         dialog.setContentPane(favoritesView);
-        dialog.pack();
+
+        // ===== FIX: dimensione iniziale + dimensione minima (non restringibile sotto un tot) =====
+        dialog.setSize(560, 560);                       // dimensione iniziale "rettangolare"
+        dialog.setMinimumSize(new Dimension(460, 460)); // limite minimo (non scende sotto)
+
+        dialog.setResizable(true);
+
         dialog.setLocationRelativeTo(parent); // al centro della finestra principale
         dialog.setVisible(true);
     }
