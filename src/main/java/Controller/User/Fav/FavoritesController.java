@@ -18,6 +18,7 @@ public class FavoritesController {
     private final FavoritesView view;
     private final MapController mapController;
     private final LineStopsController lineStopsController;
+    private final FavoritesService favoritesService;
 
     public FavoritesController(FavoritesView view,
                                MapController mapController,
@@ -26,6 +27,9 @@ public class FavoritesController {
         this.mapController = mapController;
         this.lineStopsController = lineStopsController;
 
+        // Service DB-backed (produzione)
+        this.favoritesService = new FavoritesService();
+
         refreshView();
 
         // doppio click su preferito
@@ -33,24 +37,24 @@ public class FavoritesController {
 
         // delete su preferito
         view.setOnFavoriteRemove(item -> {
-            FavoritesService.remove(item);
+            favoritesService.remove(item);
             refreshView();
         });
     }
 
     public void refreshView() {
-        view.setFavorites(FavoritesService.getAll());
+        view.setFavorites(favoritesService.getAll());
     }
 
     // ==== API da usare dal resto dell'app ====
 
     public void addStopFavorite(StopModel stop) {
-        FavoritesService.add(FavoriteItem.fromStop(stop));
+        favoritesService.add(FavoriteItem.fromStop(stop));
         refreshView();
     }
 
     public void addLineFavorite(RouteDirectionOption opt) {
-        FavoritesService.add(FavoriteItem.fromLine(opt));
+        favoritesService.add(FavoriteItem.fromLine(opt));
         refreshView();
     }
 

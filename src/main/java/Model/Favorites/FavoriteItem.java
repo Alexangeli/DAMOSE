@@ -131,4 +131,31 @@ public class FavoriteItem {
     public int hashCode() {
         return Objects.hash(type, stopId, routeId, directionId, headsign);
     }
+
+    public static FavoriteItem stop(String stopId, String stopName) {
+        if (stopId == null || stopId.isBlank()) return null;
+        String name = (stopName == null || stopName.isBlank()) ? stopId : stopName;
+        return new FavoriteItem(
+                FavoriteType.STOP,
+                stopId,
+                name,
+                null,
+                null,
+                -1,
+                null
+        );
+    }
+
+    public static FavoriteItem line(String routeId, String routeShortName, int directionId, String headsign) {
+        if (routeId == null || routeId.isBlank()) return null;
+        return new FavoriteItem(
+                FavoriteType.LINE,
+                null,
+                null,
+                routeId,
+                routeShortName == null ? "" : routeShortName,
+                directionId,
+                headsign == null ? "" : headsign
+        );
+    }
 }
