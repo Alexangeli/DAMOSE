@@ -1,7 +1,7 @@
 package Model.Favorites;
 
 import Model.Map.RouteDirectionOption;
-import Model.Parsing.StopModel;
+import Model.Points.StopModel;
 
 import java.util.Objects;
 

@@ -283,7 +283,7 @@ public class MapController {
      * 👉 NUOVO: centra la mappa su una fermata GTFS (Model.Parsing.StopModel)
      * usando lat/lon del CSV.
      */
-    public void centerMapOnGtfsStop(Model.Parsing.StopModel stop) {
+    public void centerMapOnGtfsStop(StopModel stop) {
         if (stop == null) return;
         try {
             double lat = stop.getLatitude();
@@ -415,7 +415,7 @@ public class MapController {
      *
      * @param stops lista di fermate GTFS (Model.Parsing.StopModel) da mantenere visibili
      */
-    public void hideUselessStops(List<Model.Parsing.StopModel> stops) {
+    public void hideUselessStops(List<StopModel> stops) {
         if (stops == null || stops.isEmpty()) {
             // se lista vuota, non faccio nulla per evitare di svuotare completamente la mappa
             System.out.println("[MapController] hideUselessStops chiamato con lista vuota.");
@@ -424,7 +424,7 @@ public class MapController {
 
         // 1) Costruisco l'insieme degli stop_id da TENERE
         Set<String> allowedIds = new HashSet<>();
-        for (Model.Parsing.StopModel s : stops) {
+        for (StopModel s : stops) {
             if (s != null && s.getId() != null) {
                 allowedIds.add(s.getId());
             }

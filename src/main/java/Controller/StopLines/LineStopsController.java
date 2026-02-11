@@ -1,7 +1,7 @@
 package Controller.StopLines;
 
 import Model.Map.RouteDirectionOption;
-import Model.Parsing.StopModel;
+import Model.Points.StopModel;
 import Service.Parsing.TripStopsService;
 import View.Map.LineStopsView;
 

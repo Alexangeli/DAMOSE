@@ -1,7 +1,7 @@
 package View.Map;
 
 import Model.Parsing.RoutesModel;    // SOLO per showLinesAtStop (linee che passano da una fermata)
-import Model.Parsing.StopModel;      // SOLO per showLineStops (fermate di una linea)
+import Model.Points.StopModel;      // SOLO per showLineStops (fermate di una linea)
 
 import javax.swing.*;
 

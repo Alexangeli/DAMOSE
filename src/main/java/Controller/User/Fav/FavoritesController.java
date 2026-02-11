@@ -5,7 +5,7 @@ import Controller.StopLines.LineStopsController;
 import Model.Favorites.FavoriteItem;
 import Model.Favorites.FavoriteType;
 import Model.Map.RouteDirectionOption;
-import Model.Parsing.StopModel;
+import Model.Points.StopModel;
 import Service.User.Fav.FavoritesService;
 import View.User.Fav.FavoritesView;
 
