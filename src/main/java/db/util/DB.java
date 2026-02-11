@@ -16,7 +16,10 @@ import java.sql.Statement;
  */
 public final class DB {
 
+
     private static final String URL = "jdbc:sqlite:app.db";
+
+
 
     // Costruttore privato: impedisce istanziazione
     private DB() {

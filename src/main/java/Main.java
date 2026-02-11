@@ -48,7 +48,9 @@ public class Main {
             Runnable openAuthDialog = () -> {
                 AuthDialog dlg = new AuthDialog(myFrame, () -> {
                     shellRef.get().refreshAuthButton();
-                    updateDropdownPosition(myFrame, dashboardView, shellRef.get(), dropdownRef.get());
+
+                    // Esempio: preferiti disponibili solo se loggato
+                    dashboardView.getFavoritesButton().setEnabled(Session.isLoggedIn());
                 });
                 dlg.setVisible(true);
             };
