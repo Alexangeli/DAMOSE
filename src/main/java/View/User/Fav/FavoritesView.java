@@ -17,20 +17,13 @@ import java.util.stream.Collectors;
  * Preferiti:
  * - Switch unico: "Fermata" <-> "Linea"
  * - Se su "Linea": 3 toggle (Bus/Tram/Metro) multi-selezione
- *   - Pulsanti SEMPRE bianchi
+ *   - Pulsanti SEMPRE bianchi (nessun cambio colore)
  *   - Cambia SOLO l'icona quando attivo/spento
  *
- * + PULSANTE "Rimuovi" (al posto della stella) in alto a destra:
- *   - abilitato solo se c'è un elemento selezionato
- *   - click -> onFavoriteRemove.accept(sel)
+ * + Pulsante "Rimuovi" custom con animazione hover tipo floating button.
  *
- * Risorse (classpath) in /resources/icons:
- *   /icons/bus.png
- *   /icons/busblu.png
- *   /icons/tram.png
- *   /icons/tramverde.png
- *   /icons/metro.png
- *   /icons/metrorossa.png
+ * ✅ MODIFICA RICHIESTA:
+ * Nei preferiti fermate mostra "Nome-ID" (stopName-stopId) invece di codice/id.
  */
 public class FavoritesView extends JPanel {
 
@@ -49,7 +42,7 @@ public class FavoritesView extends JPanel {
     private final IconToggleButton tramBtn;
     private final IconToggleButton metroBtn;
 
-    // ✅ nuovo: bottone rimuovi (al posto della stella)
+    // ✅ bottone rimuovi animato
     private final JButton removeBtn;
 
     private boolean showingStops = true; // true=Fermata, false=Linea
@@ -59,7 +52,48 @@ public class FavoritesView extends JPanel {
         setLayout(new BorderLayout());
         setBorder(BorderFactory.createTitledBorder("Preferiti"));
 
-        // ===== TOP BAR (compatto / bilanciato) =====
+        // ===================== LISTA (PRIMA!) =====================
+        listModel = new DefaultListModel<>();
+        list = new JList<>(listModel);
+
+        list.setCellRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(
+                    JList<?> jList, Object value, int index,
+                    boolean isSelected, boolean cellHasFocus) {
+
+                Component c = super.getListCellRendererComponent(
+                        jList, value, index, isSelected, cellHasFocus);
+
+                if (value instanceof FavoriteItem item) {
+
+                    // ✅ QUI: Fermate -> "Nome-ID"
+                    if (item.getType() == FavoriteType.STOP) {
+                        String name = safe(item.getStopName());
+                        String id = safe(item.getStopId());
+
+                        if (name.isBlank() && id.isBlank()) {
+                            setText(item.toDisplayString());
+                        } else if (name.isBlank()) {
+                            setText(id);
+                        } else if (id.isBlank()) {
+                            setText(name);
+                        } else {
+                            setText(name + "-" + id);
+                        }
+                    } else {
+                        // Linee invariato
+                        setText(item.toDisplayString());
+                    }
+                }
+
+                return c;
+            }
+        });
+
+        add(new JScrollPane(list), BorderLayout.CENTER);
+
+        // ===================== TOP BAR =====================
         JPanel topBar = new JPanel(new BorderLayout());
         topBar.setBorder(new EmptyBorder(10, 10, 8, 10));
         topBar.setOpaque(false);
@@ -69,13 +103,12 @@ public class FavoritesView extends JPanel {
         topBar.add(switchBtn, BorderLayout.WEST);
 
         // destra: filtri + rimuovi
-        JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
         right.setOpaque(false);
 
         filtersPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         filtersPanel.setOpaque(false);
 
-        // Pulsanti piccoli e equilibrati
         Dimension toggleSize = new Dimension(40, 40);
 
         busBtn = new IconToggleButton(
@@ -99,7 +132,6 @@ public class FavoritesView extends JPanel {
                 "Metro"
         );
 
-        // default: tutti attivi
         busBtn.setSelected(true);
         tramBtn.setSelected(true);
         metroBtn.setSelected(true);
@@ -112,39 +144,26 @@ public class FavoritesView extends JPanel {
         filtersPanel.add(tramBtn);
         filtersPanel.add(metroBtn);
 
-        // ✅ nuovo: pulsante rimuovi
-        removeBtn = createRemoveButton();
+        // ✅ bottone rimuovi (ora list esiste già)
+        removeBtn = createAnimatedRemoveButton();
+        removeBtn.addActionListener(e -> {
+            FavoriteItem sel = list.getSelectedValue();
+            if (sel == null) return;
+            if (onFavoriteRemove != null) {
+                onFavoriteRemove.accept(sel);
+                refreshVisibleListKeepSelection();
+            }
+        });
 
         right.add(filtersPanel);
         right.add(removeBtn);
 
         topBar.add(right, BorderLayout.EAST);
-
         add(topBar, BorderLayout.NORTH);
 
-        // ===== LISTA =====
-        listModel = new DefaultListModel<>();
-        list = new JList<>(listModel);
+        // ===================== EVENTI LISTA =====================
 
-        list.setCellRenderer(new DefaultListCellRenderer() {
-            @Override
-            public Component getListCellRendererComponent(
-                    JList<?> jList, Object value, int index,
-                    boolean isSelected, boolean cellHasFocus) {
-
-                Component c = super.getListCellRendererComponent(
-                        jList, value, index, isSelected, cellHasFocus);
-
-                if (value instanceof FavoriteItem item) {
-                    setText(item.toDisplayString());
-                }
-                return c;
-            }
-        });
-
-        add(new JScrollPane(list), BorderLayout.CENTER);
-
-        // ✅ abilita/disabilita "Rimuovi" quando cambia selezione
+        // abilita/disabilita "Rimuovi" quando cambia selezione
         list.addListSelectionListener(e -> {
             if (e.getValueIsAdjusting()) return;
             updateRemoveUi();
@@ -214,7 +233,6 @@ public class FavoritesView extends JPanel {
         b.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         b.setBackground(Color.WHITE);
 
-        // più piccolo/minimal rispetto a prima
         b.setFont(b.getFont().deriveFont(Font.BOLD, 16f));
         b.setPreferredSize(new Dimension(150, 42));
 
@@ -228,41 +246,126 @@ public class FavoritesView extends JPanel {
         return b;
     }
 
-    private JButton createRemoveButton() {
-        JButton b = new JButton("Rimuovi");
-        b.setFocusable(false);
-        b.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        b.setFocusPainted(false);
+    /**
+     * ✅ FIX DEFINITIVO:
+     * NIENTE g2.scale() (che viene clippato).
+     * Lo "zoom" lo facciamo aumentando i bounds reali (solo in larghezza) mantenendo altezza 48.
+     * Dimensione base PRECISA: 190x48.
+     */
+    private JButton createAnimatedRemoveButton() {
+        return new JButton("Rimuovi") {
 
-        b.setFont(b.getFont().deriveFont(Font.BOLD, 14f));
-        b.setPreferredSize(new Dimension(110, 38));
-        b.setBorder(BorderFactory.createEmptyBorder(6, 14, 6, 14));
-        b.setToolTipText("Rimuovi il preferito selezionato");
+            private boolean hover = false;
 
-        b.addActionListener(e -> {
-            FavoriteItem sel = list.getSelectedValue();
-            if (sel == null) return;
-            if (onFavoriteRemove != null) {
-                onFavoriteRemove.accept(sel);
-                refreshVisibleListKeepSelection();
+            private double scale = 1.0;
+            private double targetScale = 1.0;
+
+            private final Timer animTimer;
+
+            private final int baseW = 190;
+            private final int baseH = 48;
+
+            {
+                setOpaque(false);
+                setContentAreaFilled(false);
+                setBorderPainted(false);
+                setFocusPainted(false);
+                setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+                setFocusable(false);
+
+                // ✅ DIMENSIONI PRECISE
+                setPreferredSize(new Dimension(baseW, baseH));
+                setMinimumSize(new Dimension(baseW, baseH));
+
+                // IMPORTANTISSIMO:
+                // non blocchiamo la max width, così può crescere in hover senza tagli
+                setMaximumSize(new Dimension(Integer.MAX_VALUE, baseH));
+
+                setToolTipText("Rimuovi il preferito selezionato");
+
+                animTimer = new Timer(16, e -> {
+                    if (!isEnabled()) {
+                        hover = false;
+                        scale = 1.0;
+                        targetScale = 1.0;
+                    } else {
+                        double diff = targetScale - scale;
+                        if (Math.abs(diff) < 0.01) {
+                            scale = targetScale;
+                        } else {
+                            scale += diff * 0.2;
+                        }
+                    }
+
+                    // ✅ LO ZOOM È "REALE": aumenta la larghezza del bottone.
+                    int w = (int) Math.round(baseW * scale);
+                    setPreferredSize(new Dimension(w, baseH));
+                    revalidate();
+                    repaint();
+                });
+                animTimer.start();
+
+                addMouseListener(new java.awt.event.MouseAdapter() {
+                    @Override
+                    public void mouseEntered(java.awt.event.MouseEvent e) {
+                        if (!isEnabled()) return;
+                        hover = true;
+                        targetScale = 1.08;
+                    }
+
+                    @Override
+                    public void mouseExited(java.awt.event.MouseEvent e) {
+                        hover = false;
+                        targetScale = 1.0;
+                    }
+                });
             }
-        });
 
-        return b;
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+                int w = getWidth();
+                int h = getHeight();
+
+                int arc = (int) (Math.min(w, h) * 0.30);
+                arc = Math.max(16, Math.min(arc, 26));
+
+                Color base = new Color(0xFF, 0x7A, 0x00);       // #FF7A00
+                Color hoverColor = new Color(0xFF, 0x8F, 0x33); // #FF8F33
+                Color disabled = new Color(210, 210, 210);
+
+                g2.setColor(isEnabled() ? (hover ? hoverColor : base) : disabled);
+                g2.fillRoundRect(0, 0, w, h, arc, arc);
+
+                g2.setColor(new Color(255, 255, 255, 210));
+                g2.setStroke(new BasicStroke(Math.max(1.5f, Math.min(w, h) * 0.03f)));
+                g2.drawRoundRect(1, 1, w - 2, h - 2, arc, arc);
+
+                g2.setColor(isEnabled() ? Color.WHITE : new Color(140, 140, 140));
+                g2.setFont(getFont().deriveFont(Font.BOLD, 18f));
+
+                FontMetrics fm = g2.getFontMetrics();
+                String text = getText();
+                int tx = (w - fm.stringWidth(text)) / 2;
+                int ty = (h - fm.getHeight()) / 2 + fm.getAscent();
+                g2.drawString(text, tx, ty);
+
+                g2.dispose();
+            }
+        };
     }
 
     private void updateRemoveUi() {
-        FavoriteItem sel = list.getSelectedValue();
-        boolean enabled = (sel != null);
-        removeBtn.setEnabled(enabled);
+        removeBtn.setEnabled(list.getSelectedValue() != null);
 
-        if (!enabled) {
-            removeBtn.setBackground(new Color(200, 200, 200));
-            removeBtn.setForeground(Color.DARK_GRAY);
-        } else {
-            removeBtn.setBackground(new Color(220, 53, 69)); // rosso soft
-            removeBtn.setForeground(Color.WHITE);
+        // quando diventa disabled, rimettiamo anche la size base
+        if (!removeBtn.isEnabled()) {
+            removeBtn.setPreferredSize(new Dimension(190, 48));
         }
+
+        removeBtn.repaint();
     }
 
     private void updateTopBarForMode() {
@@ -275,6 +378,7 @@ public class FavoritesView extends JPanel {
         FavoriteItem prevSel = list.getSelectedValue();
 
         List<FavoriteItem> visible;
+
         if (showingStops) {
             visible = allFavorites.stream()
                     .filter(f -> f.getType() == FavoriteType.STOP)
@@ -287,7 +391,6 @@ public class FavoritesView extends JPanel {
             visible = allFavorites.stream()
                     .filter(f -> f.getType() == FavoriteType.LINE)
                     .filter(f -> {
-                        // euristica temporanea finché non arriva un "mezzo" dal backend
                         String rsn = safe(f.getRouteShortName()).toUpperCase();
                         String head = safe(f.getHeadsign()).toUpperCase();
 
@@ -303,7 +406,6 @@ public class FavoritesView extends JPanel {
         listModel.clear();
         for (FavoriteItem f : visible) listModel.addElement(f);
 
-        // prova a ripristinare la selezione
         if (prevSel != null) {
             for (int i = 0; i < listModel.size(); i++) {
                 if (prevSel.equals(listModel.get(i))) {
@@ -373,17 +475,14 @@ public class FavoritesView extends JPanel {
 
             int arc = Math.max(12, Math.min(w, h) / 3);
 
-            // Sempre bianco
             Shape rr = new RoundRectangle2D.Double(0, 0, w, h, arc, arc);
             g2.setColor(Color.WHITE);
             g2.fill(rr);
 
-            // Bordo leggero: un po' più scuro in hover
             g2.setColor(hover ? new Color(165, 165, 165) : new Color(190, 190, 190));
             g2.setStroke(new BasicStroke(1.1f));
             g2.draw(rr);
 
-            // Icona (solo cambia attivo/spento)
             Image img = isSelected() ? iconOn : iconOff;
             if (img != null) {
                 int pad = Math.max(9, Math.min(w, h) / 4);
