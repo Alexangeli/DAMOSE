@@ -1,3 +1,4 @@
+import Service.GTFS_RT.GTFSFetcher;
 import config.AppConfig;
 import javax.swing.*;
 
@@ -126,6 +127,7 @@ public class Main {
             myFrame.setLocationRelativeTo(null);
             myFrame.setVisible(true);
         });
+
     }
 
     private static void updateDropdownPosition(JFrame frame, DashboardView dashboardView, AppShellView shell, AccountDropdown dd) {
@@ -175,4 +177,6 @@ public class Main {
             dd.setLocationOnScreen(screenX, screenY);
         }
     }
+
+
 }
