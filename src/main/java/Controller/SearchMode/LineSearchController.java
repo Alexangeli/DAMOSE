@@ -20,13 +20,13 @@ import java.util.*;
  * Controller per la ricerca delle LINEE.
  *
  * Usa:
- *   - routes.csv  → per i numeri di linea (route_short_name)
+ *   - routes.csv  → per i numeri di linea (route_short_name) + route_type
  *   - trips.csv   → per le direzioni (direction_id) e i capolinea (trip_headsign)
  *
  * Risultato:
  *   - suggerimenti del tipo "163 → REBIBBIA (MB)" e "163 → VERANO"
  *   - ogni suggerimento è una RouteDirectionOption con:
- *       routeId, routeShortName, directionId, headsign.
+ *       routeId, routeShortName, directionId, headsign, routeType.
  *
  * Creatore: Simone Bonuso
  */
@@ -37,20 +37,16 @@ public class LineSearchController {
     private final String routesCsvPath;
     private final String tripsCsvPath;
 
-
-    // tutte le routes in memoria (con cache del tuo RoutesService)
     private final List<RoutesModel> allRoutes;
 
-    // cache in memoria dei trips (lettura UNA sola volta)
     private static boolean tripsLoaded = false;
     private static Map<String, List<TripInfo>> tripsByRouteId = new HashMap<>();
 
-    // piccola classe interna per rappresentare i trips
     private static class TripInfo {
         final String routeId;
         final String tripId;
-        final int directionId;     // 0 o 1
-        final String headsign;     // trip_headsign
+        final int directionId;
+        final String headsign;
 
         TripInfo(String routeId, String tripId, int directionId, String headsign) {
             this.routeId = routeId;
@@ -69,14 +65,10 @@ public class LineSearchController {
         this.routesCsvPath = routesCsvPath;
         this.tripsCsvPath = tripsCsvPath;
 
-        // carichiamo tutte le routes usando il tuo RoutesService (ha già cache)
         this.allRoutes = RoutesService.getAllRoutes(routesCsvPath);
 
-        // carichiamo i trips (se non già fatto da un altro controller)
         loadTripsIfNeeded();
     }
-
-    // ================== CARICAMENTO TRIPS (UNA SOLA VOLTA) ==================
 
     private synchronized void loadTripsIfNeeded() {
         if (tripsLoaded) return;
@@ -87,7 +79,7 @@ public class LineSearchController {
                 new InputStreamReader(new FileInputStream(tripsCsvPath), StandardCharsets.UTF_8))) {
 
             String[] nextLine;
-            reader.readNext(); // salta intestazione
+            reader.readNext(); // header
 
             while ((nextLine = reader.readNext()) != null) {
                 if (nextLine.length < 6) continue;
@@ -101,7 +93,7 @@ public class LineSearchController {
                 try {
                     dir = Integer.parseInt(directionStr);
                 } catch (NumberFormatException e) {
-                    dir = -1; // ignora direzioni non valide
+                    dir = -1;
                 }
 
                 TripInfo info = new TripInfo(routeId, tripId, dir, headsign);
@@ -118,12 +110,6 @@ public class LineSearchController {
         System.out.println("---LineSearchController--- Trips caricati, route distinte = " + tripsByRouteId.size());
     }
 
-    // ====================== RICERCA TESTO (SUGGERIMENTI) ======================
-
-    /**
-     * Chiamato quando il testo nella barra cambia in modalità LINEA.
-     * Filtra per route_short_name e costruisce le direzioni (0/1) + headsign.
-     */
     public void onTextChanged(String text) {
         if (text == null || text.isBlank()) {
             searchView.hideSuggestions();
@@ -131,40 +117,51 @@ public class LineSearchController {
         }
         String q = text.trim().toLowerCase();
 
-        // 1) Troviamo tutti i routeId le cui route_short_name contengono la query
-        Map<String, String> routeIdToShortName = new LinkedHashMap<>();
+        // ✅ ora teniamo anche routeType
+        // routeId -> (shortName, routeType)
+        class RouteMeta {
+            final String shortName;
+            final int routeType;
+            RouteMeta(String shortName, int routeType) {
+                this.shortName = shortName;
+                this.routeType = routeType;
+            }
+        }
+
+        Map<String, RouteMeta> routeIdToMeta = new LinkedHashMap<>();
+
         for (RoutesModel route : allRoutes) {
             String shortName = route.getRoute_short_name();
             if (shortName == null) continue;
 
             if (shortName.toLowerCase().contains(q)) {
-                routeIdToShortName.put(route.getRoute_id(), shortName);
+                int type = parseRouteType(route.getRoute_type()); // ✅ GTFS route_type
+                routeIdToMeta.put(route.getRoute_id(), new RouteMeta(shortName, type));
             }
         }
 
-        if (routeIdToShortName.isEmpty()) {
+        if (routeIdToMeta.isEmpty()) {
             searchView.showLineSuggestions(List.of());
             return;
         }
 
-        // 2) Per ognuno di questi routeId, prendiamo le direzioni dai trips
         List<RouteDirectionOption> options = new ArrayList<>();
 
-        for (String routeId : routeIdToShortName.keySet()) {
-            String shortName = routeIdToShortName.get(routeId);
+        for (String routeId : routeIdToMeta.keySet()) {
+            RouteMeta meta = routeIdToMeta.get(routeId);
+            String shortName = meta.shortName;
+            int routeType = meta.routeType;
 
             List<TripInfo> trips = tripsByRouteId.get(routeId);
             if (trips == null || trips.isEmpty()) {
-                // nessun trip per questa route (strano ma possibile)
-                options.add(new RouteDirectionOption(routeId, shortName, -1, ""));
+                options.add(new RouteDirectionOption(routeId, shortName, -1, "", routeType));
                 continue;
             }
 
-            // chiave per evitare duplicati: directionId + headsign
             Map<String, RouteDirectionOption> byDirAndHead = new LinkedHashMap<>();
 
             for (TripInfo t : trips) {
-                if (t.directionId < 0) continue; // ignoriamo direzioni non definite
+                if (t.directionId < 0) continue;
                 String headsign = (t.headsign == null) ? "" : t.headsign.trim();
                 String key = t.directionId + "|" + headsign;
 
@@ -173,46 +170,31 @@ public class LineSearchController {
                             routeId,
                             shortName,
                             t.directionId,
-                            headsign
+                            headsign,
+                            routeType // ✅ qui passa route_type
                     );
                     byDirAndHead.put(key, opt);
                 }
             }
 
             if (byDirAndHead.isEmpty()) {
-                // se non abbiamo trovato almeno una direzione valida, mettiamo una generica
-                options.add(new RouteDirectionOption(routeId, shortName, -1, ""));
+                options.add(new RouteDirectionOption(routeId, shortName, -1, "", routeType));
             } else {
                 options.addAll(byDirAndHead.values());
             }
         }
 
-        // Limitiamo il numero di suggerimenti per sicurezza (evita liste enormi)
         if (options.size() > 50) {
             options = options.subList(0, 50);
         }
 
-        // 3) Mostriamo i suggerimenti nella barra
         searchView.showLineSuggestions(options);
     }
 
-    /**
-     * Chiamato quando premi "Cerca" in modalità LINEA.
-     * Riutilizziamo la stessa logica dei suggerimenti.
-     */
     public void onSearch(String query) {
         onTextChanged(query);
     }
 
-    /**
-     * Chiamato quando l'utente conferma una linea/direzione
-     * (ENTER / doppio click / frecce grazie al ListSelectionListener).
-     *
-     * Qui puoi aggiungere logica per:
-     *   - centrare la mappa sul percorso
-     *   - disegnare la polyline
-     *   - ecc.
-     */
     public void onRouteDirectionSelected(RouteDirectionOption option) {
         if (option == null) return;
 
@@ -225,6 +207,16 @@ public class LineSearchController {
         System.out.println("---LineSearchController--- linea selezionata: "
                 + option.getRouteShortName()
                 + " | dir=" + option.getDirectionId()
-                + " | headsign=" + option.getHeadsign());
+                + " | headsign=" + option.getHeadsign()
+                + " | type=" + option.getRouteType());
     }
+
+    private int parseRouteType(String s) {
+    if (s == null) return -1;
+    try {
+        return Integer.parseInt(s.trim());
+    } catch (NumberFormatException e) {
+        return -1;
+    }
+}
 }

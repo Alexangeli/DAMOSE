@@ -11,14 +11,17 @@ import java.util.List;
 
 /**
  * Vista per la tendina dei suggerimenti sotto la barra di ricerca.
- * Gestisce solo:
+ *
+ * Responsabilità:
  *  - pannello contenitore
  *  - JList + modello
  *  - renderer per StopModel / RouteDirectionOption
  *  - selezione e visibilità
  *
- * Non conosce debounce, ENTER, mappa, ecc:
- * tutta la logica rimane in SearchBarView.
+ * NON gestisce:
+ *  - debounce
+ *  - ENTER / frecce (logica in SearchBarView)
+ *  - chiamate ai controller
  *
  * Creatore: Simone Bonuso
  */
@@ -28,8 +31,13 @@ public class SuggestionsView {
     private final JList<Object> list;
     private final DefaultListModel<Object> model;
 
+    // Cache dell’ultima lista mostrata (utile per rifiltri UI senza richiamare i controller)
+    private List<StopModel> lastStops = List.of();
+    private List<RouteDirectionOption> lastLineOptions = List.of();
+
     public SuggestionsView() {
         panel = new JPanel(new BorderLayout());
+
         model = new DefaultListModel<>();
         list = new JList<>(model);
         list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
@@ -56,6 +64,7 @@ public class SuggestionsView {
                         text += " (" + stop.getCode() + ")";
                     }
                     setText(text);
+
                 } else if (value instanceof RouteDirectionOption opt) {
                     String line = opt.getRouteShortName();
                     String headsign = opt.getHeadsign();
@@ -64,6 +73,7 @@ public class SuggestionsView {
                     } else {
                         setText(line);
                     }
+
                 } else if (value != null) {
                     setText(value.toString());
                 }
@@ -89,6 +99,16 @@ public class SuggestionsView {
 
     public boolean hasSuggestions() {
         return !model.isEmpty();
+    }
+
+    // ===================== CACHE (per refilter UI) =====================
+
+    public List<StopModel> getAllStops() {
+        return lastStops;
+    }
+
+    public List<RouteDirectionOption> getAllLineOptions() {
+        return lastLineOptions;
     }
 
     // ======================== SELEZIONE LISTA =======================
@@ -129,6 +149,8 @@ public class SuggestionsView {
 
     public void hide() {
         model.clear();
+        lastStops = List.of();
+        lastLineOptions = List.of();
         panel.setVisible(false);
         panel.revalidate();
         panel.repaint();
@@ -136,13 +158,18 @@ public class SuggestionsView {
 
     public void showStops(List<StopModel> stops) {
         model.clear();
-        if (stops == null || stops.isEmpty()) {
+        lastLineOptions = List.of();
+        lastStops = (stops == null) ? List.of() : stops;
+
+        if (lastStops.isEmpty()) {
             hide();
             return;
         }
-        for (StopModel s : stops) {
+
+        for (StopModel s : lastStops) {
             model.addElement(s);
         }
+
         panel.setVisible(true);
         selectFirstIfNone();
         panel.revalidate();
@@ -151,13 +178,18 @@ public class SuggestionsView {
 
     public void showLineOptions(List<RouteDirectionOption> options) {
         model.clear();
-        if (options == null || options.isEmpty()) {
+        lastStops = List.of();
+        lastLineOptions = (options == null) ? List.of() : options;
+
+        if (lastLineOptions.isEmpty()) {
             hide();
             return;
         }
-        for (RouteDirectionOption opt : options) {
+
+        for (RouteDirectionOption opt : lastLineOptions) {
             model.addElement(opt);
         }
+
         panel.setVisible(true);
         selectFirstIfNone();
         panel.revalidate();

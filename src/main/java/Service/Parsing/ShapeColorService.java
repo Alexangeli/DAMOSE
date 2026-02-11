@@ -49,7 +49,7 @@ public class ShapeColorService {
 
         return switch (routeType) {
             case 1 -> Color.RED;     // Metro
-            case 0 -> Color.YELLOW;  // Tram
+            case 0 -> new Color(0,100,0);  // Tram
             case 3 -> Color.BLUE;    // Bus
             default -> Color.GRAY;
         };
