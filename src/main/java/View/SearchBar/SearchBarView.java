@@ -18,34 +18,30 @@ import Controller.SearchMode.SearchMode;
 import java.awt.*;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
+import java.awt.geom.RoundRectangle2D;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.function.Consumer;
 
-/**
- * Barra di ricerca (fermate / linee) con:
- *  - un solo campo di testo
- *  - un solo pulsante "Cerca"
- *  - uno switch STOP / LINEA
- *  - lista di suggerimenti a scorrimento sotto (gestita da SuggestionsView).
- *
- * + ★ in alto a destra (bottone custom):
- *   - mostra se l'elemento "corrente" è nei preferiti (☆/★)
- *   - click -> toggle (se guest -> AuthDialog)
- *
- * Creatore: Simone Bonuso
- */
 public class SearchBarView extends JPanel {
 
     // ========================== COMPONENTI UI ==========================
 
-    private final JToggleButton modeToggle;
+    private final JToggleButton modeToggle;   // pill custom
     private final JTextField searchField;
     private final JButton searchButton;
 
     private final SuggestionsView suggestions;
 
-    // ★ preferiti (in alto a destra)
+    // ★ preferiti
     private final JButton favStarBtn;
+
+    // filtri linee
+    private final JPanel lineFiltersPanel;
+    private final IconToggleButton busBtn;
+    private final IconToggleButton tramBtn;
+    private final IconToggleButton metroBtn;
 
     // service preferiti
     private final FavoritesService favoritesService = new FavoritesService();
@@ -61,49 +57,70 @@ public class SearchBarView extends JPanel {
     // ============================ STATO ===============================
 
     private SearchMode currentMode = SearchMode.STOP;
-
-    // elemento "corrente" per la ★
     private Object currentStarTarget = null;
-
-    // 👉 flag per NON triggerare i suggerimenti quando cambiamo il testo via codice
     private boolean suppressTextEvents = false;
-
-    // 👉 debounce per la ricerca live (500 ms)
     private final Timer debounceTimer;
 
-    // ==================================================================
-    //                            COSTRUTTORE
-    // ==================================================================
+    // cache locale ultime opzioni LINEA ricevute
+    private List<RouteDirectionOption> lastLineOptions = List.of();
+
     public SearchBarView() {
         setLayout(new BorderLayout());
         setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
         JPanel topPanel = new JPanel();
         topPanel.setLayout(new BoxLayout(topPanel, BoxLayout.Y_AXIS));
+        topPanel.setOpaque(false);
 
-        // Riga: modalità + ★ a destra
+        // ===================== RIGA MODALITÀ + FILTRI + STAR =====================
         JPanel modeRow = new JPanel(new BorderLayout());
-        JPanel modeLeft = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        modeRow.setOpaque(false);
 
-        JLabel modeLabel = new JLabel("Modalità:");
-        modeToggle = new JToggleButton("Fermata");
+        JPanel modeLeft = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        modeLeft.setOpaque(false);
+
+        modeToggle = new PillToggleButton("Fermata");
         modeToggle.setToolTipText("Clicca per passare a ricerca per LINEA");
         modeToggle.addActionListener(e -> toggleMode());
-        modeLeft.add(modeLabel);
         modeLeft.add(modeToggle);
 
-        favStarBtn = createRoundedAnimatedStarButton();
+        lineFiltersPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        lineFiltersPanel.setOpaque(false);
 
+        Dimension toggleSize = new Dimension(40, 40);
+
+        busBtn = new IconToggleButton("/icons/bus.png", "/icons/busblu.png", toggleSize, "Bus");
+        tramBtn = new IconToggleButton("/icons/tram.png", "/icons/tramverde.png", toggleSize, "Tram");
+        metroBtn = new IconToggleButton("/icons/metro.png", "/icons/metrorossa.png", toggleSize, "Metro");
+
+        busBtn.setSelected(true);
+        tramBtn.setSelected(true);
+        metroBtn.setSelected(true);
+
+        busBtn.addActionListener(e -> refilterVisibleLineSuggestions());
+        tramBtn.addActionListener(e -> refilterVisibleLineSuggestions());
+        metroBtn.addActionListener(e -> refilterVisibleLineSuggestions());
+
+        lineFiltersPanel.add(busBtn);
+        lineFiltersPanel.add(tramBtn);
+        lineFiltersPanel.add(metroBtn);
+
+        favStarBtn = createRoundedAnimatedStarButton();
         JPanel starRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
         starRight.setOpaque(false);
         starRight.add(favStarBtn);
 
-        modeRow.setOpaque(false);
-        modeRow.add(modeLeft, BorderLayout.WEST);
+        JPanel leftAndFilters = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        leftAndFilters.setOpaque(false);
+        leftAndFilters.add(modeLeft);
+        leftAndFilters.add(lineFiltersPanel);
+
+        modeRow.add(leftAndFilters, BorderLayout.WEST);
         modeRow.add(starRight, BorderLayout.EAST);
 
-        // Riga: campo di ricerca + bottone
+        // ===================== RIGA SEARCH =====================
         JPanel searchPanel = new JPanel(new BorderLayout(10, 0));
+        searchPanel.setOpaque(false);
         searchField = new JTextField();
         searchButton = new JButton("Cerca");
         searchPanel.add(searchField, BorderLayout.CENTER);
@@ -115,14 +132,13 @@ public class SearchBarView extends JPanel {
 
         add(topPanel, BorderLayout.NORTH);
 
-        // Suggerimenti
         suggestions = new SuggestionsView();
         add(suggestions.getPanel(), BorderLayout.CENTER);
 
-        // stato iniziale ★
         setStarTarget(null);
+        updateLineFiltersVisibility();
 
-        // ====================== TIMER DI DEBOUNCE ======================
+        // ====================== DEBOUNCE ======================
         debounceTimer = new Timer(500, e -> {
             if (onTextChanged == null) return;
 
@@ -142,7 +158,7 @@ public class SearchBarView extends JPanel {
         });
         debounceTimer.setRepeats(false);
 
-        // ====================== EVENTI BARRA DI RICERCA ======================
+        // ====================== EVENTI ======================
 
         searchButton.addActionListener(e -> handleSearchButton());
 
@@ -150,12 +166,9 @@ public class SearchBarView extends JPanel {
             @Override
             public void keyPressed(KeyEvent e) {
 
-                // ENTER
                 if (e.getKeyCode() == KeyEvent.VK_ENTER) {
                     if (suggestions.isVisible() && suggestions.hasSuggestions()) {
-                        if (suggestions.getSelectedIndex() < 0) {
-                            suggestions.selectFirstIfNone();
-                        }
+                        if (suggestions.getSelectedIndex() < 0) suggestions.selectFirstIfNone();
                         confirmSelectedSuggestion();
                     } else {
                         triggerSearch();
@@ -164,7 +177,6 @@ public class SearchBarView extends JPanel {
                     return;
                 }
 
-                // FRECCE
                 if (!suggestions.isVisible() || !suggestions.hasSuggestions()) return;
 
                 int size = suggestions.size();
@@ -191,7 +203,6 @@ public class SearchBarView extends JPanel {
             }
         });
 
-        // Cambio selezione lista -> callback + ★
         suggestions.addListSelectionListener((ListSelectionListener) e -> {
             if (e.getValueIsAdjusting()) return;
             Object value = suggestions.getSelectedValue();
@@ -213,7 +224,6 @@ public class SearchBarView extends JPanel {
             }
         });
 
-        // testo cambia -> debounce
         searchField.getDocument().addDocumentListener(new DocumentListener() {
             @Override public void insertUpdate(DocumentEvent e) { textChanged(); }
             @Override public void removeUpdate(DocumentEvent e) { textChanged(); }
@@ -259,10 +269,20 @@ public class SearchBarView extends JPanel {
             modeToggle.setToolTipText("Clicca per passare a ricerca per LINEA");
         }
 
+        updateLineFiltersVisibility();
         hideSuggestions();
         setStarTarget(null);
 
         if (onModeChanged != null) onModeChanged.accept(currentMode);
+
+        modeToggle.revalidate();
+        modeToggle.repaint();
+    }
+
+    private void updateLineFiltersVisibility() {
+        lineFiltersPanel.setVisible(currentMode == SearchMode.LINE);
+        revalidate();
+        repaint();
     }
 
     public SearchMode getCurrentMode() {
@@ -310,7 +330,7 @@ public class SearchBarView extends JPanel {
         } else if (currentMode == SearchMode.LINE && value instanceof RouteDirectionOption opt) {
             hideSuggestions();
 
-            String lineText = opt.getRouteShortName();
+            String lineText = safe(opt.getRouteShortName());
             if (opt.getHeadsign() != null && !opt.getHeadsign().isBlank()) {
                 lineText += " → " + opt.getHeadsign();
             }
@@ -339,9 +359,138 @@ public class SearchBarView extends JPanel {
         setStarTarget(suggestions.getSelectedValue());
     }
 
+    /**
+     * ✅ Qui facciamo: filtro route_type -> sort numerico intelligente -> show
+     */
     public void showLineSuggestions(List<RouteDirectionOption> options) {
-        suggestions.showLineOptions(options);
+        lastLineOptions = (options == null) ? List.of() : new ArrayList<>(options);
+        applyLineFiltersAndSorting();
+    }
+
+    private void refilterVisibleLineSuggestions() {
+        if (currentMode != SearchMode.LINE) return;
+        applyLineFiltersAndSorting();
+    }
+
+    private void applyLineFiltersAndSorting() {
+        List<RouteDirectionOption> filtered = filterLineOptions(lastLineOptions);
+
+        String q = (searchField.getText() == null) ? "" : searchField.getText().trim();
+        filtered = new ArrayList<>(filtered);
+        filtered.sort(lineSmartComparator(q));
+
+        suggestions.showLineOptions(filtered);
         setStarTarget(suggestions.getSelectedValue());
+    }
+
+    // ==================================================================
+    //                        FILTRO route_type
+    // ==================================================================
+
+    private enum LineKind { BUS, TRAM, METRO, OTHER }
+
+    private LineKind classify(RouteDirectionOption opt) {
+        if (opt == null) return LineKind.OTHER;
+
+        int t = opt.getRouteType(); // 0 tram, 1 metro, 3 bus
+        return switch (t) {
+            case 0 -> LineKind.TRAM;
+            case 1 -> LineKind.METRO;
+            case 3 -> LineKind.BUS;
+            default -> LineKind.OTHER;
+        };
+    }
+
+    private List<RouteDirectionOption> filterLineOptions(List<RouteDirectionOption> in) {
+        if (in == null || in.isEmpty()) return List.of();
+
+        boolean busOn = busBtn.isSelected();
+        boolean tramOn = tramBtn.isSelected();
+        boolean metroOn = metroBtn.isSelected();
+
+        if (!busOn && !tramOn && !metroOn) return List.of();
+
+        List<RouteDirectionOption> out = new ArrayList<>(in.size());
+        for (RouteDirectionOption opt : in) {
+            LineKind kind = classify(opt);
+            boolean keep =
+                    (kind == LineKind.BUS && busOn) ||
+                    (kind == LineKind.TRAM && tramOn) ||
+                    (kind == LineKind.METRO && metroOn);
+            if (keep) out.add(opt);
+        }
+        return out;
+    }
+
+    // ==================================================================
+    //                 ✅ SORT NUMERICO "2, 20..29, 200..299, resto"
+    // ==================================================================
+
+    private Comparator<RouteDirectionOption> lineSmartComparator(String queryText) {
+        final String q = (queryText == null) ? "" : queryText.trim();
+        final Integer qNum = tryParseInt(q);
+
+        return Comparator
+                .comparingInt((RouteDirectionOption o) -> bucketFor(o, q, qNum))
+                .thenComparingInt(o -> parseLeadingInt(safe(o.getRouteShortName())))
+                .thenComparing(o -> safe(o.getRouteShortName()))
+                .thenComparing(o -> safe(o.getHeadsign()));
+    }
+
+    private int bucketFor(RouteDirectionOption opt, String q, Integer qNum) {
+        if (qNum == null) return 999; // query non numerica -> niente bucket speciali
+        if (opt == null) return 999;
+
+        String shortName = safe(opt.getRouteShortName()).trim();
+        int n = parseLeadingInt(shortName);
+        if (n < 0) return 999;
+
+        String qStr = String.valueOf(qNum);
+        String nStr = String.valueOf(n);
+
+        // 1) esatto "2" (solo cifre)
+        if (shortName.matches("^\\d+$") && shortName.equals(qStr)) return 0;
+
+        // 2) 20..29 (una cifra in più rispetto a q)
+        if (nStr.startsWith(qStr)) {
+            int diff = nStr.length() - qStr.length();
+            if (diff == 1) return 1;
+            if (diff == 2) return 2;
+            return 3;
+        }
+
+        return 9;
+    }
+
+    private int parseLeadingInt(String s) {
+        if (s == null) return -1;
+        s = s.trim();
+        if (s.isEmpty()) return -1;
+
+        int i = 0;
+        while (i < s.length() && Character.isDigit(s.charAt(i))) i++;
+        if (i == 0) return -1;
+
+        try {
+            return Integer.parseInt(s.substring(0, i));
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+
+    private Integer tryParseInt(String s) {
+        if (s == null) return null;
+        s = s.trim();
+        if (!s.matches("^\\d+$")) return null;
+        try {
+            return Integer.parseInt(s);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private static String safe(String s) {
+        return (s == null) ? "" : s;
     }
 
     // ==================================================================
@@ -365,7 +514,6 @@ public class SearchBarView extends JPanel {
                 setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
                 setFocusable(false);
 
-                // piccolo e bilanciato
                 setPreferredSize(new Dimension(42, 42));
                 setMinimumSize(new Dimension(42, 42));
                 setMaximumSize(new Dimension(42, 42));
@@ -390,7 +538,6 @@ public class SearchBarView extends JPanel {
                         hover = true;
                         targetScale = 1.06;
                     }
-
                     @Override
                     public void mouseExited(java.awt.event.MouseEvent e) {
                         hover = false;
@@ -403,7 +550,6 @@ public class SearchBarView extends JPanel {
 
             @Override
             protected void paintComponent(Graphics g) {
-
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
@@ -428,7 +574,6 @@ public class SearchBarView extends JPanel {
                 g2.scale(scale, scale);
                 g2.translate(-cx, -cy);
 
-                // box bianco minimal
                 Color base = Color.WHITE;
                 Color hoverColor = new Color(245, 245, 245);
 
@@ -439,7 +584,6 @@ public class SearchBarView extends JPanel {
                 g2.setStroke(new BasicStroke(Math.max(1.2f, size * 0.045f)));
                 g2.drawRoundRect(1, 1, size - 2, size - 2, arc, arc);
 
-                // stella (☆/★)
                 String star = getStarGlyph();
                 float starSize = (float) (size * 0.62);
                 g2.setFont(getFont().deriveFont(Font.PLAIN, starSize));
@@ -549,5 +693,162 @@ public class SearchBarView extends JPanel {
 
     public void setOnRouteDirectionSelected(Consumer<RouteDirectionOption> onRouteDirectionSelected) {
         this.onRouteDirectionSelected = onRouteDirectionSelected;
+    }
+
+    // ==================================================================
+    //                 TOGGLE ICON BIANCO (come Preferiti)
+    // ==================================================================
+
+    private static class IconToggleButton extends JToggleButton {
+
+        private final Image iconOff;
+        private final Image iconOn;
+        private boolean hover = false;
+
+        IconToggleButton(String iconOffPath, String iconOnPath, Dimension size, String tooltip) {
+            setToolTipText(tooltip);
+
+            setOpaque(false);
+            setContentAreaFilled(false);
+            setBorderPainted(false);
+            setFocusPainted(false);
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+
+            setPreferredSize(size);
+            setMinimumSize(size);
+            setMaximumSize(size);
+
+            iconOff = load(iconOffPath);
+            iconOn = load(iconOnPath);
+
+            addMouseListener(new java.awt.event.MouseAdapter() {
+                @Override public void mouseEntered(java.awt.event.MouseEvent e) {
+                    hover = true;
+                    repaint();
+                }
+                @Override public void mouseExited(java.awt.event.MouseEvent e) {
+                    hover = false;
+                    repaint();
+                }
+            });
+        }
+
+        private Image load(String path) {
+            try {
+                var url = SearchBarView.class.getResource(path);
+                if (url != null) return new ImageIcon(url).getImage();
+            } catch (Exception ignored) {}
+            return null;
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            int w = getWidth();
+            int h = getHeight();
+
+            int arc = Math.max(12, Math.min(w, h) / 3);
+
+            Shape rr = new RoundRectangle2D.Double(0, 0, w, h, arc, arc);
+            g2.setColor(Color.WHITE);
+            g2.fill(rr);
+
+            g2.setColor(hover ? new Color(165, 165, 165) : new Color(190, 190, 190));
+            g2.setStroke(new BasicStroke(1.1f));
+            g2.draw(rr);
+
+            Image img = isSelected() ? iconOn : iconOff;
+            if (img != null) {
+                int pad = Math.max(9, Math.min(w, h) / 4);
+                int iw = Math.max(1, w - pad * 2);
+                int ih = Math.max(1, h - pad * 2);
+
+                int sw = img.getWidth(null);
+                int sh = img.getHeight(null);
+
+                if (sw > 0 && sh > 0) {
+                    double s = Math.min((double) iw / sw, (double) ih / sh);
+                    int dw = (int) Math.round(sw * s);
+                    int dh = (int) Math.round(sh * s);
+                    int x = (w - dw) / 2;
+                    int y = (h - dh) / 2;
+                    g2.drawImage(img, x, y, dw, dh, null);
+                }
+            }
+
+            g2.dispose();
+        }
+    }
+
+    // ==================================================================
+    //                    ✅ TOGGLE "PILL" STABILE
+    // ==================================================================
+
+    private static class PillToggleButton extends JToggleButton {
+
+        private boolean hover = false;
+
+        PillToggleButton(String text) {
+            super(text);
+
+            setFocusPainted(false);
+            setContentAreaFilled(false);
+            setBorderPainted(false);
+            setOpaque(false);
+
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            setFont(getFont().deriveFont(Font.BOLD, 16f));
+
+            Dimension fixed = new Dimension(120, 40);
+            setPreferredSize(fixed);
+            setMinimumSize(fixed);
+            setMaximumSize(fixed);
+
+            setMargin(new Insets(6, 14, 6, 14));
+
+            addMouseListener(new java.awt.event.MouseAdapter() {
+                @Override public void mouseEntered(java.awt.event.MouseEvent e) {
+                    hover = true;
+                    repaint();
+                }
+                @Override public void mouseExited(java.awt.event.MouseEvent e) {
+                    hover = false;
+                    repaint();
+                }
+            });
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            int w = getWidth();
+            int h = getHeight();
+            int arc = 16;
+
+            Color base = Color.WHITE;
+            Color over = new Color(245, 245, 245);
+
+            g2.setColor(hover ? over : base);
+            g2.fillRoundRect(0, 0, w, h, arc, arc);
+
+            g2.setColor(new Color(170, 170, 170));
+            g2.setStroke(new BasicStroke(2f));
+            g2.drawRoundRect(1, 1, w - 2, h - 2, arc, arc);
+
+            g2.setColor(new Color(25, 25, 25));
+            g2.setFont(getFont());
+
+            FontMetrics fm = g2.getFontMetrics();
+            String t = getText();
+            int tx = (w - fm.stringWidth(t)) / 2;
+            int ty = (h - fm.getHeight()) / 2 + fm.getAscent();
+            g2.drawString(t, tx, ty);
+
+            g2.dispose();
+        }
     }
 }
