@@ -456,4 +456,10 @@ public class MapController {
         // 5) Ridisegno la mappa con i nuovi waypoint
         refreshView();
     }
+
+    // ✅ AGGIUNTA MINIMA: ripristina tutte le fermate dopo un filtro linea
+    public void showAllStops() {
+        loadStops(stopsCsvPath);
+        refreshView();
+    }
 }

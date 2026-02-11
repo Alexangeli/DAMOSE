@@ -52,14 +52,6 @@ public class DashboardController {
     private final String tripsCsvPath;
     private final String stopTimesPath;
 
-    /**
-     * Costruttore della Dashboard.
-     *
-     * @param stopsCsvPath   percorso di stops.csv
-     * @param routesCsvPath  percorso di routes.csv
-     * @param tripsCsvPath   percorso di trips.csv
-     * @param stopTimesPath  percorso di stop_times.csv
-     */
     public DashboardController(String stopsCsvPath,
                                String routesCsvPath,
                                String tripsCsvPath,
@@ -86,12 +78,9 @@ public class DashboardController {
         this.mapController = new MapController(mapModel, mapView, stopsCsvPath);
 
         // ====== CONTROLLER Ricerche ======
-
-        // ricerca fermate
         this.stopSearchController =
                 new StopSearchController(searchBar, mapController, stopsCsvPath);
 
-        // ricerca linee (routes + trips)
         this.lineSearchController =
                 new LineSearchController(
                         searchBar,
@@ -100,7 +89,6 @@ public class DashboardController {
                         tripsCsvPath
                 );
 
-        // linea → fermate (pannello sotto/sinistra)
         this.lineStopsController =
                 new LineStopsController(
                         lineStopsView,
@@ -110,7 +98,6 @@ public class DashboardController {
                         mapController
                 );
 
-        // fermata → linee (stesso pannello sotto riutilizzato)
         this.stopLinesController =
                 new StopLinesController(
                         lineStopsView,
@@ -119,7 +106,7 @@ public class DashboardController {
                         routesCsvPath
                 );
 
-        // ====== PREFERITI (solo popup, non influisce sulla UI a sinistra) ======
+        // ====== PREFERITI ======
         FavoritesView favoritesView = new FavoritesView();
         this.favoritesController = new FavoritesController(
                 favoritesView,
@@ -127,34 +114,39 @@ public class DashboardController {
                 lineStopsController
         );
 
-        // bottone ★ → apri popup al centro dello schermo
+        // bottone ★ → apri popup
         favoritesButton.addActionListener(e -> {
+            // ✅ PICCOLA AGGIUNTA NECESSARIA:
+            // ricarica sempre dal service/DB prima di aprire il dialog
+            favoritesController.refreshView();
+
             showFavoritesDialog(favoritesView);
         });
 
         // ====== COLLEGAMENTO CALLBACK DALLA SEARCHBAR ======
 
-        // Cambio modalità (STOP / LINE)
         searchBar.setOnModeChanged(mode -> {
             System.out.println("---DashboardController--- modalità = " + mode);
-            lineStopsView.clear();   // puliamo il pannello sotto ogni volta che cambiamo modalità
+            lineStopsView.clear();
             searchBar.hideSuggestions();
+
+            // ✅ FIX MINIMO: tornando in modalità FERMATA, ripristina tutte le fermate
+            if (mode == SearchMode.STOP) {
+                mapController.showAllStops();
+                mapController.clearRouteHighlight(); // opzionale ma consigliato: toglie il disegno linea
+            }
         });
 
-        // Click su "Cerca"
         searchBar.setOnSearch(query -> {
             if (query == null || query.isBlank()) return;
 
             if (searchBar.getCurrentMode() == SearchMode.STOP) {
-                // ricerca fermata
                 stopSearchController.onSearch(query);
             } else {
-                // ricerca linea
                 lineSearchController.onSearch(query);
             }
         });
 
-        // Testo che cambia nella barra (per i suggerimenti)
         searchBar.setOnTextChanged(text -> {
             if (searchBar.getCurrentMode() == SearchMode.STOP) {
                 stopSearchController.onTextChanged(text);
@@ -163,59 +155,39 @@ public class DashboardController {
             }
         });
 
-        // Selezione di un suggerimento di fermata (freccia/enter/doppio click)
         searchBar.setOnSuggestionSelected((StopModel stop) -> {
             if (stop == null) return;
 
-            // Zoom sulla fermata
             stopSearchController.onSuggestionSelected(stop);
 
-            // In modalità FERMATA, mostra le linee che passano da quella fermata nel pannello sotto
             if (searchBar.getCurrentMode() == SearchMode.STOP) {
                 stopLinesController.showLinesForStop(stop);
             }
         });
 
-        // Selezione di una linea/direzione dai suggerimenti (LINE)
         searchBar.setOnRouteDirectionSelected((RouteDirectionOption option) -> {
             if (option == null) return;
 
-            // logica linea selezionata
             lineSearchController.onRouteDirectionSelected(option);
-
-            // mostra le fermate di quella linea + direzione nel pannello sotto
             lineStopsController.showStopsFor(option);
         });
-
-        // (OPZIONALE) se vuoi aggiungere automaticamente ai preferiti l'ultima scelta,
-        // puoi usare favoritesController.addStopFavorite(...) o addLineFavorite(...)
-        // nei callback qui sopra.
     }
 
-    /**
-     * Mostra un JDialog modale con la lista dei preferiti.
-     */
     private void showFavoritesDialog(FavoritesView favoritesView) {
-        // parent: la finestra che contiene la dashboard (può essere null la prima volta)
         Window parent = SwingUtilities.getWindowAncestor(dashboardView);
         JDialog dialog = new JDialog(parent, "Preferiti", Dialog.ModalityType.APPLICATION_MODAL);
 
         dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
         dialog.setContentPane(favoritesView);
 
-        // ===== FIX: dimensione iniziale + dimensione minima (non restringibile sotto un tot) =====
-        dialog.setSize(560, 560);                       // dimensione iniziale "rettangolare"
-        dialog.setMinimumSize(new Dimension(460, 460)); // limite minimo (non scende sotto)
-
+        dialog.setSize(560, 560);
+        dialog.setMinimumSize(new Dimension(460, 460));
         dialog.setResizable(true);
 
-        dialog.setLocationRelativeTo(parent); // al centro della finestra principale
+        dialog.setLocationRelativeTo(parent);
         dialog.setVisible(true);
     }
 
-    /**
-     * Restituisce la vista principale da inserire nel frame.
-     */
     public DashboardView getView() {
         return dashboardView;
     }
