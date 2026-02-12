@@ -1,4 +1,4 @@
-package TestNet;
+package TestGTFS_RT;
 
 import Model.Net.ConnectionManager;
 import Model.Net.ConnectionState;
@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.*;
 
-public class VehiclePositionServiceTest {
+public class VehiclePositionsServiceTest {
 
     private ScheduledExecutorService scheduler;
 
