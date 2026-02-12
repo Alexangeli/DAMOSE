@@ -6,6 +6,7 @@ import Controller.DashboardController;
 import Model.User.Session;
 
 import Model.Net.ConnectionState;
+import Model.Net.ConnectionStatusProvider;
 import Service.GTFS_RT.Status.ConnectionStatusService;
 
 import View.User.Account.AppShellView;
@@ -50,11 +51,14 @@ public class Main {
         // ---- Connection status service (ONLINE/OFFLINE) ----
         ConnectionStatusService statusService = new ConnectionStatusService(GTFS_RT_HEALTH_URL);
 
+        // Espongo al resto dell'app SOLO l'interfaccia (così la UI non dipende dalla classe concreta)
+        ConnectionStatusProvider statusProvider = statusService;
+
         // Stato iniziale (utile se il frontend vuole settare subito il pallino)
-        System.out.println("Stato iniziale connessione: " + statusService.getState());
+        System.out.println("Stato iniziale connessione: " + statusProvider.getState());
 
         // Listener per aggiornare UI/altre parti quando cambia stato
-        statusService.addListener(state -> {
+        statusProvider.addListener(state -> {
             System.out.println("Stato connessione: " + state);
 
             // Se il frontend aggiorna Swing, farlo su EDT:

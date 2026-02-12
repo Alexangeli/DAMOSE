@@ -1,8 +1,6 @@
 package Service.GTFS_RT.Status;
 
-import Model.Net.ConnectionListener;
-import Model.Net.ConnectionManager;
-import Model.Net.ConnectionState;
+import Model.Net.*;
 
 import java.net.URI;
 
@@ -10,7 +8,7 @@ import java.net.URI;
  * Espone SOLO lo stato ONLINE/OFFLINE + listener.
  * Nessun dato realtime, solo "semaforo" per il pallino.
  */
-public class ConnectionStatusService {
+public class ConnectionStatusService implements ConnectionStatusProvider{
 
     private final ConnectionManager connectionManager;
 
