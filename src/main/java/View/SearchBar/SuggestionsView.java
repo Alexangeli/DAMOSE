@@ -46,6 +46,10 @@ public class SuggestionsView {
         // La lista NON prende il focus, così ENTER resta sul campo di testo
         list.setFocusable(false);
 
+        // ✅ NEW: scroll più "fluido" e pulito (non cambia la tua logica)
+        list.setFixedCellHeight(-1); // lascia al renderer la gestione altezza
+        list.setAutoscrolls(true);
+
         // Renderer per StopModel / RouteDirectionOption
         list.setCellRenderer(new DefaultListCellRenderer() {
             @Override
@@ -83,6 +87,11 @@ public class SuggestionsView {
         });
 
         JScrollPane scroll = new JScrollPane(list);
+
+        // ✅ NEW: evita bordi pesanti e migliora lo scroll
+        scroll.setBorder(BorderFactory.createEmptyBorder());
+        scroll.getVerticalScrollBar().setUnitIncrement(16);
+
         panel.add(scroll, BorderLayout.CENTER);
         panel.setVisible(false);
     }
@@ -143,6 +152,30 @@ public class SuggestionsView {
 
     public void addMouseListener(MouseListener l) {
         list.addMouseListener(l);
+    }
+
+    // ✅ NEW: feature richiesta — scroll/selection con frecce anche senza focus
+    // (SearchBarView può chiamare questo metodo su VK_UP/VK_DOWN)
+    public void moveSelection(int delta) {
+        int n = model.getSize();
+        if (n <= 0) return;
+
+        int idx = list.getSelectedIndex();
+        if (idx < 0) idx = 0;
+
+        int next = idx + delta;
+
+        // wrap
+        if (next < 0) next = n - 1;
+        if (next >= n) next = 0;
+
+        setSelectedIndex(next);
+    }
+
+    // ✅ NEW: in caso ti serva forzare lo scroll sul selezionato
+    public void ensureSelectedVisible() {
+        int idx = list.getSelectedIndex();
+        if (idx >= 0) list.ensureIndexIsVisible(idx);
     }
 
     // ======================= MOSTRARE / NASCONDERE =======================
