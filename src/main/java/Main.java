@@ -5,7 +5,8 @@ import javax.swing.*;
 import Controller.DashboardController;
 import Model.User.Session;
 
-import Service.GTFS_RT.Vehicle.VehiclePositionsService;
+import Model.Net.ConnectionState;
+import Service.GTFS_RT.Status.ConnectionStatusService;
 
 import View.User.Account.AppShellView;
 import View.DashboardView;
@@ -22,8 +23,8 @@ public class Main {
     private static volatile int lastScreenX = 0;
     private static volatile int lastScreenY = 0;
 
-    // GTFS-RT vehicle positions feed
-    private static final String GTFS_RT_URL =
+    // GTFS-RT endpoint usato come "health check" per capire ONLINE/OFFLINE
+    private static final String GTFS_RT_HEALTH_URL =
             "https://romamobilita.it/sites/default/files/rome_rtgtfs_vehicle_positions_feed.pb";
 
     public static void main(String[] args) {
@@ -46,24 +47,32 @@ public class Main {
         DashboardView dashboardView = controller.getView();
         System.out.println("Avvio");
 
-        // ---- Service realtime (ONLINE/OFFLINE + fetch ogni 30s quando online) ----
-        VehiclePositionsService vehicleService = new VehiclePositionsService(GTFS_RT_URL);
+        // ---- Connection status service (ONLINE/OFFLINE) ----
+        ConnectionStatusService statusService = new ConnectionStatusService(GTFS_RT_HEALTH_URL);
 
-        vehicleService.addConnectionListener(newState -> {
-            // Qui in futuro il tuo collega aggancia il pallino verde/arancione.
-            // Se serve aggiornare la UI: SwingUtilities.invokeLater(...)
-            System.out.println("Stato connessione: " + newState);
+        // Stato iniziale (utile se il frontend vuole settare subito il pallino)
+        System.out.println("Stato iniziale connessione: " + statusService.getState());
+
+        // Listener per aggiornare UI/altre parti quando cambia stato
+        statusService.addListener(state -> {
+            System.out.println("Stato connessione: " + state);
+
+            // Se il frontend aggiorna Swing, farlo su EDT:
+            // SwingUtilities.invokeLater(() -> dashboardView.setOnlineDot(state == ConnectionState.ONLINE));
+
+            // Oppure se avete un metodo dedicato nel controller/view:
+            // SwingUtilities.invokeLater(() -> controller.onConnectionStateChanged(state));
         });
 
-        vehicleService.start();
+        statusService.start();
 
-        // Stop pulito dei thread (scheduler) alla chiusura
+        // Stop pulito dei thread alla chiusura
         myFrame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
         myFrame.addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
                 try {
-                    vehicleService.stop();
+                    statusService.stop();
                 } finally {
                     myFrame.dispose();
                     System.exit(0);
@@ -75,7 +84,7 @@ public class Main {
         AtomicReference<AppShellView> shellRef = new AtomicReference<>();
         AtomicReference<AccountDropdown> dropdownRef = new AtomicReference<>();
 
-        // funzione comoda: apri login/register
+        // ---- funzione comoda: apri login/register ----
         Runnable openAuthDialog = () -> {
             AuthDialog dlg = new AuthDialog(myFrame, () -> {
                 AppShellView shell = shellRef.get();
@@ -87,7 +96,7 @@ public class Main {
             dlg.setVisible(true);
         };
 
-        // dropdown account (Profilo / Log-out)
+        // ---- dropdown account (Profilo / Log-out) ----
         AccountDropdown dropdown = new AccountDropdown(
                 myFrame,
                 () -> JOptionPane.showMessageDialog(
@@ -107,7 +116,7 @@ public class Main {
         );
         dropdownRef.set(dropdown);
 
-        // shell (dashboard + floating account button)
+        // ---- shell (dashboard + floating account button) ----
         AppShellView shell = new AppShellView(dashboardView, () -> {
 
             if (!Session.isLoggedIn()) {
@@ -130,7 +139,7 @@ public class Main {
 
         shellRef.set(shell);
 
-        // ★ preferiti: guest -> login, loggato -> comportamento originale
+        // ---- ★ preferiti: guest -> login, loggato -> comportamento originale ----
         JButton favBtn = dashboardView.getFavoritesButton();
         ActionListener[] existing = favBtn.getActionListeners();
         for (ActionListener al : existing) favBtn.removeActionListener(al);
@@ -144,7 +153,7 @@ public class Main {
         });
         favBtn.setEnabled(true);
 
-        // reattività dropdown: move/resize + timer
+        // ---- reattività dropdown: move/resize + timer ----
         myFrame.addComponentListener(new ComponentAdapter() {
             @Override public void componentMoved(ComponentEvent e) {
                 updateDropdownPosition(myFrame, dashboardView, shellRef.get(), dropdownRef.get());

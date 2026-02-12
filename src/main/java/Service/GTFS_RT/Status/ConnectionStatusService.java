@@ -1,4 +1,4 @@
-package Service.Net;
+package Service.GTFS_RT.Status;
 
 import Model.Net.ConnectionListener;
 import Model.Net.ConnectionManager;
