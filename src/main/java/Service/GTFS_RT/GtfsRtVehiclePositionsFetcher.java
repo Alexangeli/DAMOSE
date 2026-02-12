@@ -8,16 +8,16 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 
-public class GTFSFetcher implements VehiclePositionFetcher {
+public class GtfsRtVehiclePositionsFetcher implements VehiclePositionsFetcher {
 
     private final String gtfsRtUrl;
 
-    public GTFSFetcher(String gtfsRtUrl) {
+    public GtfsRtVehiclePositionsFetcher(String gtfsRtUrl) {
         this.gtfsRtUrl = gtfsRtUrl;
     }
 
     @Override
-    public List<GeoPosition> fetchBusPositions() throws Exception {
+    public List<GeoPosition> fetchVehiclePositions() throws Exception{
         List<GeoPosition> positions = new ArrayList<>();
 
         try (InputStream inputStream = new URL(gtfsRtUrl).openStream()) {

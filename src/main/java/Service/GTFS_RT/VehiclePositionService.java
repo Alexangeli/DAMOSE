@@ -19,14 +19,14 @@ import java.util.List;
  */
 public class VehiclePositionService {
 
-    private final VehiclePositionFetcher fetcher;
+    private final VehiclePositionsFetcher fetcher;
     private final ConnectionManager connectionManager;
 
     private volatile List<GeoPosition> lastPositions = Collections.emptyList();
 
     // PRODUZIONE
     public VehiclePositionService(String gtfsRtUrl) {
-        this.fetcher = new GTFSFetcher(gtfsRtUrl);
+        this.fetcher = new GtfsRtVehiclePositionsFetcher(gtfsRtUrl);
         this.connectionManager = new ConnectionManager(
                 URI.create(gtfsRtUrl),
                 () -> {
@@ -40,7 +40,7 @@ public class VehiclePositionService {
     }
 
     // TEST (dependency injection)
-    public VehiclePositionService(VehiclePositionFetcher fetcher, ConnectionManager connectionManager) {
+    public VehiclePositionService(VehiclePositionsFetcher fetcher, ConnectionManager connectionManager) {
         this.fetcher = fetcher;
         this.connectionManager = connectionManager;
     }
@@ -70,6 +70,6 @@ public class VehiclePositionService {
      * È public così nei test possiamo farla chiamare dal task del ConnectionManager.
      */
     public void refreshOnce() throws Exception {
-        lastPositions = fetcher.fetchBusPositions();
+        lastPositions = fetcher.fetchVehiclePositions();
     }
 }

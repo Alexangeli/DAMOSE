@@ -2,7 +2,7 @@ package TestNet;
 
 import Model.Net.ConnectionManager;
 import Model.Net.ConnectionState;
-import Service.GTFS_RT.VehiclePositionFetcher;
+import Service.GTFS_RT.VehiclePositionsFetcher;
 import Service.GTFS_RT.VehiclePositionService;
 import org.jetbrains.annotations.NotNull;
 import org.jxmapviewer.viewer.GeoPosition;
@@ -32,7 +32,7 @@ public class VehiclePositionServiceTest {
         CountDownLatch onlineLatch = new CountDownLatch(1);
         CountDownLatch updatedLatch = new CountDownLatch(1);
 
-        VehiclePositionFetcher fakeFetcher = () ->
+        VehiclePositionsFetcher fakeFetcher = () ->
                 List.of(new GeoPosition(41.9, 12.5));
 
         VehiclePositionService service = getVehiclePositionService(updatedLatch, fakeFetcher, onlineLatch);
@@ -50,7 +50,7 @@ public class VehiclePositionServiceTest {
         service.stop();
     }
 
-    private @NotNull VehiclePositionService getVehiclePositionService(CountDownLatch updatedLatch, VehiclePositionFetcher fakeFetcher, CountDownLatch onlineLatch) {
+    private @NotNull VehiclePositionService getVehiclePositionService(CountDownLatch updatedLatch, VehiclePositionsFetcher fakeFetcher, CountDownLatch onlineLatch) {
         AtomicReference<VehiclePositionService> serviceRef = new AtomicReference<>();
 
         ConnectionManager cm = new ConnectionManager(
@@ -88,7 +88,7 @@ public class VehiclePositionServiceTest {
 
         AtomicInteger fetchCalls = new AtomicInteger(0);
 
-        VehiclePositionFetcher fakeFetcher = () -> {
+        VehiclePositionsFetcher fakeFetcher = () -> {
             fetchCalls.incrementAndGet();
             return List.of(new GeoPosition(0, 0));
         };
@@ -130,7 +130,7 @@ public class VehiclePositionServiceTest {
 
         CountDownLatch onlineLatch = new CountDownLatch(1);
 
-        VehiclePositionFetcher fakeFetcher = () -> List.of();
+        VehiclePositionsFetcher fakeFetcher = () -> List.of();
 
         AtomicReference<VehiclePositionService> serviceRef = new AtomicReference<>();
 
