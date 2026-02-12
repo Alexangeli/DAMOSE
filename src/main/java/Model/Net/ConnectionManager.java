@@ -7,10 +7,18 @@ import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.BooleanSupplier;
 
 /**
  * Gestisce lo stato ONLINE/OFFLINE in modo automatico
  * e attiva/disattiva il fetch ogni 30s quando ONLINE.
+ *
+ * Versione test-friendly:
+ * - Costruttore "produzione" (URI + task) = 5s check, 30s fetch, HTTP vero
+ * - Costruttore "test" = inietti scheduler, healthCheck finto, tempi rapidi
+ *
+ * Fix importante:
+ * - healthFailures e fetchFailures separati, così il check rete non resetta i failure del fetch.
  */
 public class ConnectionManager {
 
@@ -19,25 +27,45 @@ public class ConnectionManager {
 
     private final List<ConnectionListener> listeners = new CopyOnWriteArrayList<>();
 
-    private final ScheduledExecutorService scheduler =
-            Executors.newScheduledThreadPool(2);
-
-    private final HttpClient http = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(2))
-            .build();
-
-    private final URI healthUri;
-
-    // anti-flapping: serve qualche fallimento prima di andare OFFLINE
-    private int consecutiveFailures = 0;
-    private static final int FAILURES_TO_GO_OFFLINE = 2;
-
-    // task esterno: qui dentro tu richiami la tua classe fetch realtime
+    private final ScheduledExecutorService scheduler;
     private final Runnable realtimeFetchTask;
+    private final BooleanSupplier healthCheck;
 
+    private final long checkPeriodMs;
+    private final long fetchPeriodMs;
+
+    // FIX: contatori separati
+    private int healthFailures = 0;
+    private int fetchFailures = 0;
+
+    private final int failuresToGoOffline;
+
+    // ====== COSTRUTTORE "PRODUZIONE" ======
     public ConnectionManager(URI healthUri, Runnable realtimeFetchTask) {
-        this.healthUri = healthUri;
+        this(
+                Executors.newScheduledThreadPool(2),
+                realtimeFetchTask,
+                defaultHttpHealthCheck(healthUri),
+                5_000L,     // check ogni 5s
+                30_000L,    // fetch ogni 30s
+                2           // anti-flapping
+        );
+    }
+
+    // ====== COSTRUTTORE "TEST" (dipendenze iniettabili) ======
+    public ConnectionManager(ScheduledExecutorService scheduler,
+                             Runnable realtimeFetchTask,
+                             BooleanSupplier healthCheck,
+                             long checkPeriodMs,
+                             long fetchPeriodMs,
+                             int failuresToGoOffline) {
+
+        this.scheduler = scheduler;
         this.realtimeFetchTask = realtimeFetchTask;
+        this.healthCheck = healthCheck;
+        this.checkPeriodMs = checkPeriodMs;
+        this.fetchPeriodMs = fetchPeriodMs;
+        this.failuresToGoOffline = failuresToGoOffline;
     }
 
     public ConnectionState getState() {
@@ -54,28 +82,25 @@ public class ConnectionManager {
 
     /**
      * Avvia:
-     * - check feed ogni 5s
-     * - fetch realtime ogni 30s (solo ONLINE)
+     * - check feed ogni checkPeriodMs
+     * - fetch realtime ogni fetchPeriodMs (solo se ONLINE)
      */
     public void start() {
-        // Check connessione/feed (leggero)
-        scheduler.scheduleAtFixedRate(this::checkFeed, 0, 5, TimeUnit.SECONDS);
+        scheduler.scheduleAtFixedRate(this::checkFeed, 0, checkPeriodMs, TimeUnit.MILLISECONDS);
 
-        // Fetch realtime (solo quando ONLINE)
         scheduler.scheduleAtFixedRate(() -> {
             if (state.get() != ConnectionState.ONLINE) return;
 
             try {
                 realtimeFetchTask.run();
-                consecutiveFailures = 0; // fetch ok
+                fetchFailures = 0; // fetch ok
             } catch (Exception ex) {
-                // se il fetch fallisce, conta come failure
-                consecutiveFailures++;
-                if (consecutiveFailures >= FAILURES_TO_GO_OFFLINE) {
+                fetchFailures++;
+                if (fetchFailures >= failuresToGoOffline) {
                     setState(ConnectionState.OFFLINE);
                 }
             }
-        }, 0, 30, TimeUnit.SECONDS);
+        }, 0, fetchPeriodMs, TimeUnit.MILLISECONDS);
     }
 
     public void stop() {
@@ -83,38 +108,15 @@ public class ConnectionManager {
     }
 
     private void checkFeed() {
-        boolean ok = isHealthReachable();
+        boolean ok = healthCheck.getAsBoolean();
         if (ok) {
-            consecutiveFailures = 0;
+            healthFailures = 0;
             setState(ConnectionState.ONLINE);
         } else {
-            consecutiveFailures++;
-            if (consecutiveFailures >= FAILURES_TO_GO_OFFLINE) {
+            healthFailures++;
+            if (healthFailures >= failuresToGoOffline) {
                 setState(ConnectionState.OFFLINE);
             }
-        }
-    }
-
-    /**
-     * Non basta "internet sì/no": qui testiamo un endpoint reale (healthUri).
-     * Timeout stretto per non bloccare.
-     */
-    private boolean isHealthReachable() {
-        try {
-            HttpRequest req = HttpRequest.newBuilder(healthUri)
-                    .timeout(Duration.ofSeconds(2))
-                    .GET()
-                    .build();
-
-            HttpResponse<Void> res = http.send(req, HttpResponse.BodyHandlers.discarding());
-            int code = res.statusCode();
-
-            // 2xx-4xx = host raggiungibile (4xx spesso significa solo "richiesta sbagliata" ma server su)
-            // 5xx = server giù / errore
-            return code >= 200 && code < 500;
-
-        } catch (Exception e) {
-            return false;
         }
     }
 
@@ -125,5 +127,26 @@ public class ConnectionManager {
                 l.onConnectionStateChanged(newState);
             }
         }
+    }
+
+    private static BooleanSupplier defaultHttpHealthCheck(URI healthUri) {
+        HttpClient http = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(2))
+                .build();
+
+        return () -> {
+            try {
+                HttpRequest req = HttpRequest.newBuilder(healthUri)
+                        .timeout(Duration.ofSeconds(2))
+                        .GET()
+                        .build();
+
+                HttpResponse<Void> res = http.send(req, HttpResponse.BodyHandlers.discarding());
+                int code = res.statusCode();
+                return code >= 200 && code < 500;
+            } catch (Exception e) {
+                return false;
+            }
+        };
     }
 }
