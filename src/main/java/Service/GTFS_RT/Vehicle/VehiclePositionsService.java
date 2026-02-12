@@ -1,4 +1,4 @@
-package Service.GTFS_RT;
+package Service.GTFS_RT.Vehicle;
 
 import Model.Net.ConnectionListener;
 import Model.Net.ConnectionManager;

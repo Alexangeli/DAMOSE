@@ -1,4 +1,4 @@
-package Service.GTFS_RT;
+package Service.GTFS_RT.Vehicle;
 
 import com.google.transit.realtime.GtfsRealtime;
 import org.jxmapviewer.viewer.GeoPosition;

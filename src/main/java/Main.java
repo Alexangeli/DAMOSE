@@ -5,7 +5,7 @@ import javax.swing.*;
 import Controller.DashboardController;
 import Model.User.Session;
 
-import Service.GTFS_RT.VehiclePositionsService;
+import Service.GTFS_RT.Vehicle.VehiclePositionsService;
 
 import View.User.Account.AppShellView;
 import View.DashboardView;
