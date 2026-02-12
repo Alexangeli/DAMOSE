@@ -5,7 +5,7 @@ import javax.swing.*;
 import Controller.DashboardController;
 import Model.User.Session;
 
-import Service.GTFS_RT.VehiclePositionService;
+import Service.GTFS_RT.VehiclePositionsService;
 
 import View.User.Account.AppShellView;
 import View.DashboardView;
@@ -47,7 +47,7 @@ public class Main {
         System.out.println("Avvio");
 
         // ---- Service realtime (ONLINE/OFFLINE + fetch ogni 30s quando online) ----
-        VehiclePositionService vehicleService = new VehiclePositionService(GTFS_RT_URL);
+        VehiclePositionsService vehicleService = new VehiclePositionsService(GTFS_RT_URL);
 
         vehicleService.addConnectionListener(newState -> {
             // Qui in futuro il tuo collega aggancia il pallino verde/arancione.

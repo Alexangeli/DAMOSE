@@ -17,7 +17,7 @@ import java.util.List;
  *
  * Test-friendly: costruttore alternativo con fetcher e connectionManager iniettati.
  */
-public class VehiclePositionService {
+public class VehiclePositionsService {
 
     private final VehiclePositionsFetcher fetcher;
     private final ConnectionManager connectionManager;
@@ -25,7 +25,7 @@ public class VehiclePositionService {
     private volatile List<GeoPosition> lastPositions = Collections.emptyList();
 
     // PRODUZIONE
-    public VehiclePositionService(String gtfsRtUrl) {
+    public VehiclePositionsService(String gtfsRtUrl) {
         this.fetcher = new GtfsRtVehiclePositionsFetcher(gtfsRtUrl);
         this.connectionManager = new ConnectionManager(
                 URI.create(gtfsRtUrl),
@@ -40,7 +40,7 @@ public class VehiclePositionService {
     }
 
     // TEST (dependency injection)
-    public VehiclePositionService(VehiclePositionsFetcher fetcher, ConnectionManager connectionManager) {
+    public VehiclePositionsService(VehiclePositionsFetcher fetcher, ConnectionManager connectionManager) {
         this.fetcher = fetcher;
         this.connectionManager = connectionManager;
     }
@@ -61,7 +61,7 @@ public class VehiclePositionService {
         connectionManager.addListener(l);
     }
 
-    public List<GeoPosition> getBusPositions() {
+    public List<GeoPosition> getVehiclePositions() {
         return lastPositions;
     }
 

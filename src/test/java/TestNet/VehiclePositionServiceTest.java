@@ -3,7 +3,7 @@ package TestNet;
 import Model.Net.ConnectionManager;
 import Model.Net.ConnectionState;
 import Service.GTFS_RT.VehiclePositionsFetcher;
-import Service.GTFS_RT.VehiclePositionService;
+import Service.GTFS_RT.VehiclePositionsService;
 import org.jetbrains.annotations.NotNull;
 import org.jxmapviewer.viewer.GeoPosition;
 import org.junit.After;
@@ -35,7 +35,7 @@ public class VehiclePositionServiceTest {
         VehiclePositionsFetcher fakeFetcher = () ->
                 List.of(new GeoPosition(41.9, 12.5));
 
-        VehiclePositionService service = getVehiclePositionService(updatedLatch, fakeFetcher, onlineLatch);
+        VehiclePositionsService service = getVehiclePositionService(updatedLatch, fakeFetcher, onlineLatch);
 
         assertTrue("Non è mai diventato ONLINE",
                 onlineLatch.await(1200, TimeUnit.MILLISECONDS));
@@ -43,15 +43,15 @@ public class VehiclePositionServiceTest {
         assertTrue("Cache non aggiornata",
                 updatedLatch.await(1200, TimeUnit.MILLISECONDS));
 
-        List<GeoPosition> positions = service.getBusPositions();
+        List<GeoPosition> positions = service.getVehiclePositions();
         assertNotNull(positions);
         assertEquals(1, positions.size());
 
         service.stop();
     }
 
-    private @NotNull VehiclePositionService getVehiclePositionService(CountDownLatch updatedLatch, VehiclePositionsFetcher fakeFetcher, CountDownLatch onlineLatch) {
-        AtomicReference<VehiclePositionService> serviceRef = new AtomicReference<>();
+    private @NotNull VehiclePositionsService getVehiclePositionService(CountDownLatch updatedLatch, VehiclePositionsFetcher fakeFetcher, CountDownLatch onlineLatch) {
+        AtomicReference<VehiclePositionsService> serviceRef = new AtomicReference<>();
 
         ConnectionManager cm = new ConnectionManager(
                 scheduler,
@@ -71,7 +71,7 @@ public class VehiclePositionServiceTest {
                 2
         );
 
-        VehiclePositionService service = new VehiclePositionService(fakeFetcher, cm);
+        VehiclePositionsService service = new VehiclePositionsService(fakeFetcher, cm);
         serviceRef.set(service);
 
         service.addConnectionListener(state -> {
@@ -93,7 +93,7 @@ public class VehiclePositionServiceTest {
             return List.of(new GeoPosition(0, 0));
         };
 
-        AtomicReference<VehiclePositionService> serviceRef = new AtomicReference<>();
+        AtomicReference<VehiclePositionsService> serviceRef = new AtomicReference<>();
 
         ConnectionManager cm = new ConnectionManager(
                 scheduler,
@@ -110,7 +110,7 @@ public class VehiclePositionServiceTest {
                 2
         );
 
-        VehiclePositionService service = new VehiclePositionService(fakeFetcher, cm);
+        VehiclePositionsService service = new VehiclePositionsService(fakeFetcher, cm);
         serviceRef.set(service);
 
         service.start();
@@ -132,7 +132,7 @@ public class VehiclePositionServiceTest {
 
         VehiclePositionsFetcher fakeFetcher = () -> List.of();
 
-        AtomicReference<VehiclePositionService> serviceRef = new AtomicReference<>();
+        AtomicReference<VehiclePositionsService> serviceRef = new AtomicReference<>();
 
         ConnectionManager cm = new ConnectionManager(
                 scheduler,
@@ -149,7 +149,7 @@ public class VehiclePositionServiceTest {
                 2
         );
 
-        VehiclePositionService service = new VehiclePositionService(fakeFetcher, cm);
+        VehiclePositionsService service = new VehiclePositionsService(fakeFetcher, cm);
         serviceRef.set(service);
 
         service.addConnectionListener(state -> {
