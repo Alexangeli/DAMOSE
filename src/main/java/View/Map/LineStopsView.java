@@ -6,6 +6,7 @@ import Model.Points.StopModel;      // SOLO per showLineStops (fermate di una li
 import javax.swing.*;
 
 import Controller.Map.MapController;
+import javax.swing.event.ListSelectionListener;
 
 import java.awt.*;
 import java.util.Collections;
@@ -142,4 +143,13 @@ public class LineStopsView extends JPanel {
         revalidate();
         repaint();
     }
+    /** True se c'è una selezione attiva nella lista (serve per abilitare/disabilitare la stella). */
+public boolean hasSelection() {
+    return list.getSelectedIndex() >= 0;
+}
+
+/** Permette a chi usa la view di ascoltare i cambi di selezione della lista. */
+public void addSelectionListener(ListSelectionListener l) {
+    list.addListSelectionListener(l);
+}
 }

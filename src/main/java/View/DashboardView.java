@@ -1,5 +1,7 @@
 package View;
 
+import Model.User.Session;
+
 import config.AppConfig;
 
 import Controller.SearchMode.SearchMode;
@@ -9,6 +11,7 @@ import View.SearchBar.SearchBarView;
 
 import javax.swing.BorderFactory;
 import javax.swing.Box;
+import javax.swing.BoxLayout;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JLayeredPane;
@@ -71,8 +74,17 @@ public class DashboardView extends JPanel {
     // ★ overlay
     private final JButton overlayStarBtn;
 
+    // Floating buttons (singoli): ★ sempre visibile, bus/tram/metro solo in modalità LINE
+    private final JButton floatingStarBtn;
+
     private final JLayeredPane layeredPane;
     private boolean clickAwayInstalled = false;
+
+    // Callback per richiedere login (apre AuthDialog). Viene impostato dal Main.
+    private Runnable onRequireAuth;
+
+    // Sync ★ stato (abilitata solo se c'è un elemento selezionato)
+    private final Timer starSyncTimer;
 
     public DashboardView() {
         setLayout(new BorderLayout());
@@ -125,7 +137,8 @@ public class DashboardView extends JPanel {
         JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
         right.setOpaque(false);
 
-        Dimension toggleSize = new Dimension(40, 40);
+        int floatBtnSize = 54; // ancora un po' più piccoli
+        Dimension toggleSize = new Dimension(floatBtnSize, floatBtnSize);
 
         busBtn   = new IconToggleButton("/icons/bus.png",   "/icons/busblu.png",     toggleSize, "Bus");
         tramBtn  = new IconToggleButton("/icons/tram.png",  "/icons/tramverde.png",  toggleSize, "Tram");
@@ -142,14 +155,21 @@ public class DashboardView extends JPanel {
         metroBtn.addActionListener(e -> pushLineFiltersToSearchBar());
 
         overlayStarBtn = createOverlayStarButton();
-        overlayStarBtn.addActionListener(e -> searchBarView.clickStar());
+        // Listener moved into createOverlayStarButton, not needed here.
 
-        right.add(busBtn);
-        right.add(tramBtn);
-        right.add(metroBtn);
-        right.add(overlayStarBtn);
+        // i pulsanti verranno messi nel floating toolbar (fuori dall'overlay)
 
         header.add(right, BorderLayout.EAST);
+
+        // ===================== FLOATING BUTTONS (singoli) =====================
+        // ★ sempre visibile
+        floatingStarBtn = overlayStarBtn;
+
+        // i filtri bus/tram/metro sono visibili solo in modalità LINE (gestito da setLineFiltersVisible)
+        // dimensioni coerenti
+        floatingStarBtn.setPreferredSize(new Dimension(floatBtnSize, floatBtnSize));
+        floatingStarBtn.setMinimumSize(new Dimension(floatBtnSize, floatBtnSize));
+        floatingStarBtn.setMaximumSize(new Dimension(floatBtnSize, floatBtnSize));
 
         // ---------- body overlay: risultati ----------
         JPanel body = new JPanel(new BorderLayout());
@@ -183,13 +203,39 @@ public class DashboardView extends JPanel {
                 int y = 24;
                 searchBarView.setBounds(x, y, barW, barH);
 
+                // ===== Floating buttons (singoli) =====
+                // ★ sempre visibile: la mettiamo appena a DESTRA della searchbar
+                int btnSize = 54; // deve combaciare con floatBtnSize
+                int gap = 10;
+
+                int starX = x + barW + gap; // fuori dalla searchbar, a destra
+                int starY = y + (barH - btnSize) / 2 + 2;
+                floatingStarBtn.setBounds(starX, starY, btnSize, btnSize);
+
+                // Filtri sotto la ★ (solo se visibili)
+                int fx = starX;
+                int fy = starY + btnSize + gap;
+                busBtn.setBounds(fx, fy, btnSize, btnSize);
+                tramBtn.setBounds(fx, fy + (btnSize + gap), btnSize, btnSize);
+                metroBtn.setBounds(fx, fy + 2 * (btnSize + gap), btnSize, btnSize);
+
+                // se finisce fuori dallo schermo a destra, rientra (clamp)
+                int maxX = w - btnSize - 12;
+                if (starX > maxX) {
+                    int clampedX = maxX;
+                    floatingStarBtn.setLocation(clampedX, starY);
+                    busBtn.setLocation(clampedX, fy);
+                    tramBtn.setLocation(clampedX, fy + (btnSize + gap));
+                    metroBtn.setLocation(clampedX, fy + 2 * (btnSize + gap));
+                }
+
                 // overlay sotto
                 if (overlayCard.isVisible()) {
-                    int gap = 12;
+                    int ogap = 12;
                     int cardW = barW;
-                    int cardH = Math.min(520, h - (y + barH + gap) - 60);
+                    int cardH = Math.min(520, h - (y + barH + ogap) - 60);
                     cardH = Math.max(260, cardH);
-                    overlayCard.setBounds(x, y + barH + gap, cardW, cardH);
+                    overlayCard.setBounds(x, y + barH + ogap, cardW, cardH);
                 }
 
                 // bottone preferiti esterno
@@ -197,11 +243,11 @@ public class DashboardView extends JPanel {
                 int minSide = Math.min(w, h);
                 double scaleFactor = minSide / 900.0;
                 scaleFactor = Math.max(0.6, Math.min(1.2, scaleFactor));
-                int btnSize = (int) Math.round(baseSize * scaleFactor);
+                int favBtnSize = (int) Math.round(baseSize * scaleFactor);
 
-                favoritesButton.setSize(btnSize, btnSize);
+                favoritesButton.setSize(favBtnSize, favBtnSize);
                 int margin = 24;
-                favoritesButton.setLocation(w - btnSize - margin, h - btnSize - margin);
+                favoritesButton.setLocation(w - favBtnSize - margin, h - favBtnSize - margin);
             }
         };
         layeredPane.setOpaque(false);
@@ -209,6 +255,13 @@ public class DashboardView extends JPanel {
         layeredPane.add(mapView, JLayeredPane.DEFAULT_LAYER);
         layeredPane.add(searchBarView, JLayeredPane.PALETTE_LAYER);
         layeredPane.add(overlayCard, JLayeredPane.PALETTE_LAYER);
+
+        // floating buttons (singoli)
+        layeredPane.add(floatingStarBtn, JLayeredPane.PALETTE_LAYER);
+        layeredPane.add(busBtn, JLayeredPane.PALETTE_LAYER);
+        layeredPane.add(tramBtn, JLayeredPane.PALETTE_LAYER);
+        layeredPane.add(metroBtn, JLayeredPane.PALETTE_LAYER);
+
         layeredPane.add(favoritesButton, JLayeredPane.PALETTE_LAYER);
 
         add(layeredPane, BorderLayout.CENTER);
@@ -221,7 +274,21 @@ public class DashboardView extends JPanel {
 
         // stato iniziale coerente
         syncOverlayFromSearchBar();
+        // inizializza visibilità floating (★ sempre, filtri dipendono dalla modalità)
+        setLineFiltersVisible(searchBarView.getCurrentMode() == SearchMode.LINE);
         setOverlayVisible(false);
+
+        // Timer leggero: tiene allineata ★ con la selezione reale (SearchBarView)
+        starSyncTimer = new Timer(120, e -> {
+            boolean hasSel = hasAnyCurrentSelection();
+            if (overlayStarBtn.isEnabled() != hasSel) {
+                overlayStarBtn.setEnabled(hasSel);
+            }
+            // repaint solo quando overlay è visibile (così non sprechiamo)
+            if (overlayVisible) overlayStarBtn.repaint();
+        });
+        starSyncTimer.setRepeats(true);
+        starSyncTimer.start();
     }
 
     // ===================== STATE =====================
@@ -232,8 +299,13 @@ public class DashboardView extends JPanel {
 
         overlayCard.setVisible(visible);
 
-        // quando apro riallineo sempre
-        if (visible) syncOverlayFromSearchBar();
+        if (visible) {
+            // quando apro riallineo sempre
+            syncOverlayFromSearchBar();
+        } else {
+            // quando esco dalla barra (click fuori / mappa), i filtri devono sparire
+            setLineFiltersVisible(false);
+        }
 
         revalidate();
         repaint();
@@ -258,6 +330,10 @@ public class DashboardView extends JPanel {
 
         // allinea stato filtri dal backend
         pullLineFiltersFromSearchBar();
+
+        // Patch: keep enabled state and repaint star button
+        overlayStarBtn.setEnabled(hasAnyCurrentSelection());
+        overlayStarBtn.repaint();
     }
 
     private void installExpandOnClick(Component root) {
@@ -308,6 +384,12 @@ public class DashboardView extends JPanel {
             if (SwingUtilities.isDescendingFrom(at, overlayCard)) return;
             if (SwingUtilities.isDescendingFrom(at, searchBarView)) return;
 
+            // se clicco sui floating buttons -> NON chiudo (devono filtrare / funzionare)
+            if (SwingUtilities.isDescendingFrom(at, floatingStarBtn)) return;
+            if (SwingUtilities.isDescendingFrom(at, busBtn)) return;
+            if (SwingUtilities.isDescendingFrom(at, tramBtn)) return;
+            if (SwingUtilities.isDescendingFrom(at, metroBtn)) return;
+
             // altrimenti chiudi
             setOverlayVisible(false);
         }, java.awt.AWTEvent.MOUSE_EVENT_MASK);
@@ -316,11 +398,16 @@ public class DashboardView extends JPanel {
     // ===================== BINDING FILTRI =====================
 
     private void setLineFiltersVisible(boolean visible) {
+        // ★ sempre visibile
+        if (floatingStarBtn != null) floatingStarBtn.setVisible(true);
+
+        // filtri solo in modalità LINE
         busBtn.setVisible(visible);
         tramBtn.setVisible(visible);
         metroBtn.setVisible(visible);
-        overlayCard.revalidate();
-        overlayCard.repaint();
+
+        revalidate();
+        repaint();
     }
 
     private void pushLineFiltersToSearchBar() {
@@ -338,7 +425,6 @@ public class DashboardView extends JPanel {
     private JButton createOverlayStarButton() {
         return new JButton() {
             private boolean hover = false;
-            private boolean starred = false; // ☆ quando false, ★ quando true
 
             {
                 setOpaque(false);
@@ -351,10 +437,21 @@ public class DashboardView extends JPanel {
                 setPreferredSize(new Dimension(40, 40));
                 setToolTipText("Aggiungi/Rimuovi dai preferiti");
 
-                // Toggle solo grafico (lo stato reale resta gestito dal backend)
                 addActionListener(e -> {
-                    starred = !starred;
-                    repaint();
+                    // Nessuna selezione -> niente
+                    if (!hasAnyCurrentSelection()) return;
+
+                    // Se non loggato -> AuthDialog (gestito dal Main)
+                    if (!Session.isLoggedIn()) {
+                        if (onRequireAuth != null) onRequireAuth.run();
+                        return;
+                    }
+
+                    // delega al backend (aggiunge/rimuove preferito sull'elemento selezionato)
+                    searchBarView.clickStar();
+
+                    // la grafica viene letta dal backend: basta repaint
+                    SwingUtilities.invokeLater(this::repaint);
                 });
 
                 addMouseListener(new MouseAdapter() {
@@ -379,10 +476,14 @@ public class DashboardView extends JPanel {
                 g2.setStroke(new BasicStroke(1.0f));
                 g2.drawRoundRect(0, 0, w - 1, h - 1, arc, arc);
 
-                String s = starred ? "★" : "☆";
+                boolean isFav = hasAnyCurrentSelection() && isCurrentSelectionFavorite();
+                String s = isFav ? "★" : "☆";
 
-                // colore: piena arancione, vuota grigio scuro
-                g2.setColor(starred ? new Color(0xFF, 0x7A, 0x00) : new Color(60, 60, 60));
+                // colore: piena arancione, vuota grigio scuro, disabilitata grigio chiaro
+                Color onC = new Color(0xFF, 0x7A, 0x00);
+                Color offC = new Color(60, 60, 60);
+                Color disabledC = new Color(150, 150, 150);
+                g2.setColor(!isEnabled() ? disabledC : (isFav ? onC : offC));
 
                 g2.setFont(getFont().deriveFont(Font.BOLD, 20f));
                 FontMetrics fm = g2.getFontMetrics();
@@ -393,16 +494,84 @@ public class DashboardView extends JPanel {
 
                 g2.dispose();
             }
-
-            public void setStarred(boolean v) {
-                starred = v;
-                repaint();
-            }
-
-            public boolean isStarred() {
-                return starred;
-            }
         };
+    }
+    /** True se c'è una selezione valida (lista risultati oppure selezione interna SearchBarView). */
+    private boolean hasAnyCurrentSelection() {
+        if (lineStopsView != null && lineStopsView.hasSelection()) return true;
+        return hasCurrentSearchSelection();
+    }
+
+    /**
+     * True se esiste un elemento attualmente selezionato nella SearchBarView (linea/fermata).
+     * Serve per abilitare/disabilitare la ★.
+     */
+    private boolean hasCurrentSearchSelection() {
+        // Proviamo diversi nomi possibili sul backend (SearchBarView)
+        String[] boolCandidates = {
+                "hasSelection",
+                "hasSelectedItem",
+                "hasCurrentSelection",
+                "isItemSelected",
+                "isSelectionValid"
+        };
+
+        for (String m : boolCandidates) {
+            try {
+                Object out = searchBarView.getClass().getMethod(m).invoke(searchBarView);
+                if (out instanceof Boolean b) return b;
+            } catch (Exception ignored) {
+            }
+        }
+
+        // In alternativa: se esistono getter che ritornano l'oggetto selezionato
+        String[] objCandidates = {
+                "getSelectedStop",
+                "getSelectedLine",
+                "getSelectedItem",
+                "getCurrentSelection",
+                "getSelectedResult"
+        };
+
+        for (String m : objCandidates) {
+            try {
+                Object out = searchBarView.getClass().getMethod(m).invoke(searchBarView);
+                if (out != null) return true;
+            } catch (Exception ignored) {
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * True se l'elemento attualmente selezionato (linea/fermata) è nei preferiti.
+     * La grafica della ★ deve dipendere SOLO da questo.
+     */
+    private boolean isCurrentSelectionFavorite() {
+        // Se non c'è selezione (nella SearchBarView o LineStopsView), non può essere preferito
+        if (!hasAnyCurrentSelection()) return false;
+
+        // Proviamo diversi nomi possibili sul backend (SearchBarView)
+        String[] candidates = {
+                "isSelectedFavorite",
+                "isCurrentSelectionFavorite",
+                "isCurrentFavorite",
+                "isStarred",
+                "isStarSelected",
+                "isFavoriteSelected"
+        };
+
+        for (String m : candidates) {
+            try {
+                Object out = searchBarView.getClass().getMethod(m).invoke(searchBarView);
+                if (out instanceof Boolean b) return b;
+            } catch (Exception ignored) {
+            }
+        }
+
+        // fallback: se non esiste un metodo sul backend, non coloriamo mai a caso
+        return false;
     }
 
     private JButton createFloatingFavoritesButton() {
@@ -522,7 +691,6 @@ public class DashboardView extends JPanel {
         if (favoritesButton != null) favoritesButton.repaint();
     }
 
-    // ===================== UI COMPONENTS =====================
 
     private static class RoundedShadowPanel extends JPanel {
         @Override public boolean isOpaque() { return false; }
@@ -586,7 +754,7 @@ public class DashboardView extends JPanel {
         }
 
         @Override
-       	protected void paintComponent(Graphics g) {
+        protected void paintComponent(Graphics g) {
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
@@ -693,5 +861,12 @@ public class DashboardView extends JPanel {
 
             g2.dispose();
         }
+    }
+
+    /**
+     * Impostato dal Main: se l'utente clicca ★ senza essere loggato, apriamo l'AuthDialog.
+     */
+    public void setOnRequireAuth(Runnable onRequireAuth) {
+        this.onRequireAuth = onRequireAuth;
     }
 }

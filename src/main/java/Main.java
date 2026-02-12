@@ -119,7 +119,8 @@ public class Main {
                 }
         );
         dropdownRef.set(dropdown);
-
+        dropdown.bindConnectionStatus(statusProvider);
+        
         // ---- shell (dashboard + floating account button) ----
         AppShellView shell = new AppShellView(dashboardView, () -> {
 
