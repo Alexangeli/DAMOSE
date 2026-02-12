@@ -1,7 +1,11 @@
 package View.User.Account;
 
+import Model.Net.ConnectionState;
+import Model.Net.ConnectionStatusProvider;
+
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.AWTEventListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.geom.RoundRectangle2D;
@@ -32,6 +36,9 @@ public class AccountDropdown {
     private String username = "Nome";
     private boolean online = true;
 
+    // binding status provider (una sola volta)
+    private ConnectionStatusProvider boundStatusProvider = null;
+
     private final StatusRight statusRight = new StatusRight();
     private final AvatarCircle avatar = new AvatarCircle();
     private final JLabel helloLabel = new JLabel();
@@ -41,6 +48,9 @@ public class AccountDropdown {
 
     private final Runnable onManage;
     private final Runnable onLogout;
+
+    // Chiude il popup quando clicchi fuori (click outside)
+    private final AWTEventListener outsideClickListener;
 
     public AccountDropdown(JFrame owner, Runnable onManage, Runnable onLogout) {
         this.onManage = onManage;
@@ -125,6 +135,28 @@ public class AccountDropdown {
         lastAppliedScale = uiScale;
         refreshTexts();
         repack();
+
+        // Chiudi se clicchi fuori dalla finestra
+        outsideClickListener = event -> {
+            if (!window.isVisible()) return;
+            if (!(event instanceof MouseEvent me)) return;
+            if (me.getID() != MouseEvent.MOUSE_PRESSED) return;
+
+            // Coordinate assolute dello schermo
+            Point p = me.getLocationOnScreen();
+            Rectangle r = new Rectangle(window.getLocationOnScreen(), window.getSize());
+            if (!r.contains(p)) {
+                hide();
+            }
+        };
+        Toolkit.getDefaultToolkit().addAWTEventListener(outsideClickListener, AWTEvent.MOUSE_EVENT_MASK);
+
+        // Pulizia listener (se mai la dialog venisse smontata)
+        window.addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override public void windowClosed(java.awt.event.WindowEvent e) {
+                Toolkit.getDefaultToolkit().removeAWTEventListener(outsideClickListener);
+            }
+        });
     }
 
     // ===== setters =====
@@ -139,6 +171,28 @@ public class AccountDropdown {
     public void setOnline(boolean online) {
         this.online = online;
         statusRight.setOnline(online);
+    }
+
+    /**
+     * Collega il pallino "Stato" ad un provider di stato connessione.
+     * Chiamalo UNA volta (es. in Main dopo aver creato dropdown + provider).
+     */
+    public void bindConnectionStatus(ConnectionStatusProvider statusProvider) {
+        if (statusProvider == null) return;
+
+        // evita doppio binding (altrimenti eventi doppi)
+        if (this.boundStatusProvider == statusProvider) return;
+        this.boundStatusProvider = statusProvider;
+
+        // stato iniziale
+        setOnline(statusProvider.getState() == ConnectionState.ONLINE);
+
+        // ascolta cambiamenti (sempre su EDT)
+        statusProvider.addListener(state ->
+                SwingUtilities.invokeLater(() ->
+                        setOnline(state == ConnectionState.ONLINE)
+                )
+        );
     }
 
     private void refreshTexts() {
@@ -172,6 +226,7 @@ public class AccountDropdown {
         window.pack();
         applyWindowShape();
     }
+
     private void applyWindowShape() {
         try {
             int w = window.getWidth();
@@ -203,7 +258,9 @@ public class AccountDropdown {
         window.setVisible(true);
     }
 
-    public void hide() { window.setVisible(false); }
+    public void hide() {
+        window.setVisible(false);
+    }
     public boolean isVisible() { return window.isVisible(); }
     public void setLocationOnScreen(int x, int y) { window.setLocation(x, y); }
     public int getWindowWidth() { return window.getWidth(); }
@@ -218,11 +275,11 @@ public class AccountDropdown {
         // Frame più piccolo e compatto
         card.setPreferredSize(new Dimension(scale(300), scale(360)));
 
-        // Stato in alto a destra (NON TOCCARE)
+        // Stato in alto a destra
         statusRight.applyScale(uiScale);
         statusRight.setOnline(online);
 
-        // Contenuto leggermente ridimensionato per stare nel frame più piccolo (lo stato resta invariato)
+        // Contenuto leggermente ridimensionato per stare nel frame più piccolo
         double contentScale = uiScale * 0.90;
 
         // Avatar dimensione
@@ -268,7 +325,7 @@ public class AccountDropdown {
             int h = getHeight();
             int arc = scale(18);
 
-            // La window/card sono già bianche: disegniamo solo il bordo
+            // disegniamo solo il bordo
             g2.setColor(new Color(220, 220, 220));
             g2.draw(new RoundRectangle2D.Double(0.5, 0.5, w - 1, h - 1, arc, arc));
 
@@ -276,7 +333,7 @@ public class AccountDropdown {
         }
     }
 
-    // ================= Stato (alto a destra) =================
+    // ================= Stato =================
 
     private static class StatusRight extends JComponent {
         private boolean online = true;
@@ -297,7 +354,6 @@ public class AccountDropdown {
 
         @Override
         public Dimension getPreferredSize() {
-            // più altezza per centrare meglio verticalmente
             return new Dimension(s(120), s(36));
         }
 
@@ -335,7 +391,7 @@ public class AccountDropdown {
         }
     }
 
-    // ================= Avatar: immagine centrata (clip circolare) =================
+    // ================= Avatar =================
 
     private static class AvatarCircle extends JComponent {
 
@@ -363,15 +419,8 @@ public class AccountDropdown {
             return new Dimension(d, d);
         }
 
-        @Override
-        public Dimension getMinimumSize() {
-            return getPreferredSize();
-        }
-
-        @Override
-        public Dimension getMaximumSize() {
-            return getPreferredSize();
-        }
+        @Override public Dimension getMinimumSize() { return getPreferredSize(); }
+        @Override public Dimension getMaximumSize() { return getPreferredSize(); }
 
         @Override
         protected void paintComponent(Graphics g) {
