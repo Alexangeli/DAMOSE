@@ -1,4 +1,4 @@
-package Model.Parsing;
+package Model.Parsing.Static;
 // Creatore: Alessandro Angeli
 
 // Classe che rappresenta le informazioni sulle fermate di un viaggio (file stop_times.csv nel formato GTFS)

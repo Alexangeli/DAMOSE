@@ -1,8 +1,8 @@
 package Service.Parsing;
 
-import Model.Parsing.RoutesModel;
-import Model.Parsing.ShapesModel;
-import Model.Parsing.TripsModel;
+import Model.Parsing.Static.RoutesModel;
+import Model.Parsing.Static.ShapesModel;
+import Model.Parsing.Static.TripsModel;
 
 import java.awt.Color;
 import java.util.HashMap;

@@ -1,7 +1,7 @@
 package TestParsing.TestController;
 
 import Controller.Parsing.RoutesController;
-import Model.Parsing.RoutesModel;
+import Model.Parsing.Static.RoutesModel;
 import org.junit.Test;
 
 import java.util.List;

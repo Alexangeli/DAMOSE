@@ -1,4 +1,4 @@
-package Model.Parsing;
+package Model.Parsing.Static;
 
 // Creatore: Alessandro Angeli
 

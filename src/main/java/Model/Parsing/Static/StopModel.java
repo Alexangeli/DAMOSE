@@ -1,4 +1,4 @@
-package Model.Parsing;
+package Model.Parsing.Static;
 
 import org.jxmapviewer.viewer.GeoPosition;
 

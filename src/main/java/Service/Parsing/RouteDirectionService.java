@@ -1,7 +1,7 @@
 package Service.Parsing;
 
 import Model.Map.RouteDirectionOption;
-import Model.Parsing.RoutesModel;
+import Model.Parsing.Static.RoutesModel;
 import com.opencsv.CSVReader;
 import com.opencsv.exceptions.CsvValidationException;
 

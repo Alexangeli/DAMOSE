@@ -1,6 +1,6 @@
 package Service.Points;
 
-import Model.Parsing.RoutesModel;
+import Model.Parsing.Static.RoutesModel;
 import Model.Points.StopModel;
 import Service.Parsing.StopTimesService;
 

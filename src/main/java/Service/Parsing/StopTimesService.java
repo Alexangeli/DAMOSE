@@ -1,7 +1,7 @@
 package Service.Parsing;
 
-import Model.Parsing.RoutesModel;
-import Model.Parsing.StopTimesModel;
+import Model.Parsing.Static.RoutesModel;
+import Model.Parsing.Static.StopTimesModel;
 import com.opencsv.CSVReader;
 import com.opencsv.exceptions.CsvValidationException;
 

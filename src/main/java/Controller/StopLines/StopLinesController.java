@@ -3,7 +3,7 @@ package Controller.StopLines;
 import Model.Points.StopModel;           // Stop usato nella mappa / barra (quello dei suggerimenti)
 import Service.Parsing.StopLinesService;
 import View.Map.LineStopsView;
-import Model.Parsing.RoutesModel;        // Modello GTFS delle routes
+import Model.Parsing.Static.RoutesModel;        // Modello GTFS delle routes
 
 import java.util.List;
 

@@ -1,6 +1,6 @@
 package Controller.Parsing;
 
-import Model.Parsing.StopTimesModel;
+import Model.Parsing.Static.StopTimesModel;
 import Service.Parsing.StopTimesService;
 
 import java.util.List;

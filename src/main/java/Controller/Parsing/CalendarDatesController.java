@@ -1,6 +1,6 @@
 package Controller.Parsing;
 
-import Model.Parsing.CalendarDatesModel;
+import Model.Parsing.Static.CalendarDatesModel;
 import Service.Parsing.CalendarDatesService;
 
 import java.util.List;

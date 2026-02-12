@@ -1,8 +1,8 @@
 package Controller.Map;
 
 import Model.Map.MapModel;
-import Model.Parsing.ShapesModel;
-import Model.Parsing.TripsModel;
+import Model.Parsing.Static.ShapesModel;
+import Model.Parsing.Static.TripsModel;
 import Model.Points.ClusterModel;
 import Model.Points.StopModel;
 import Service.Parsing.ShapesService;

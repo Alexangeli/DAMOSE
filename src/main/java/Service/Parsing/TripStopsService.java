@@ -1,7 +1,7 @@
 package Service.Parsing;
 
 import Model.Points.StopModel;
-import Model.Parsing.StopTimesModel;
+import Model.Parsing.Static.StopTimesModel;
 import Service.Points.StopService;
 import com.opencsv.CSVReader;
 import com.opencsv.exceptions.CsvValidationException;
