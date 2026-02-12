@@ -46,6 +46,9 @@ public class AuthDialog extends JDialog {
         cards.show(content, "login");
 
         setSize(430, 360);
+        setMinimumSize(new Dimension(430, 360));
+        setMaximumSize(new Dimension(430, 360));
+        setResizable(false);
         setLocationRelativeTo(parent);
     }
 }
