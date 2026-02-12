@@ -8,13 +8,15 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 
-public class GTFSFetcher {
+public class GTFSFetcher implements VehiclePositionFetcher {
+
     private final String gtfsRtUrl;
 
     public GTFSFetcher(String gtfsRtUrl) {
         this.gtfsRtUrl = gtfsRtUrl;
     }
 
+    @Override
     public List<GeoPosition> fetchBusPositions() throws Exception {
         List<GeoPosition> positions = new ArrayList<>();
 

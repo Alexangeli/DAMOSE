@@ -1,9 +1,11 @@
-import Service.GTFS_RT.GTFSFetcher;
 import config.AppConfig;
+
 import javax.swing.*;
 
 import Controller.DashboardController;
 import Model.User.Session;
+
+import Service.GTFS_RT.VehiclePositionService;
 
 import View.User.Account.AppShellView;
 import View.DashboardView;
@@ -20,117 +22,157 @@ public class Main {
     private static volatile int lastScreenX = 0;
     private static volatile int lastScreenY = 0;
 
+    // GTFS-RT vehicle positions feed
+    private static final String GTFS_RT_URL =
+            "https://romamobilita.it/sites/default/files/rome_rtgtfs_vehicle_positions_feed.pb";
+
     public static void main(String[] args) {
+        SwingUtilities.invokeLater(Main::startApp);
+    }
 
-        SwingUtilities.invokeLater(() -> {
+    private static void startApp() {
+        JFrame myFrame = createFrame();
 
-            JFrame myFrame = new JFrame();
-            myFrame.setTitle(AppConfig.APP_TITLE);
-            myFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-            myFrame.setResizable(true);
-            myFrame.setMinimumSize(new Dimension(800, 650));;
-            myFrame.setSize(AppConfig.DEFAULT_WIDTH, AppConfig.DEFAULT_HEIGHT);
-            myFrame.getContentPane().setBackground(AppConfig.BACKGROUND_COLOR);
+        // ---- percorsi GTFS static ----
+        final String stopsCsvPath     = "src/main/resources/rome_static_gtfs/stops.csv";
+        final String routesCsvPath    = "src/main/resources/rome_static_gtfs/routes.csv";
+        final String tripsCsvPath     = "src/main/resources/rome_static_gtfs/trips.csv";
+        final String stopTimesCsvPath = "src/main/resources/rome_static_gtfs/stop_times.csv";
 
-            final String stopsCsvPath     = "src/main/resources/rome_static_gtfs/stops.csv";
-            final String routesCsvPath    = "src/main/resources/rome_static_gtfs/routes.csv";
-            final String tripsCsvPath     = "src/main/resources/rome_static_gtfs/trips.csv";
-            final String stopTimesCsvPath = "src/main/resources/rome_static_gtfs/stop_times.csv";
+        // ---- Controller / View ----
+        DashboardController controller =
+                new DashboardController(stopsCsvPath, routesCsvPath, tripsCsvPath, stopTimesCsvPath);
 
-            DashboardController controller =
-                    new DashboardController(stopsCsvPath, routesCsvPath, tripsCsvPath, stopTimesCsvPath);
+        DashboardView dashboardView = controller.getView();
+        System.out.println("Avvio");
 
-            DashboardView dashboardView = controller.getView();
-            System.out.println("Avvio");
+        // ---- Service realtime (ONLINE/OFFLINE + fetch ogni 30s quando online) ----
+        VehiclePositionService vehicleService = new VehiclePositionService(GTFS_RT_URL);
 
-            AtomicReference<AppShellView> shellRef = new AtomicReference<>();
-            AtomicReference<AccountDropdown> dropdownRef = new AtomicReference<>();
-
-            // ---- funzione comoda: apri login/register ----
-            Runnable openAuthDialog = () -> {
-                AuthDialog dlg = new AuthDialog(myFrame, () -> {
-                    shellRef.get().refreshAuthButton();
-
-                    // Esempio: preferiti disponibili solo se loggato
-                    dashboardView.getFavoritesButton().setEnabled(Session.isLoggedIn());
-                });
-                dlg.setVisible(true);
-            };
-
-            // ---- dropdown account (Profilo / Log-out) ----
-            AccountDropdown dropdown = new AccountDropdown(
-                    myFrame,
-                    () -> JOptionPane.showMessageDialog(
-                            myFrame,
-                            "Profilo utente: " + Session.getCurrentUser().getUsername(),
-                            "Profilo",
-                            JOptionPane.INFORMATION_MESSAGE
-                    ),
-                    () -> {
-                        Session.logout();
-                        shellRef.get().refreshAuthButton();
-                        dropdownRef.get().hide();
-                    }
-            );
-            dropdownRef.set(dropdown);
-
-            // ---- shell (dashboard + floating account button) ----
-            AppShellView shell = new AppShellView(dashboardView, () -> {
-
-                if (!Session.isLoggedIn()) {
-                    openAuthDialog.run();
-                    return;
-                }
-
-                AccountDropdown dd = dropdownRef.get();
-                if (dd == null) return;
-
-                // toggle dropdown
-                if (dd.isVisible()) {
-                    dd.hide();
-                    return;
-                }
-
-                updateDropdownPosition(myFrame, dashboardView, shellRef.get(), dd);
-                dd.showAtScreen(lastScreenX, lastScreenY);
-            });
-
-            shellRef.set(shell);
-
-            // ---- ★ preferiti: guest -> login, loggato -> comportamento originale ----
-            JButton favBtn = dashboardView.getFavoritesButton();
-            ActionListener[] existing = favBtn.getActionListeners();
-            for (ActionListener al : existing) favBtn.removeActionListener(al);
-
-            favBtn.addActionListener(e -> {
-                if (!Session.isLoggedIn()) {
-                    openAuthDialog.run();
-                    return;
-                }
-                for (ActionListener al : existing) al.actionPerformed(e);
-            });
-            favBtn.setEnabled(true);
-
-            // ---- reattività dropdown: move/resize + timer ----
-            myFrame.addComponentListener(new ComponentAdapter() {
-                @Override public void componentMoved(ComponentEvent e) {
-                    updateDropdownPosition(myFrame, dashboardView, shellRef.get(), dropdownRef.get());
-                }
-                @Override public void componentResized(ComponentEvent e) {
-                    updateDropdownPosition(myFrame, dashboardView, shellRef.get(), dropdownRef.get());
-                }
-            });
-
-            Timer followTimer = new Timer(60, e ->
-                    updateDropdownPosition(myFrame, dashboardView, shellRef.get(), dropdownRef.get())
-            );
-            followTimer.start();
-
-            myFrame.setContentPane(shell);
-            myFrame.setLocationRelativeTo(null);
-            myFrame.setVisible(true);
+        vehicleService.addConnectionListener(newState -> {
+            // Qui in futuro il tuo collega aggancia il pallino verde/arancione.
+            // Se serve aggiornare la UI: SwingUtilities.invokeLater(...)
+            System.out.println("Stato connessione: " + newState);
         });
 
+        vehicleService.start();
+
+        // Stop pulito dei thread (scheduler) alla chiusura
+        myFrame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
+        myFrame.addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                try {
+                    vehicleService.stop();
+                } finally {
+                    myFrame.dispose();
+                    System.exit(0);
+                }
+            }
+        });
+
+        // ---- Shell + Account UI ----
+        AtomicReference<AppShellView> shellRef = new AtomicReference<>();
+        AtomicReference<AccountDropdown> dropdownRef = new AtomicReference<>();
+
+        // funzione comoda: apri login/register
+        Runnable openAuthDialog = () -> {
+            AuthDialog dlg = new AuthDialog(myFrame, () -> {
+                AppShellView shell = shellRef.get();
+                if (shell != null) shell.refreshAuthButton();
+
+                // preferiti disponibili solo se loggato
+                dashboardView.getFavoritesButton().setEnabled(Session.isLoggedIn());
+            });
+            dlg.setVisible(true);
+        };
+
+        // dropdown account (Profilo / Log-out)
+        AccountDropdown dropdown = new AccountDropdown(
+                myFrame,
+                () -> JOptionPane.showMessageDialog(
+                        myFrame,
+                        "Profilo utente: " + Session.getCurrentUser().getUsername(),
+                        "Profilo",
+                        JOptionPane.INFORMATION_MESSAGE
+                ),
+                () -> {
+                    Session.logout();
+                    AppShellView shell = shellRef.get();
+                    if (shell != null) shell.refreshAuthButton();
+
+                    AccountDropdown dd = dropdownRef.get();
+                    if (dd != null) dd.hide();
+                }
+        );
+        dropdownRef.set(dropdown);
+
+        // shell (dashboard + floating account button)
+        AppShellView shell = new AppShellView(dashboardView, () -> {
+
+            if (!Session.isLoggedIn()) {
+                openAuthDialog.run();
+                return;
+            }
+
+            AccountDropdown dd = dropdownRef.get();
+            if (dd == null) return;
+
+            // toggle dropdown
+            if (dd.isVisible()) {
+                dd.hide();
+                return;
+            }
+
+            updateDropdownPosition(myFrame, dashboardView, shellRef.get(), dd);
+            dd.showAtScreen(lastScreenX, lastScreenY);
+        });
+
+        shellRef.set(shell);
+
+        // ★ preferiti: guest -> login, loggato -> comportamento originale
+        JButton favBtn = dashboardView.getFavoritesButton();
+        ActionListener[] existing = favBtn.getActionListeners();
+        for (ActionListener al : existing) favBtn.removeActionListener(al);
+
+        favBtn.addActionListener(e -> {
+            if (!Session.isLoggedIn()) {
+                openAuthDialog.run();
+                return;
+            }
+            for (ActionListener al : existing) al.actionPerformed(e);
+        });
+        favBtn.setEnabled(true);
+
+        // reattività dropdown: move/resize + timer
+        myFrame.addComponentListener(new ComponentAdapter() {
+            @Override public void componentMoved(ComponentEvent e) {
+                updateDropdownPosition(myFrame, dashboardView, shellRef.get(), dropdownRef.get());
+            }
+            @Override public void componentResized(ComponentEvent e) {
+                updateDropdownPosition(myFrame, dashboardView, shellRef.get(), dropdownRef.get());
+            }
+        });
+
+        Timer followTimer = new Timer(60, e ->
+                updateDropdownPosition(myFrame, dashboardView, shellRef.get(), dropdownRef.get())
+        );
+        followTimer.start();
+
+        // ---- mostra UI ----
+        myFrame.setContentPane(shell);
+        myFrame.setLocationRelativeTo(null);
+        myFrame.setVisible(true);
+    }
+
+    private static JFrame createFrame() {
+        JFrame myFrame = new JFrame();
+        myFrame.setTitle(AppConfig.APP_TITLE);
+        myFrame.setResizable(true);
+        myFrame.setMinimumSize(new Dimension(800, 650));
+        myFrame.setSize(AppConfig.DEFAULT_WIDTH, AppConfig.DEFAULT_HEIGHT);
+        myFrame.getContentPane().setBackground(AppConfig.BACKGROUND_COLOR);
+        return myFrame;
     }
 
     private static void updateDropdownPosition(JFrame frame, DashboardView dashboardView, AppShellView shell, AccountDropdown dd) {
@@ -180,6 +222,4 @@ public class Main {
             dd.setLocationOnScreen(screenX, screenY);
         }
     }
-
-
 }
