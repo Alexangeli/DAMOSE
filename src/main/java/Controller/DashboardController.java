@@ -180,8 +180,8 @@ public class DashboardController {
         dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
         dialog.setContentPane(favoritesView);
 
-        dialog.setSize(560, 560);
-        dialog.setMinimumSize(new Dimension(460, 460));
+        dialog.setSize(600, 500);
+        dialog.setMinimumSize(new Dimension(600, 500));
         dialog.setResizable(true);
 
         dialog.setLocationRelativeTo(parent);

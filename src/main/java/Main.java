@@ -27,6 +27,7 @@ public class Main {
             myFrame.setTitle(AppConfig.APP_TITLE);
             myFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             myFrame.setResizable(true);
+            myFrame.setMinimumSize(new Dimension(800, 650));;
             myFrame.setSize(AppConfig.DEFAULT_WIDTH, AppConfig.DEFAULT_HEIGHT);
             myFrame.getContentPane().setBackground(AppConfig.BACKGROUND_COLOR);
 
