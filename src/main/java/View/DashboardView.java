@@ -336,8 +336,9 @@ public class DashboardView extends JPanel {
     // ===================== UI HELPERS =====================
 
     private JButton createOverlayStarButton() {
-        return new JButton("★") {
+        return new JButton() {
             private boolean hover = false;
+            private boolean starred = false; // ☆ quando false, ★ quando true
 
             {
                 setOpaque(false);
@@ -349,6 +350,12 @@ public class DashboardView extends JPanel {
 
                 setPreferredSize(new Dimension(40, 40));
                 setToolTipText("Aggiungi/Rimuovi dai preferiti");
+
+                // Toggle solo grafico (lo stato reale resta gestito dal backend)
+                addActionListener(e -> {
+                    starred = !starred;
+                    repaint();
+                });
 
                 addMouseListener(new MouseAdapter() {
                     @Override public void mouseEntered(MouseEvent e) { hover = true; repaint(); }
@@ -372,15 +379,28 @@ public class DashboardView extends JPanel {
                 g2.setStroke(new BasicStroke(1.0f));
                 g2.drawRoundRect(0, 0, w - 1, h - 1, arc, arc);
 
-                g2.setColor(new Color(0xFF, 0x7A, 0x00));
-                g2.setFont(getFont().deriveFont(Font.BOLD, 18f));
+                String s = starred ? "★" : "☆";
+
+                // colore: piena arancione, vuota grigio scuro
+                g2.setColor(starred ? new Color(0xFF, 0x7A, 0x00) : new Color(60, 60, 60));
+
+                g2.setFont(getFont().deriveFont(Font.BOLD, 20f));
                 FontMetrics fm = g2.getFontMetrics();
-                String s = "★";
+
                 int tx = (w - fm.stringWidth(s)) / 2;
                 int ty = (h - fm.getHeight()) / 2 + fm.getAscent();
                 g2.drawString(s, tx, ty);
 
                 g2.dispose();
+            }
+
+            public void setStarred(boolean v) {
+                starred = v;
+                repaint();
+            }
+
+            public boolean isStarred() {
+                return starred;
             }
         };
     }

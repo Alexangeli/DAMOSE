@@ -903,13 +903,23 @@ public class SearchBarView extends JPanel {
         if (suggestionsPopup == null || popupAnchor == null) return;
 
         Dimension pref = suggestions.getPanel().getPreferredSize();
-        int w = Math.max(260, Math.min(560, (pref.width > 0 ? pref.width : popupAnchor.getWidth())));
+
+        // più stretta: copre quasi tutta la searchbar ma lascia margine a destra/sinistra
+        int w = Math.max(260, Math.min(700, SearchBarView.this.getWidth() - 120));
+
+        // ALTEZZA: come prima (clamp)
         int h = Math.max(180, Math.min(420, (pref.height > 0 ? pref.height : 260)));
 
         suggestionsPopupContainer.setPreferredSize(new Dimension(w, h));
         suggestionsPopup.pack();
 
-        suggestionsPopup.show(popupAnchor, 0, popupAnchor.getHeight() + 8);
+        // POSIZIONE: ancorata sotto il RoundedSearchPanel, ma mostrata nel coordinate space della SearchBarView
+        // così possiamo allargarla senza essere limitati dalla width dell'anchor.
+        Point p = SwingUtilities.convertPoint(popupAnchor, 0, popupAnchor.getHeight(), SearchBarView.this);
+
+        // abbassa un po' di più rispetto a prima
+        int gapY = 15;
+        suggestionsPopup.show(SearchBarView.this, p.x, p.y + gapY);
         suggestionsPopup.setVisible(true);
 
         searchField.requestFocusInWindow(); // ✅ IMPORTANTISSIMO: il focus resta al field

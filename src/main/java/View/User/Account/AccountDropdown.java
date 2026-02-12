@@ -2,332 +2,413 @@ package View.User.Account;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.geom.RoundRectangle2D;
 
 /**
- * Dropdown "Account" minimal (Profilo / Log-out) realizzato con Swing.
+ * AccountDropdown (DAMOSE) - layout richiesto:
+ *  - Stato in alto a destra (puntino verde/rosso)
+ *  - Foto profilo (immagine) centrata nel riquadro bianco (clip circolare)
+ *  - "Ciao, <username>" centrato e ben distanziato
+ *  - Bottone "Gestisci il tuo account" (rettangolo arrotondato outline)
+ *  - Bottone "Logout" (rettangolo arrotondato, hover rosso)
  *
- * - Usa un JWindow trasparente come contenitore floating (si posiziona con coordinate a schermo).
- * - Disegna una "card" bianca con bordi arrotondati.
- * - Contiene due righe cliccabili:
- *      1) Profilo (normale)
- *      2) Log-out (sfondo rosso + testo bianco)
- * - Supporta ridimensionamento proporzionale tramite uiScale (setUiScale).
+ * Firma compatibile:
+ *   AccountDropdown(JFrame owner, Runnable onManage, Runnable onLogout)
  */
 public class AccountDropdown {
 
-    /** Finestra floating senza decorazioni, ancorata al frame owner. */
-    private final JWindow window;
+    private final JDialog window;
+    private final CardPanel card;
 
-    /** Pannello principale "card" con sfondo bianco e bordo arrotondato (disegnato a mano). */
-    private final JPanel card;
-
-    /**
-     * Fattore di scala UI (1.0 = default).
-     * Viene impostato dal Main in base alle dimensioni della finestra (come i bottoni floating).
-     */
     private double uiScale = 1.0;
+    // evita repack/pack continui (causano flicker su JWindow)
+    private static final double SCALE_EPS = 0.01;
+    private double lastAppliedScale = -1.0;
+    // Se arriva una nuova scala mentre la window è visibile, la applichiamo solo alla prossima apertura
+    private double pendingScale = -1.0;
 
-    /** Righe che compongono il dropdown: Profilo e Log-out. */
-    private final Row profileRow;
-    private final Row logoutRow;
+    private String username = "Nome";
+    private boolean online = true;
 
-    /**
-     * Costruisce il dropdown.
-     *
-     * @param owner     JFrame owner (necessario per JWindow e per coerenza focus/stacking)
-     * @param onProfile callback da eseguire quando l'utente clicca "Profilo"
-     * @param onLogout  callback da eseguire quando l'utente clicca "Log-out"
-     */
-    public AccountDropdown(JFrame owner, Runnable onProfile, Runnable onLogout) {
-        // JWindow: finestra senza bordi, ideale per popup floating.
-        window = new JWindow(owner);
+    private final StatusRight statusRight = new StatusRight();
+    private final AvatarCircle avatar = new AvatarCircle();
+    private final JLabel helloLabel = new JLabel();
 
-        // Background trasparente: permette di vedere solo la card disegnata.
-        window.setBackground(new Color(0, 0, 0, 0));
+    private final OutlineButton manageBtn;
+    private final HoverFillButton logoutBtn;
 
-        // "card" custom: disegna sfondo bianco con angoli arrotondati e bordo grigio chiaro.
-        card = new JPanel() {
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+    private final Runnable onManage;
+    private final Runnable onLogout;
 
-                int w = getWidth();
-                int h = getHeight();
+    public AccountDropdown(JFrame owner, Runnable onManage, Runnable onLogout) {
+        this.onManage = onManage;
+        this.onLogout = onLogout;
 
-                // Raggio angoli arrotondati della card (scalato).
-                int arc = scale(14);
+        window = new JDialog(owner);
+        window.setUndecorated(true);
+        window.setModalityType(Dialog.ModalityType.MODELESS);
+        // Evita flicker su macOS: niente trasparenza della window, usiamo una shape arrotondata
+        window.setBackground(Color.WHITE);
+        window.setFocusableWindowState(false);
 
-                // Riempimento bianco (card)
-                g2.setColor(Color.WHITE);
-                g2.fill(new RoundRectangle2D.Double(0, 0, w, h, arc, arc));
-
-                // Bordo grigio chiaro
-                g2.setColor(new Color(210, 210, 210));
-                g2.draw(new RoundRectangle2D.Double(0.5, 0.5, w - 1, h - 1, arc, arc));
-
-                g2.dispose();
-            }
-        };
-
-        // card è trasparente come componente Swing (lo sfondo lo disegniamo noi).
-        card.setOpaque(false);
-
-        // Layout verticale: una colonna con strut (spazi) + righe.
+        card = new CardPanel();
+        // Ora la window è opaca: anche la card può essere opaca
+        card.setOpaque(true);
+        card.setBackground(Color.WHITE);
         card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
 
-        // Riga "Profilo": stile normale (danger=false).
-        profileRow = new Row(
-                "/icons/profile.png",    // icona lato sinistro (risorsa in classpath)
-                "Profilo",               // testo visibile
-                false,                   // non pericolosa -> testo scuro, niente fill rosso
-                () -> {                  // click: chiude il menu e chiama callback
-                    hide();
-                    onProfile.run();
-                }
-        );
+        // ===== TOP ROW: Stato in alto a destra =====
+        JPanel topRow = new JPanel();
+        topRow.setOpaque(false);
+        topRow.setLayout(new BoxLayout(topRow, BoxLayout.X_AXIS));
 
-        // Riga "Log-out": stile danger (danger=true) -> fill rosso + testo bianco.
-        logoutRow = new Row(
-                "/icons/logout.png",
-                "Log-out",
-                true,
-                () -> {
-                    hide();
-                    onLogout.run();
-                }
-        );
+        topRow.add(Box.createHorizontalGlue());
+        topRow.add(statusRight);
+        topRow.add(Box.createHorizontalGlue());
 
-        // Composizione della card:
-        // - piccolo padding sopra
-        // - profilRow
-        // - spacer
-        // - logoutRow
-        // - padding sotto
+        // ===== CENTER COLUMN: tutto centrato nel riquadro bianco =====
+        JPanel centerCol = new JPanel();
+        centerCol.setOpaque(false);
+        centerCol.setLayout(new BoxLayout(centerCol, BoxLayout.Y_AXIS));
+        centerCol.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        helloLabel.setForeground(new Color(15, 15, 15));
+
+        manageBtn = new OutlineButton("Informazioni account");
+        logoutBtn = new HoverFillButton("Logout");
+
+        // Allineamento orizzontale: CENTRO
+        avatar.setAlignmentX(Component.CENTER_ALIGNMENT);
+        helloLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        manageBtn.setAlignmentX(Component.CENTER_ALIGNMENT);
+        logoutBtn.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        // Click actions
+        manageBtn.addActionListener(e -> {
+            hide();
+            if (this.onManage != null) this.onManage.run();
+        });
+
+        logoutBtn.addActionListener(e -> {
+            hide();
+            if (this.onLogout != null) this.onLogout.run();
+        });
+
+        // Spaziatura (ben distanziato)
+        centerCol.add(avatar);
+        centerCol.add(Box.createVerticalStrut(scale(24)));
+        centerCol.add(helloLabel);
+        centerCol.add(Box.createVerticalStrut(scale(28)));
+        centerCol.add(manageBtn);
+        centerCol.add(Box.createVerticalStrut(scale(18)));
+        centerCol.add(logoutBtn);
+
+        // ===== COMPOSE: Stato in alto a destra + contenuto centrato =====
         card.add(Box.createVerticalStrut(scale(6)));
-        card.add(profileRow);
-        card.add(Box.createVerticalStrut(scale(4)));
-        card.add(logoutRow);
-        card.add(Box.createVerticalStrut(scale(6)));
+        card.add(wrapHorizontal(scale(18), topRow));
 
-        // Mettiamo la card dentro al JWindow.
+        // spazio elastico per centrare il contenuto (sotto lo stato)
+        card.add(Box.createVerticalGlue());
+
+        card.add(centerCol);
+
+        // spazio elastico sotto
+        card.add(Box.createVerticalGlue());
+
+        card.add(Box.createVerticalStrut(scale(16)));
+
         window.setContentPane(card);
 
-        // Prima impaginazione: applica scaling coerente a righe/padding e poi fa pack.
         applyScaleToAll();
+        lastAppliedScale = uiScale;
+        refreshTexts();
         repack();
     }
 
-    // ===================== API pubblica (usata dal Main) =====================
+    // ===== setters =====
 
-    /**
-     * Aggiorna la scala UI del dropdown (font, icone, padding e altezze).
-     * Deve essere chiamata ogni volta che la finestra cambia dimensione per mantenere UI proporzionata.
-     */
+    public void setUsername(String username) {
+        if (username == null || username.isBlank()) this.username = "Nome";
+        else this.username = username;
+        refreshTexts();
+    }
+
+    /** true=online (verde), false=offline (rosso) */
+    public void setOnline(boolean online) {
+        this.online = online;
+        statusRight.setOnline(online);
+    }
+
+    private void refreshTexts() {
+        helloLabel.setText("Ciao, " + username);
+    }
+
+    // ================= API pubblica =================
+
     public void setUiScale(double s) {
         uiScale = s;
-        applyScaleToAll();   // fondamentale: ricostruisce strut e aggiorna le righe con la nuova scala
-        repack();            // pack per aggiornare la dimensione del JWindow
+
+        // Se il popup è visibile, NON ridimensionare/packare: su macOS causa flicker.
+        // Memorizza e applica alla prossima apertura.
+        if (window.isVisible()) {
+            pendingScale = uiScale;
+            return;
+        }
+
+        // Evita ricalcoli continui: applica solo se cambia davvero
+        if (lastAppliedScale < 0 || Math.abs(uiScale - lastAppliedScale) > SCALE_EPS) {
+            applyScaleToAll();
+            lastAppliedScale = uiScale;
+            repack();
+        }
     }
 
-    /**
-     * Ricalcola layout e dimensione del JWindow in base ai preferredSize correnti.
-     * Importante dopo ogni cambio scala o modifica UI interna.
-     */
     public void repack() {
-        card.revalidate();   // ricalcola layout (BoxLayout)
-        card.repaint();      // ridisegna card
-        window.pack();       // dimensiona la finestra al contenuto
+        card.revalidate();
+        card.repaint();
+        // pack può flicker se chiamato spesso; qui lo usiamo solo quando richiesto esplicitamente
+        window.pack();
+        applyWindowShape();
+    }
+    private void applyWindowShape() {
+        try {
+            int w = window.getWidth();
+            int h = window.getHeight();
+            if (w <= 0 || h <= 0) return;
+            int arc = scale(18);
+            window.setShape(new RoundRectangle2D.Double(0, 0, w, h, arc, arc));
+        } catch (Throwable ignored) {
+            // setShape può non essere supportato su alcune piattaforme
+        }
     }
 
-    /**
-     * Mostra il dropdown a coordinate assolute "screen" (x,y).
-     * Nota: viene usato dal Main dopo aver calcolato la posizione rispetto al bottone profilo.
-     */
     public void showAtScreen(int x, int y) {
-        // per sicurezza: prima aggiorna layout e dimensioni (evita bug dopo logout/login/resize)
-        applyScaleToAll();
-        repack();
+        // Applica eventuale scala rimandata (arrivata mentre era visibile)
+        if (pendingScale > 0 && (lastAppliedScale < 0 || Math.abs(pendingScale - lastAppliedScale) > SCALE_EPS)) {
+            uiScale = pendingScale;
+            pendingScale = -1.0;
+            applyScaleToAll();
+            lastAppliedScale = uiScale;
+            repack();
+        } else if (window.getWidth() <= 1 || window.getHeight() <= 1) {
+            // prima apertura: pack una volta
+            applyScaleToAll();
+            lastAppliedScale = uiScale;
+            repack();
+        }
 
         window.setLocation(x, y);
         window.setVisible(true);
     }
 
-    /** Nasconde il dropdown. */
-    public void hide() {
-        window.setVisible(false);
-    }
+    public void hide() { window.setVisible(false); }
+    public boolean isVisible() { return window.isVisible(); }
+    public void setLocationOnScreen(int x, int y) { window.setLocation(x, y); }
+    public int getWindowWidth() { return window.getWidth(); }
 
-    /** @return true se il dropdown è attualmente visibile. */
-    public boolean isVisible() {
-        return window.isVisible();
-    }
+    // ================= helpers =================
 
-    /**
-     * Sposta il dropdown a coordinate assolute "screen" (x,y) senza cambiare visibilità.
-     * Usato dal Main per farlo seguire al bottone profilo durante move/resize.
-     */
-    public void setLocationOnScreen(int x, int y) {
-        window.setLocation(x, y);
-    }
-
-    /**
-     * @return larghezza corrente del JWindow (utile al Main per clamp dentro finestra).
-     */
-    public int getWindowWidth() {
-        return window.getWidth();
-    }
-
-    // ===================== Helpers di scaling =====================
-
-    /**
-     * Converte un valore "base" (in px) in un valore scalato.
-     * Esempio: se uiScale=1.1, scale(10) -> 11.
-     */
     private int scale(int v) {
         return (int) Math.round(v * uiScale);
     }
 
-    /**
-     * Applica la scala a tutti i componenti:
-     * - ricostruisce gli spazi verticali (strut) per avere padding proporzionato
-     * - aggiorna le dimensioni/font/icone delle due righe
-     */
     private void applyScaleToAll() {
-        // Ricostruzione della card:
-        // Con BoxLayout, gli strut sono componenti reali -> per scalarli bisogna rigenerarli.
-        card.removeAll();
+        // Frame più piccolo e compatto
+        card.setPreferredSize(new Dimension(scale(300), scale(360)));
 
-        card.add(Box.createVerticalStrut(scale(6)));
-        card.add(profileRow);
-        card.add(Box.createVerticalStrut(scale(4)));
-        card.add(logoutRow);
-        card.add(Box.createVerticalStrut(scale(6)));
+        // Stato in alto a destra (NON TOCCARE)
+        statusRight.applyScale(uiScale);
+        statusRight.setOnline(online);
 
-        // Applica scaling alle righe (altezza, font, icone, padding).
-        profileRow.applyScale(uiScale);
-        logoutRow.applyScale(uiScale);
+        // Contenuto leggermente ridimensionato per stare nel frame più piccolo (lo stato resta invariato)
+        double contentScale = uiScale * 0.90;
+
+        // Avatar dimensione
+        avatar.applyScale(contentScale);
+
+        // Hello
+        helloLabel.setFont(helloLabel.getFont().deriveFont(Font.BOLD, (float) Math.round(26 * contentScale)));
+
+        // Manage button (dimensioni scalate col contenuto)
+        manageBtn.setFont(manageBtn.getFont().deriveFont(Font.PLAIN, (float) Math.round(16 * contentScale)));
+        int manageW = (int) Math.round(250 * contentScale);
+        int manageH = (int) Math.round(48 * contentScale);
+        manageBtn.setPreferredSize(new Dimension(manageW, manageH));
+        manageBtn.setMaximumSize(new Dimension(manageW, manageH));
+
+        // Logout button (dimensioni scalate col contenuto)
+        logoutBtn.setFont(logoutBtn.getFont().deriveFont(Font.BOLD, (float) Math.round(16 * contentScale)));
+        int logoutW = (int) Math.round(170 * contentScale);
+        int logoutH = (int) Math.round(44 * contentScale);
+        logoutBtn.setPreferredSize(new Dimension(logoutW, logoutH));
+        logoutBtn.setMaximumSize(new Dimension(logoutW, logoutH));
     }
 
-    // ===================== Componente interno: una riga cliccabile =====================
+    private static JComponent wrapHorizontal(int pad, JComponent child) {
+        JPanel p = new JPanel(new BorderLayout());
+        p.setOpaque(false);
+        p.setBorder(BorderFactory.createEmptyBorder(0, pad, 0, pad));
+        p.add(child, BorderLayout.CENTER);
+        return p;
+    }
 
-    /**
-     * Una riga cliccabile del menu.
-     * - layout orizzontale con: padding sinistro -> icona -> spazio -> testo -> glue -> padding destro
-     * - hover: grigio chiaro per "Profilo", rosso più scuro per "Log-out"
-     * - danger=true: disegna un rettangolo rosso arrotondato dietro la riga
-     */
-    private static class Row extends JPanel {
+    // ================= Card =================
 
-        /** true = stile "danger" (logout): fill rosso + testo bianco. */
-        private final boolean danger;
+    private class CardPanel extends JPanel {
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
 
-        /** Azione da eseguire al click. */
-        private final Runnable onClick;
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-        /** Path risorsa dell’icona (classpath). */
-        private final String iconPath;
+            int w = getWidth();
+            int h = getHeight();
+            int arc = scale(18);
 
-        /** Label icona (a sinistra). */
-        private final JLabel iconLabel = new JLabel();
+            // La window/card sono già bianche: disegniamo solo il bordo
+            g2.setColor(new Color(220, 220, 220));
+            g2.draw(new RoundRectangle2D.Double(0.5, 0.5, w - 1, h - 1, arc, arc));
 
-        /** Label testo ("Profilo" / "Log-out"). */
-        private final JLabel textLabel;
+            g2.dispose();
+        }
+    }
 
-        /** Scala applicata a questa riga (viene aggiornata da applyScale). */
+    // ================= Stato (alto a destra) =================
+
+    private static class StatusRight extends JComponent {
+        private boolean online = true;
         private double uiScale = 1.0;
 
-        /** Stato hover per cambiare colore background in paint. */
-        private boolean hover = false;
-
-        Row(String iconPath, String text, boolean danger, Runnable onClick) {
-            this.iconPath = iconPath;
-            this.danger = danger;
-            this.onClick = onClick;
-
-            // La riga è trasparente: lo sfondo lo disegniamo noi in paintComponent.
-            setOpaque(false);
-
-            // Cursore “mano” per indicare cliccabilità.
-            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-
-            // Layout orizzontale.
-            setLayout(new BoxLayout(this, BoxLayout.X_AXIS));
-
-            // Label testo.
-            textLabel = new JLabel(text);
-
-            // Listener mouse:
-            // - hover on/off
-            // - click: esegue callback
-            addMouseListener(new java.awt.event.MouseAdapter() {
-                @Override public void mouseEntered(java.awt.event.MouseEvent e) {
-                    hover = true;
-                    repaint();
-                }
-                @Override public void mouseExited(java.awt.event.MouseEvent e) {
-                    hover = false;
-                    repaint();
-                }
-                @Override public void mouseClicked(java.awt.event.MouseEvent e) {
-                    onClick.run();
-                }
-            });
-
-            // Struttura orizzontale (i valori vengono ricalcolati con applyScale):
-            add(Box.createHorizontalStrut(scale(10)));
-            add(iconLabel);
-            add(Box.createHorizontalStrut(scale(8)));
-            add(textLabel);
-            add(Box.createHorizontalGlue());
-            add(Box.createHorizontalStrut(scale(10)));
-
-            // Imposta dimensioni/font/icone con scala iniziale.
-            applyScale(1.0);
+        void setOnline(boolean online) {
+            this.online = online;
+            repaint();
         }
 
-        /**
-         * Applica la scala alla riga:
-         * - aggiorna dimensioni (preferred/max/min height)
-         * - aggiorna font del testo
-         * - aggiorna colore testo (bianco per logout)
-         * - ridimensiona l’icona
-         */
         void applyScale(double s) {
             this.uiScale = s;
-
-            // Dimensioni minimal:
-            // - width base 200 (il pack del window userà questa come riferimento)
-            // - height base 36
-            int rowW = scale(200);
-            int rowH = scale(36);
-
-            setPreferredSize(new Dimension(rowW, rowH));
-            setMaximumSize(new Dimension(Integer.MAX_VALUE, rowH)); // può allargarsi, ma altezza fissa
-            setMinimumSize(new Dimension(scale(140), rowH));
-
-            // Font piccolo e pulito
-            textLabel.setFont(textLabel.getFont().deriveFont(Font.PLAIN, (float) scale(14)));
-
-            // Colore testo:
-            // - logout (danger) => bianco
-            // - profilo => scuro
-            textLabel.setForeground(danger ? Color.WHITE : new Color(30, 30, 30));
-
-            // Icona ridimensionata (14px scalati)
-            iconLabel.setIcon(loadIcon(iconPath, scale(14)));
-
-            // Aggiorna layout e ridisegna
             revalidate();
             repaint();
         }
 
-        /**
-         * Disegna lo sfondo della riga:
-         * - danger=true: rettangolo rosso arrotondato (hover = rosso più scuro)
-         * - danger=false: hover = grigio chiarissimo
-         */
+        private int s(int v) { return (int) Math.round(v * uiScale); }
+
+        @Override
+        public Dimension getPreferredSize() {
+            // più altezza per centrare meglio verticalmente
+            return new Dimension(s(120), s(36));
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            int h = getHeight();
+
+            Font f = getFont().deriveFont(Font.PLAIN, (float) s(16));
+            g2.setFont(f);
+            FontMetrics fm = g2.getFontMetrics();
+
+            String text = "Stato";
+            int dot = s(10);
+            int gap = s(8);
+
+            int textW = fm.stringWidth(text);
+            int totalW = dot + gap + textW;
+
+            // centrato orizzontalmente nel suo box
+            int x = (getWidth() - totalW) / 2;
+            int dy = (h - dot) / 2;
+
+            g2.setColor(online ? new Color(20, 170, 70) : new Color(210, 35, 35));
+            g2.fillOval(x, dy, dot, dot);
+
+            g2.setColor(new Color(20, 20, 20));
+            int tx = x + dot + gap;
+            int ty = (h - fm.getHeight()) / 2 + fm.getAscent();
+            g2.drawString(text, tx, ty);
+
+            g2.dispose();
+        }
+    }
+
+    // ================= Avatar: immagine centrata (clip circolare) =================
+
+    private static class AvatarCircle extends JComponent {
+
+        private double uiScale = 1.0;
+        private Image image;
+
+        AvatarCircle() {
+            java.net.URL url = getClass().getResource("/immagini_profilo/immagine_profilo.png");
+            if (url != null) {
+                image = new ImageIcon(url).getImage();
+            }
+        }
+
+        void applyScale(double s) {
+            this.uiScale = s;
+            revalidate();
+            repaint();
+        }
+
+        private int s(int v) { return (int) Math.round(v * uiScale); }
+
+        @Override
+        public Dimension getPreferredSize() {
+            int d = s(105);
+            return new Dimension(d, d);
+        }
+
+        @Override
+        public Dimension getMinimumSize() {
+            return getPreferredSize();
+        }
+
+        @Override
+        public Dimension getMaximumSize() {
+            return getPreferredSize();
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            if (image == null) return;
+
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            int d = Math.min(getWidth(), getHeight());
+            int x = (getWidth() - d) / 2;
+            int y = (getHeight() - d) / 2;
+
+            g2.setClip(new java.awt.geom.Ellipse2D.Double(x, y, d, d));
+            g2.drawImage(image, x, y, d, d, null);
+
+            g2.dispose();
+        }
+    }
+
+    // ================= Buttons =================
+
+    private static class OutlineButton extends JButton {
+        private boolean hover = false;
+
+        OutlineButton(String text) {
+            super(text);
+            setFocusPainted(false);
+            setContentAreaFilled(false);
+            setOpaque(false);
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+
+            addMouseListener(new MouseAdapter() {
+                @Override public void mouseEntered(MouseEvent e) { hover = true; repaint(); }
+                @Override public void mouseExited(MouseEvent e) { hover = false; repaint(); }
+            });
+        }
+
         @Override
         protected void paintComponent(Graphics g) {
             Graphics2D g2 = (Graphics2D) g.create();
@@ -335,56 +416,56 @@ public class AccountDropdown {
 
             int w = getWidth();
             int h = getHeight();
+            int arc = 16;
 
-            // raggio angoli della riga
-            int arc = scale(10);
-
-            if (danger) {
-                // Logout: fill rosso pieno
-                Color base = new Color(210, 40, 40);
-                Color hoverC = new Color(190, 32, 32);
-
-                g2.setColor(hover ? hoverC : base);
-                // inset leggero ai lati per non "toccare" il bordo della card
-                g2.fillRoundRect(scale(6), 0, w - scale(12), h, arc, arc);
-
-            } else if (hover) {
-                // Profilo: hover grigio leggerissimo
-                g2.setColor(new Color(245, 245, 245));
-                g2.fillRoundRect(scale(6), 0, w - scale(12), h, arc, arc);
+            if (hover) {
+                g2.setColor(new Color(0, 0, 0, 10));
+                g2.fillRoundRect(0, 0, w, h, arc, arc);
             }
 
-            g2.dispose();
+            g2.setColor(new Color(25, 25, 25));
+            g2.drawRoundRect(0, 0, w - 1, h - 1, arc, arc);
 
-            // Importante: disegna figli (icona/testo).
+            g2.dispose();
             super.paintComponent(g);
         }
+    }
 
-        /** Scala locale della riga. */
-        private int scale(int v) {
-            return (int) Math.round(v * uiScale);
+    private static class HoverFillButton extends JButton {
+        private boolean hover = false;
+
+        HoverFillButton(String text) {
+            super(text);
+            setFocusPainted(false);
+            setBorderPainted(false);
+            setContentAreaFilled(false);
+            setOpaque(false);
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            setForeground(Color.WHITE);
+
+            addMouseListener(new MouseAdapter() {
+                @Override public void mouseEntered(MouseEvent e) { hover = true; repaint(); }
+                @Override public void mouseExited(MouseEvent e) { hover = false; repaint(); }
+            });
         }
 
-        /**
-         * Carica un’icona da classpath e la scala a (size x size).
-         * Se la risorsa non esiste, restituisce un’icona vuota per non rompere il layout.
-         */
-        private static Icon loadIcon(String path, int size) {
-            java.net.URL url = Row.class.getResource(path);
-            if (url == null) return new EmptyIcon(size, size);
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-            ImageIcon ii = new ImageIcon(url);
-            Image img = ii.getImage().getScaledInstance(size, size, Image.SCALE_SMOOTH);
-            return new ImageIcon(img);
-        }
+            int w = getWidth();
+            int h = getHeight();
+            int arc = 16;
 
-        /** Icona placeholder (vuota) quando la risorsa non viene trovata. */
-        private static class EmptyIcon implements Icon {
-            private final int w, h;
-            EmptyIcon(int w, int h) { this.w = w; this.h = h; }
-            public int getIconWidth() { return w; }
-            public int getIconHeight() { return h; }
-            public void paintIcon(Component c, Graphics g, int x, int y) { /* no-op */ }
+            Color base = new Color(35, 35, 35);
+            Color over = new Color(210, 35, 35);
+
+            g2.setColor(hover ? over : base);
+            g2.fillRoundRect(0, 0, w, h, arc, arc);
+
+            g2.dispose();
+            super.paintComponent(g);
         }
     }
 }
