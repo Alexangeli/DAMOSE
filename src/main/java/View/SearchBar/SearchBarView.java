@@ -1,5 +1,6 @@
 package View.SearchBar;
 
+import Controller.SearchMode.SearchMode;
 import Model.Favorites.FavoriteItem;
 import Model.Favorites.FavoriteType;
 import Model.Map.RouteDirectionOption;
@@ -13,37 +14,39 @@ import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.event.ListSelectionListener;
 
-import Controller.SearchMode.SearchMode;
-
 import java.awt.*;
-import java.awt.event.KeyAdapter;
-import java.awt.event.KeyEvent;
+import java.awt.event.*;
 import java.awt.geom.RoundRectangle2D;
+
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 public class SearchBarView extends JPanel {
 
-    // ========================== COMPONENTI UI ==========================
+    // ========================== UI COMPONENTS ==========================
 
-    private final JToggleButton modeToggle;   // pill custom
-    private final JTextField searchField;
-    private final JButton searchButton;
+    private final JToggleButton modeToggle;   // pill custom (come prima)
+    private final JTextField searchField;     // PlaceholderTextField
+    private final JButton searchButton;       // MagnifierButton
 
     private final SuggestionsView suggestions;
 
-    // ★ preferiti
+    private final JButton clearButton;       // ❌ X rossa (compare solo con testo)
+
+    // ★ preferiti (come prima)
     private final JButton favStarBtn;
 
-    // filtri linee
+    // filtri linee (come prima)
     private final JPanel lineFiltersPanel;
     private final IconToggleButton busBtn;
     private final IconToggleButton tramBtn;
     private final IconToggleButton metroBtn;
 
-    // service preferiti
+    // preferiti service
     private final FavoritesService favoritesService = new FavoritesService();
 
     // ============================ CALLBACKS ============================
@@ -54,7 +57,7 @@ public class SearchBarView extends JPanel {
     private Consumer<StopModel> onSuggestionSelected;
     private Consumer<RouteDirectionOption> onRouteDirectionSelected;
 
-    // ============================ STATO ===============================
+    // ============================ STATE ===============================
 
     private SearchMode currentMode = SearchMode.STOP;
     private Object currentStarTarget = null;
@@ -64,15 +67,43 @@ public class SearchBarView extends JPanel {
     // cache locale ultime opzioni LINEA ricevute
     private List<RouteDirectionOption> lastLineOptions = List.of();
 
+    // ✅ compact mode: mostra solo search row (ma logica identica)
+    private final boolean compactOnlySearchRow;
+
+    // popup suggerimenti (solo in compact) ma CONTIENE SuggestionsView.getPanel()
+    private JPopupMenu suggestionsPopup;
+    private JComponent suggestionsPopupContainer;
+    private Component popupAnchor; // RoundedSearchPanel
+
+    // marker per non installare più listener
+    private interface ClickAwayMarker extends MouseListener {}
+
+    private void updateClearButtonVisibility() {
+        String t = searchField.getText();
+        boolean show = (t != null && !t.isBlank());
+        if (clearButton.isVisible() != show) {
+            clearButton.setVisible(show);
+            clearButton.revalidate();
+            clearButton.repaint();
+        }
+    }
+
     public SearchBarView() {
+        this(false);
+    }
+
+    public SearchBarView(boolean compactOnlySearchRow) {
+        this.compactOnlySearchRow = compactOnlySearchRow;
+
         setLayout(new BorderLayout());
         setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        setOpaque(false);
 
         JPanel topPanel = new JPanel();
         topPanel.setLayout(new BoxLayout(topPanel, BoxLayout.Y_AXIS));
         topPanel.setOpaque(false);
 
-        // ===================== RIGA MODALITÀ + FILTRI + STAR =====================
+        // ===================== ROW MODALITÀ + FILTRI + STAR (COME PRIMA) =====================
         JPanel modeRow = new JPanel(new BorderLayout());
         modeRow.setOpaque(false);
 
@@ -89,8 +120,9 @@ public class SearchBarView extends JPanel {
 
         Dimension toggleSize = new Dimension(40, 40);
 
-        busBtn = new IconToggleButton("/icons/bus.png", "/icons/busblu.png", toggleSize, "Bus");
-        tramBtn = new IconToggleButton("/icons/tram.png", "/icons/tramverde.png", toggleSize, "Tram");
+        // ✅ OFF = bianco, ON = colorato (come tua 2ª foto)
+        busBtn   = new IconToggleButton("/icons/bus.png",   "/icons/busblu.png",     toggleSize, "Bus");
+        tramBtn  = new IconToggleButton("/icons/tram.png",  "/icons/tramverde.png",  toggleSize, "Tram");
         metroBtn = new IconToggleButton("/icons/metro.png", "/icons/metrorossa.png", toggleSize, "Metro");
 
         busBtn.setSelected(true);
@@ -105,39 +137,82 @@ public class SearchBarView extends JPanel {
         lineFiltersPanel.add(tramBtn);
         lineFiltersPanel.add(metroBtn);
 
+        JPanel leftAndFilters = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        leftAndFilters.setOpaque(false);
+        leftAndFilters.add(modeLeft);
+        leftAndFilters.add(lineFiltersPanel);
+
         favStarBtn = createRoundedAnimatedStarButton();
         JPanel starRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
         starRight.setOpaque(false);
         starRight.add(favStarBtn);
 
-        JPanel leftAndFilters = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        leftAndFilters.setOpaque(false);
-        leftAndFilters.add(modeLeft);
-        leftAndFilters.add(lineFiltersPanel);
-
         modeRow.add(leftAndFilters, BorderLayout.WEST);
         modeRow.add(starRight, BorderLayout.EAST);
 
-        // ===================== RIGA SEARCH =====================
-        JPanel searchPanel = new JPanel(new BorderLayout(10, 0));
-        searchPanel.setOpaque(false);
-        searchField = new JTextField();
-        searchButton = new JButton("Cerca");
-        searchPanel.add(searchField, BorderLayout.CENTER);
-        searchPanel.add(searchButton, BorderLayout.EAST);
+        // ===================== ROW SEARCH (DEVE RIMANERE SEMPRE UGUALE) =====================
+        searchField = new PlaceholderTextField("Cerca...");
+        searchField.setBorder(BorderFactory.createEmptyBorder(0, 12, 0, 12));
+        searchField.setOpaque(false);
 
-        topPanel.add(modeRow);
-        topPanel.add(Box.createVerticalStrut(8));
+        searchButton = new MagnifierButton();
+        searchButton.setToolTipText("Cerca");
+
+        // ✅ X rossa
+        clearButton = new ClearButton();
+        clearButton.setToolTipText("Pulisci");
+        clearButton.setVisible(false); // parte nascosta
+        clearButton.addActionListener(e -> {
+            suppressTextEvents = true;
+            searchField.setText("");
+            suppressTextEvents = false;
+
+            hideSuggestions();
+            setStarTarget(null);
+            updateClearButtonVisibility();
+
+            searchField.requestFocusInWindow();
+            if (onClear != null) onClear.run();
+        });
+
+        RoundedSearchPanel searchPanel = new RoundedSearchPanel();
+        searchPanel.setLayout(new BorderLayout(8, 0));
+        searchPanel.setOpaque(false);
+        searchPanel.add(searchField, BorderLayout.CENTER);
+
+        // ✅ destra: X + lente
+        JPanel rightButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        rightButtons.setOpaque(false);
+        rightButtons.add(clearButton);
+        rightButtons.add(searchButton);
+
+        searchPanel.add(rightButtons, BorderLayout.EAST);
+
+        // ✅ Se NON compact: sopra c’è anche modeRow (come prima)
+        if (!this.compactOnlySearchRow) {
+            topPanel.add(modeRow);
+            topPanel.add(Box.createVerticalStrut(8));
+        }
         topPanel.add(searchPanel);
 
         add(topPanel, BorderLayout.NORTH);
 
+        // ===================== SUGGESTIONSVIEW (SEMPRE LUI) =====================
         suggestions = new SuggestionsView();
-        add(suggestions.getPanel(), BorderLayout.CENTER);
+
+        if (!this.compactOnlySearchRow) {
+            add(suggestions.getPanel(), BorderLayout.CENTER);
+        } else {
+            // in compact: SuggestionsView va in popup
+            installSuggestionsPopup(searchPanel);
+        }
+
+        // ✅ QUI (fuori dal costruttore) installo i keybindings su frecce/enter/esc
+        installSearchFieldKeyBindings();
 
         setStarTarget(null);
         updateLineFiltersVisibility();
-
+            
         // ====================== DEBOUNCE ======================
         debounceTimer = new Timer(500, e -> {
             if (onTextChanged == null) return;
@@ -158,50 +233,9 @@ public class SearchBarView extends JPanel {
         });
         debounceTimer.setRepeats(false);
 
-        // ====================== EVENTI ======================
+        // ====================== EVENTS ======================
 
         searchButton.addActionListener(e -> handleSearchButton());
-
-        searchField.addKeyListener(new KeyAdapter() {
-            @Override
-            public void keyPressed(KeyEvent e) {
-
-                if (e.getKeyCode() == KeyEvent.VK_ENTER) {
-                    if (suggestions.isVisible() && suggestions.hasSuggestions()) {
-                        if (suggestions.getSelectedIndex() < 0) suggestions.selectFirstIfNone();
-                        confirmSelectedSuggestion();
-                    } else {
-                        triggerSearch();
-                    }
-                    e.consume();
-                    return;
-                }
-
-                if (!suggestions.isVisible() || !suggestions.hasSuggestions()) return;
-
-                int size = suggestions.size();
-                if (size == 0) return;
-
-                int idx = suggestions.getSelectedIndex();
-                if (idx < 0) idx = 0;
-
-                switch (e.getKeyCode()) {
-                    case KeyEvent.VK_DOWN -> {
-                        idx = (idx + 1) % size;
-                        suggestions.setSelectedIndex(idx);
-                        setStarTarget(suggestions.getSelectedValue());
-                        e.consume();
-                    }
-                    case KeyEvent.VK_UP -> {
-                        idx = (idx <= 0) ? size - 1 : idx - 1;
-                        suggestions.setSelectedIndex(idx);
-                        setStarTarget(suggestions.getSelectedValue());
-                        e.consume();
-                    }
-                    default -> {}
-                }
-            }
-        });
 
         suggestions.addListSelectionListener((ListSelectionListener) e -> {
             if (e.getValueIsAdjusting()) return;
@@ -217,19 +251,20 @@ public class SearchBarView extends JPanel {
             }
         });
 
-        suggestions.addMouseListener(new java.awt.event.MouseAdapter() {
+        suggestions.addMouseListener(new MouseAdapter() {
             @Override
-            public void mouseClicked(java.awt.event.MouseEvent e) {
+            public void mouseClicked(MouseEvent e) {
                 if (e.getClickCount() == 2) confirmSelectedSuggestion();
             }
         });
 
         searchField.getDocument().addDocumentListener(new DocumentListener() {
-            @Override public void insertUpdate(DocumentEvent e) { textChanged(); }
-            @Override public void removeUpdate(DocumentEvent e) { textChanged(); }
-            @Override public void changedUpdate(DocumentEvent e) { textChanged(); }
+            @Override public void insertUpdate(DocumentEvent e) { onDocChanged(); }
+            @Override public void removeUpdate(DocumentEvent e) { onDocChanged(); }
+            @Override public void changedUpdate(DocumentEvent e) { onDocChanged(); }
 
-            private void textChanged() {
+            private void onDocChanged() {
+                updateClearButtonVisibility();
                 if (suppressTextEvents) return;
 
                 String text = searchField.getText();
@@ -255,7 +290,76 @@ public class SearchBarView extends JPanel {
     }
 
     // ==================================================================
-    //                     GESTIONE MODALITÀ
+    // ✅ KEYBINDINGS SU SEARCHFIELD (FRECCE + ENTER + ESC)
+    // ==================================================================
+
+    private void installSearchFieldKeyBindings() {
+        InputMap im = searchField.getInputMap(JComponent.WHEN_FOCUSED);
+        ActionMap am = searchField.getActionMap();
+
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, 0), "sbv_down");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_UP, 0), "sbv_up");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "sbv_enter");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "sbv_esc");
+
+        am.put("sbv_down", new AbstractAction() {
+            @Override public void actionPerformed(java.awt.event.ActionEvent e) {
+                if (!suggestions.hasSuggestions()) return;
+
+                if (compactOnlySearchRow && suggestionsPopup != null && !suggestionsPopup.isVisible()) {
+                    showSuggestionsPopupUnderAnchor();
+                }
+
+                moveSuggestionSelection(+1);
+            }
+        });
+
+        am.put("sbv_up", new AbstractAction() {
+            @Override public void actionPerformed(java.awt.event.ActionEvent e) {
+                if (!suggestions.hasSuggestions()) return;
+
+                if (compactOnlySearchRow && suggestionsPopup != null && !suggestionsPopup.isVisible()) {
+                    showSuggestionsPopupUnderAnchor();
+                }
+
+                moveSuggestionSelection(-1);
+            }
+        });
+
+        am.put("sbv_enter", new AbstractAction() {
+            @Override public void actionPerformed(java.awt.event.ActionEvent e) {
+                if (suggestions.hasSuggestions()) {
+                    if (suggestions.getSelectedIndex() < 0) suggestions.selectFirstIfNone();
+                    confirmSelectedSuggestion();
+                } else {
+                    triggerSearch();
+                }
+            }
+        });
+
+        am.put("sbv_esc", new AbstractAction() {
+            @Override public void actionPerformed(java.awt.event.ActionEvent e) {
+                hideSuggestions();
+            }
+        });
+    }
+
+    private void moveSuggestionSelection(int delta) {
+        int size = suggestions.size();
+        if (size <= 0) return;
+
+        int idx = suggestions.getSelectedIndex();
+        if (idx < 0) idx = 0;
+
+        idx = (idx + delta) % size;
+        if (idx < 0) idx = size - 1;
+
+        suggestions.setSelectedIndex(idx);
+        setStarTarget(suggestions.getSelectedValue());
+    }
+
+    // ==================================================================
+    //                     MODE (come prima)
     // ==================================================================
 
     private void toggleMode() {
@@ -280,6 +384,10 @@ public class SearchBarView extends JPanel {
     }
 
     private void updateLineFiltersVisibility() {
+        if (compactOnlySearchRow) {
+            lineFiltersPanel.setVisible(false);
+            return;
+        }
         lineFiltersPanel.setVisible(currentMode == SearchMode.LINE);
         revalidate();
         repaint();
@@ -290,7 +398,7 @@ public class SearchBarView extends JPanel {
     }
 
     // ==================================================================
-    //                      LOGICA CERCA / INVIO
+    //                      SEARCH / CONFIRM
     // ==================================================================
 
     private void handleSearchButton() {
@@ -347,29 +455,94 @@ public class SearchBarView extends JPanel {
     }
 
     // ==================================================================
-    //                     METODI USATI DAI CONTROLLER
+    //                     CONTROLLER -> VIEW
     // ==================================================================
 
     public void hideSuggestions() {
         suggestions.hide();
+        if (compactOnlySearchRow && suggestionsPopup != null) {
+            suggestionsPopup.setVisible(false);
+        }
     }
 
     public void showStopSuggestions(List<StopModel> stops) {
-        suggestions.showStops(stops);
+        List<StopModel> dedup = dedupStops(stops);
+        suggestions.showStops(dedup);
         setStarTarget(suggestions.getSelectedValue());
+        ensureSuggestionsVisibleIfAny();
     }
 
-    /**
-     * ✅ Qui facciamo: filtro route_type -> sort numerico intelligente -> show
-     */
     public void showLineSuggestions(List<RouteDirectionOption> options) {
-        lastLineOptions = (options == null) ? List.of() : new ArrayList<>(options);
+        List<RouteDirectionOption> dedup = dedupLines(options);
+        lastLineOptions = (dedup == null) ? List.of() : new ArrayList<>(dedup);
         applyLineFiltersAndSorting();
+        ensureSuggestionsVisibleIfAny();
     }
+
+    private void ensureSuggestionsVisibleIfAny() {
+        if (!suggestions.hasSuggestions()) {
+            hideSuggestions();
+            return;
+        }
+
+        if (compactOnlySearchRow) {
+            showSuggestionsPopupUnderAnchor();
+        } else {
+            revalidate();
+            repaint();
+        }
+    }
+
+    // ==================================================================
+    //                        DEDUP HELPERS
+    // ==================================================================
+
+    private List<StopModel> dedupStops(List<StopModel> in) {
+        if (in == null || in.isEmpty()) return List.of();
+
+        Map<String, StopModel> map = new LinkedHashMap<>();
+        for (StopModel s : in) {
+            if (s == null) continue;
+
+            String key = (s.getCode() != null && !s.getCode().isBlank())
+                    ? ("code:" + s.getCode().trim())
+                    : ("name:" + safe(s.getName()).trim().toLowerCase());
+
+            map.putIfAbsent(key, s);
+        }
+        return new ArrayList<>(map.values());
+    }
+
+    private List<RouteDirectionOption> dedupLines(List<RouteDirectionOption> in) {
+        if (in == null || in.isEmpty()) return List.of();
+
+        Map<String, RouteDirectionOption> map = new LinkedHashMap<>();
+        for (RouteDirectionOption o : in) {
+            if (o == null) continue;
+
+            String key = safe(o.getRouteId()).trim()
+                    + "|" + o.getDirectionId()
+                    + "|" + safe(o.getHeadsign()).trim();
+
+            if (key.startsWith("|")) {
+                key = safe(o.getRouteShortName()).trim()
+                        + "|" + o.getDirectionId()
+                        + "|" + safe(o.getHeadsign()).trim();
+            }
+
+            map.putIfAbsent(key, o);
+        }
+        return new ArrayList<>(map.values());
+    }
+
+    // ==================================================================
+    //                     FILTRI + SORT LINEE (come tua versione)
+    // ==================================================================
 
     private void refilterVisibleLineSuggestions() {
         if (currentMode != SearchMode.LINE) return;
         applyLineFiltersAndSorting();
+        ensureSuggestionsVisibleIfAny();
     }
 
     private void applyLineFiltersAndSorting() {
@@ -383,15 +556,10 @@ public class SearchBarView extends JPanel {
         setStarTarget(suggestions.getSelectedValue());
     }
 
-    // ==================================================================
-    //                        FILTRO route_type
-    // ==================================================================
-
     private enum LineKind { BUS, TRAM, METRO, OTHER }
 
     private LineKind classify(RouteDirectionOption opt) {
         if (opt == null) return LineKind.OTHER;
-
         int t = opt.getRouteType(); // 0 tram, 1 metro, 3 bus
         return switch (t) {
             case 0 -> LineKind.TRAM;
@@ -415,16 +583,12 @@ public class SearchBarView extends JPanel {
             LineKind kind = classify(opt);
             boolean keep =
                     (kind == LineKind.BUS && busOn) ||
-                    (kind == LineKind.TRAM && tramOn) ||
-                    (kind == LineKind.METRO && metroOn);
+                            (kind == LineKind.TRAM && tramOn) ||
+                            (kind == LineKind.METRO && metroOn);
             if (keep) out.add(opt);
         }
         return out;
     }
-
-    // ==================================================================
-    //                 ✅ SORT NUMERICO "2, 20..29, 200..299, resto"
-    // ==================================================================
 
     private Comparator<RouteDirectionOption> lineSmartComparator(String queryText) {
         final String q = (queryText == null) ? "" : queryText.trim();
@@ -438,7 +602,7 @@ public class SearchBarView extends JPanel {
     }
 
     private int bucketFor(RouteDirectionOption opt, String q, Integer qNum) {
-        if (qNum == null) return 999; // query non numerica -> niente bucket speciali
+        if (qNum == null) return 999;
         if (opt == null) return 999;
 
         String shortName = safe(opt.getRouteShortName()).trim();
@@ -448,10 +612,8 @@ public class SearchBarView extends JPanel {
         String qStr = String.valueOf(qNum);
         String nStr = String.valueOf(n);
 
-        // 1) esatto "2" (solo cifre)
         if (shortName.matches("^\\d+$") && shortName.equals(qStr)) return 0;
 
-        // 2) 20..29 (una cifra in più rispetto a q)
         if (nStr.startsWith(qStr)) {
             int diff = nStr.length() - qStr.length();
             if (diff == 1) return 1;
@@ -494,7 +656,7 @@ public class SearchBarView extends JPanel {
     }
 
     // ==================================================================
-    //                         ★ BOTTONE CUSTOM
+    //                         ★ STAR BUTTON
     // ==================================================================
 
     private JButton createRoundedAnimatedStarButton() {
@@ -532,17 +694,9 @@ public class SearchBarView extends JPanel {
                 });
                 animTimer.start();
 
-                addMouseListener(new java.awt.event.MouseAdapter() {
-                    @Override
-                    public void mouseEntered(java.awt.event.MouseEvent e) {
-                        hover = true;
-                        targetScale = 1.06;
-                    }
-                    @Override
-                    public void mouseExited(java.awt.event.MouseEvent e) {
-                        hover = false;
-                        targetScale = 1.0;
-                    }
+                addMouseListener(new MouseAdapter() {
+                    @Override public void mouseEntered(MouseEvent e) { hover = true; targetScale = 1.06; }
+                    @Override public void mouseExited(MouseEvent e)  { hover = false; targetScale = 1.0; }
                 });
 
                 addActionListener(e -> onStarClicked());
@@ -558,10 +712,7 @@ public class SearchBarView extends JPanel {
 
                 int shadowOffset = 2;
                 int size = Math.min(w - shadowOffset, h - shadowOffset);
-                if (size <= 0) {
-                    g2.dispose();
-                    return;
-                }
+                if (size <= 0) { g2.dispose(); return; }
 
                 int arc = (int) (size * 0.30);
                 arc = Math.max(12, Math.min(arc, 18));
@@ -672,31 +823,162 @@ public class SearchBarView extends JPanel {
     }
 
     // ==================================================================
-    //                         SETTER CALLBACKS
+    //                         BRIDGE METHODS (Dashboard)
     // ==================================================================
 
-    public void setOnModeChanged(Consumer<SearchMode> onModeChanged) {
-        this.onModeChanged = onModeChanged;
+    public void setMode(SearchMode mode) {
+        if (mode == null) return;
+        if (this.currentMode == mode) return;
+
+        this.currentMode = mode;
+
+        if (mode == SearchMode.LINE) {
+            modeToggle.setText("Linea");
+            modeToggle.setToolTipText("Clicca per passare a ricerca per FERMATA");
+        } else {
+            modeToggle.setText("Fermata");
+            modeToggle.setToolTipText("Clicca per passare a ricerca per LINEA");
+        }
+
+        updateLineFiltersVisibility();
+        hideSuggestions();
+        setStarTarget(null);
+
+        if (onModeChanged != null) onModeChanged.accept(currentMode);
+
+        modeToggle.revalidate();
+        modeToggle.repaint();
     }
 
-    public void setOnSearch(Consumer<String> onSearch) {
-        this.onSearch = onSearch;
+    public void setLineFilters(boolean bus, boolean tram, boolean metro) {
+        busBtn.setSelected(bus);
+        tramBtn.setSelected(tram);
+        metroBtn.setSelected(metro);
+        refilterVisibleLineSuggestions();
     }
 
-    public void setOnTextChanged(Consumer<String> onTextChanged) {
-        this.onTextChanged = onTextChanged;
+    public boolean isBusSelected() { return busBtn.isSelected(); }
+    public boolean isTramSelected() { return tramBtn.isSelected(); }
+    public boolean isMetroSelected() { return metroBtn.isSelected(); }
+
+    public void clickStar() { favStarBtn.doClick(); }
+
+    public JTextField getSearchField() { return searchField; }
+    public JButton getSearchButton() { return searchButton; }
+
+    // ==================================================================
+    //                         CALLBACK SETTERS
+    // ==================================================================
+
+    public void setOnModeChanged(Consumer<SearchMode> onModeChanged) { this.onModeChanged = onModeChanged; }
+    public void setOnSearch(Consumer<String> onSearch) { this.onSearch = onSearch; }
+    public void setOnTextChanged(Consumer<String> onTextChanged) { this.onTextChanged = onTextChanged; }
+    public void setOnSuggestionSelected(Consumer<StopModel> onSuggestionSelected) { this.onSuggestionSelected = onSuggestionSelected; }
+    public void setOnRouteDirectionSelected(Consumer<RouteDirectionOption> onRouteDirectionSelected) { this.onRouteDirectionSelected = onRouteDirectionSelected; }
+    private Runnable onClear;
+    public void setOnClear(Runnable onClear) {
+    this.onClear = onClear;
+}
+    // ==================================================================
+    //                 ✅ POPUP SUGGERIMENTI (solo compact, ma con SuggestionsView)
+    // ==================================================================
+
+    private void installSuggestionsPopup(Component anchor) {
+        this.popupAnchor = anchor;
+
+        suggestionsPopup = new JPopupMenu();
+        suggestionsPopup.setBorder(BorderFactory.createEmptyBorder());
+        suggestionsPopup.setOpaque(false);
+
+        suggestionsPopupContainer = new RoundedPopupContainer();
+        suggestionsPopupContainer.setLayout(new BorderLayout());
+        suggestionsPopupContainer.add(suggestions.getPanel(), BorderLayout.CENTER);
+
+        suggestionsPopup.add(suggestionsPopupContainer);
+
+        addGlobalClickAwayListener();
     }
 
-    public void setOnSuggestionSelected(Consumer<StopModel> onSuggestionSelected) {
-        this.onSuggestionSelected = onSuggestionSelected;
+    private void showSuggestionsPopupUnderAnchor() {
+        if (suggestionsPopup == null || popupAnchor == null) return;
+
+        Dimension pref = suggestions.getPanel().getPreferredSize();
+        int w = Math.max(260, Math.min(560, (pref.width > 0 ? pref.width : popupAnchor.getWidth())));
+        int h = Math.max(180, Math.min(420, (pref.height > 0 ? pref.height : 260)));
+
+        suggestionsPopupContainer.setPreferredSize(new Dimension(w, h));
+        suggestionsPopup.pack();
+
+        suggestionsPopup.show(popupAnchor, 0, popupAnchor.getHeight() + 8);
+        suggestionsPopup.setVisible(true);
+
+        searchField.requestFocusInWindow(); // ✅ IMPORTANTISSIMO: il focus resta al field
     }
 
-    public void setOnRouteDirectionSelected(Consumer<RouteDirectionOption> onRouteDirectionSelected) {
-        this.onRouteDirectionSelected = onRouteDirectionSelected;
+    private void addGlobalClickAwayListener() {
+        SwingUtilities.invokeLater(() -> {
+            Window w = SwingUtilities.getWindowAncestor(this);
+            if (w == null) return;
+
+            for (MouseListener ml : w.getMouseListeners()) {
+                if (ml instanceof ClickAwayMarker) return;
+            }
+
+            w.addMouseListener(new ClickAwayListener());
+        });
+    }
+
+    private class ClickAwayListener extends MouseAdapter implements ClickAwayMarker {
+        @Override
+        public void mousePressed(MouseEvent e) {
+            if (suggestionsPopup == null || !suggestionsPopup.isVisible()) return;
+
+            Point p = SwingUtilities.convertPoint(e.getComponent(), e.getPoint(), SearchBarView.this);
+            Component at = SwingUtilities.getDeepestComponentAt(SearchBarView.this, p.x, p.y);
+            if (at != null && SwingUtilities.isDescendingFrom(at, SearchBarView.this)) return;
+
+            Point pp = SwingUtilities.convertPoint(e.getComponent(), e.getPoint(), suggestionsPopup);
+            Component insidePopup = SwingUtilities.getDeepestComponentAt(suggestionsPopup, pp.x, pp.y);
+            if (insidePopup != null) return;
+
+            suggestionsPopup.setVisible(false);
+        }
+    }
+
+    private static class RoundedPopupContainer extends JComponent {
+        @Override public boolean isOpaque() { return false; }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            int w = getWidth();
+            int h = getHeight();
+            int arc = 18;
+
+            g2.setColor(new Color(0, 0, 0, 25));
+            g2.fillRoundRect(4, 4, w - 8, h - 8, arc, arc);
+
+            g2.setColor(new Color(245, 245, 245, 245));
+            g2.fillRoundRect(0, 0, w - 8, h - 8, arc, arc);
+
+            g2.setColor(new Color(210, 210, 210, 200));
+            g2.setStroke(new BasicStroke(1.1f));
+            g2.drawRoundRect(0, 0, w - 8, h - 8, arc, arc);
+
+            g2.dispose();
+            super.paintComponent(g);
+        }
+
+        @Override
+        public Insets getInsets() {
+            return new Insets(6, 6, 10, 10);
+        }
     }
 
     // ==================================================================
-    //                 TOGGLE ICON BIANCO (come Preferiti)
+    //                 TOGGLE ICON (come tua UI originale)
     // ==================================================================
 
     private static class IconToggleButton extends JToggleButton {
@@ -713,6 +995,7 @@ public class SearchBarView extends JPanel {
             setBorderPainted(false);
             setFocusPainted(false);
             setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            setFocusable(false);
 
             setPreferredSize(size);
             setMinimumSize(size);
@@ -721,15 +1004,9 @@ public class SearchBarView extends JPanel {
             iconOff = load(iconOffPath);
             iconOn = load(iconOnPath);
 
-            addMouseListener(new java.awt.event.MouseAdapter() {
-                @Override public void mouseEntered(java.awt.event.MouseEvent e) {
-                    hover = true;
-                    repaint();
-                }
-                @Override public void mouseExited(java.awt.event.MouseEvent e) {
-                    hover = false;
-                    repaint();
-                }
+            addMouseListener(new MouseAdapter() {
+                @Override public void mouseEntered(MouseEvent e) { hover = true; repaint(); }
+                @Override public void mouseExited(MouseEvent e)  { hover = false; repaint(); }
             });
         }
 
@@ -748,10 +1025,10 @@ public class SearchBarView extends JPanel {
 
             int w = getWidth();
             int h = getHeight();
-
             int arc = Math.max(12, Math.min(w, h) / 3);
 
             Shape rr = new RoundRectangle2D.Double(0, 0, w, h, arc, arc);
+
             g2.setColor(Color.WHITE);
             g2.fill(rr);
 
@@ -783,7 +1060,7 @@ public class SearchBarView extends JPanel {
     }
 
     // ==================================================================
-    //                    ✅ TOGGLE "PILL" STABILE
+    //                    TOGGLE "PILL" (come prima)
     // ==================================================================
 
     private static class PillToggleButton extends JToggleButton {
@@ -807,16 +1084,11 @@ public class SearchBarView extends JPanel {
             setMaximumSize(fixed);
 
             setMargin(new Insets(6, 14, 6, 14));
+            setFocusable(false);
 
-            addMouseListener(new java.awt.event.MouseAdapter() {
-                @Override public void mouseEntered(java.awt.event.MouseEvent e) {
-                    hover = true;
-                    repaint();
-                }
-                @Override public void mouseExited(java.awt.event.MouseEvent e) {
-                    hover = false;
-                    repaint();
-                }
+            addMouseListener(new MouseAdapter() {
+                @Override public void mouseEntered(MouseEvent e) { hover = true; repaint(); }
+                @Override public void mouseExited(MouseEvent e)  { hover = false; repaint(); }
             });
         }
 
@@ -849,6 +1121,169 @@ public class SearchBarView extends JPanel {
             g2.drawString(t, tx, ty);
 
             g2.dispose();
+        }
+    }
+
+    // ==================================================================
+    //             ✅ SEARCHBAR CUSTOM: placeholder + lente + rounded panel
+    // ==================================================================
+
+    private static class ClearButton extends JButton {
+    private boolean hover = false;
+
+    ClearButton() {
+        setOpaque(false);
+        setContentAreaFilled(false);
+        setBorderPainted(false);
+        setFocusPainted(false);
+        setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        setFocusable(false);
+
+        setPreferredSize(new Dimension(46, 46));
+
+        addMouseListener(new MouseAdapter() {
+            @Override public void mouseEntered(MouseEvent e) { hover = true; repaint(); }
+            @Override public void mouseExited(MouseEvent e)  { hover = false; repaint(); }
+        });
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+        Graphics2D g2 = (Graphics2D) g.create();
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+        int w = getWidth();
+        int h = getHeight();
+
+        if (hover) {
+            g2.setColor(new Color(240, 240, 240));
+            g2.fillRoundRect(6, 6, w - 12, h - 12, 14, 14);
+        }
+
+        // X rossa
+        g2.setColor(new Color(220, 40, 40));
+        g2.setStroke(new BasicStroke(2.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+
+        int pad = 16;
+        g2.drawLine(pad, pad, w - pad, h - pad);
+        g2.drawLine(w - pad, pad, pad, h - pad);
+
+        g2.dispose();
+    }
+}
+
+    private static class PlaceholderTextField extends JTextField {
+        private final String placeholder;
+
+        PlaceholderTextField(String placeholder) {
+            this.placeholder = placeholder;
+            setFont(getFont().deriveFont(Font.PLAIN, 16f));
+            setForeground(new Color(35, 35, 35));
+            setCaretColor(new Color(35, 35, 35));
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+
+            if (placeholder == null) return;
+            String t = getText();
+            if (t != null && !t.isEmpty()) return;
+            if (isFocusOwner()) return;
+
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            g2.setColor(new Color(120, 120, 120));
+            g2.setFont(getFont().deriveFont(Font.PLAIN, 16f));
+
+            Insets in = getInsets();
+            FontMetrics fm = g2.getFontMetrics();
+            int x = in.left;
+            int y = (getHeight() - fm.getHeight()) / 2 + fm.getAscent();
+            g2.drawString(placeholder, x, y);
+
+            g2.dispose();
+        }
+    }
+
+    private static class MagnifierButton extends JButton {
+        private boolean hover = false;
+
+        MagnifierButton() {
+            setOpaque(false);
+            setContentAreaFilled(false);
+            setBorderPainted(false);
+            setFocusPainted(false);
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            setFocusable(false);
+
+            setPreferredSize(new Dimension(46, 46));
+
+            addMouseListener(new MouseAdapter() {
+                @Override public void mouseEntered(MouseEvent e) { hover = true; repaint(); }
+                @Override public void mouseExited(MouseEvent e)  { hover = false; repaint(); }
+            });
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            int w = getWidth();
+            int h = getHeight();
+
+            if (hover) {
+                g2.setColor(new Color(240, 240, 240));
+                g2.fillRoundRect(6, 6, w - 12, h - 12, 14, 14);
+            }
+
+            g2.setColor(new Color(40, 40, 40));
+            g2.setStroke(new BasicStroke(2.2f));
+
+            int cx = w / 2;
+            int cy = h / 2 - 1;
+            int r = 10;
+
+            g2.drawOval(cx - r, cy - r, r * 2, r * 2);
+            g2.drawLine(cx + r - 1, cy + r - 1, cx + r + 7, cy + r + 7);
+
+            g2.dispose();
+        }
+    }
+
+    private static class RoundedSearchPanel extends JPanel {
+        @Override public boolean isOpaque() { return false; }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            int w = getWidth();
+            int h = getHeight();
+            int arc = 18;
+
+            g2.setColor(new Color(245, 245, 245, 235));
+            g2.fillRoundRect(0, 0, w - 1, h - 1, arc, arc);
+
+            g2.setColor(new Color(190, 190, 190));
+            g2.setStroke(new BasicStroke(1.4f));
+            g2.drawRoundRect(0, 0, w - 1, h - 1, arc, arc);
+
+            g2.dispose();
+            super.paintComponent(g);
+        }
+
+        @Override
+        public Dimension getPreferredSize() {
+            return new Dimension(520, 56);
+        }
+
+        @Override
+        public Insets getInsets() {
+            return new Insets(6, 10, 6, 10);
         }
     }
 }
