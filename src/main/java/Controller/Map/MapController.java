@@ -466,148 +466,148 @@ public class MapController {
 
 
 
-//    public void highlightRouteAllDirections(String routeId) {
-//        if (routeId == null || routeId.isBlank()) return;
-//
-//        // Tutti gli shape_id associati alla route (entrambe le direzioni)
-//        List<String> shapeIds = TripsService.getAllTrips(tripsPath).stream()
-//                .filter(trip -> routeId.equals(trip.getRoute_id()))
-//                .map(TripsModel::getShape_id)
-//                .filter(id -> id != null && !id.isEmpty())
-//                .distinct()
-//                .toList();
-//
-//        // Punti shapes
-//        List<ShapesModel> shapesToDraw = ShapesService.getAllShapes(shapesPath).stream()
-//                .filter(shape -> shapeIds.contains(shape.getShape_id()))
-//                .toList();
-//
-//        shapePainter.setHighlightedShapes(shapesToDraw);
-//
-//        refreshView();
-//    }
-//    // ✅ LINE-SEARCH: evidenzia e fa fit-zoom sulla shape
-//    public void highlightRouteFitLine(String routeId, String directionId) {
-//        if (routeId == null || routeId.isBlank() || directionId == null) return;
-//
-//        List<String> shapeIds = TripsService.getAllTrips(tripsPath).stream()
-//                .filter(trip -> routeId.equals(trip.getRoute_id())
-//                        && directionId.equals(trip.getDirection_id()))
-//                .map(TripsModel::getShape_id)
-//                .filter(id -> id != null && !id.isEmpty())
-//                .distinct()
-//                .toList();
-//
-//        List<ShapesModel> shapesToDraw = ShapesService.getAllShapes(shapesPath).stream()
-//                .filter(shape -> shapeIds.contains(shape.getShape_id()))
-//                .toList();
-//
-//        shapePainter.setHighlightedShapes(shapesToDraw);
-//
-//        // ✅ dinamico: fit sull'interità linea
-//        fitMapToShapes(shapesToDraw, /*paddingPx*/ 60);
-//
-//        refreshView();
-//    }
-//
-//    // ✅ STOP-SEARCH: evidenzia SOLO colore, NON tocca zoom/centro
-//    public void highlightRouteKeepStopView(String routeId, String directionId) {
-//        if (routeId == null || routeId.isBlank() || directionId == null) return;
-//
-//        List<String> shapeIds = TripsService.getAllTrips(tripsPath).stream()
-//                .filter(trip -> routeId.equals(trip.getRoute_id())
-//                        && directionId.equals(trip.getDirection_id()))
-//                .map(TripsModel::getShape_id)
-//                .filter(id -> id != null && !id.isEmpty())
-//                .distinct()
-//                .toList();
-//
-//        List<ShapesModel> shapesToDraw = ShapesService.getAllShapes(shapesPath).stream()
-//                .filter(shape -> shapeIds.contains(shape.getShape_id()))
-//                .toList();
-//
-//        shapePainter.setHighlightedShapes(shapesToDraw);
-//
-//        // ✅ niente zoom!
-//        refreshView();
-//    }
-//
-//    private void fitMapToShapes(List<ShapesModel> shapes, int paddingPx) {
-//        if (shapes == null || shapes.isEmpty()) return;
-//
-//        JXMapViewer map = view.getMapViewer();
-//
-//        // bounds in GeoPosition
-//        double minLat = Double.POSITIVE_INFINITY, maxLat = Double.NEGATIVE_INFINITY;
-//        double minLon = Double.POSITIVE_INFINITY, maxLon = Double.NEGATIVE_INFINITY;
-//
-//        for (ShapesModel s : shapes) {
-//            double lat = Double.parseDouble(s.getShape_pt_lat());
-//            double lon = Double.parseDouble(s.getShape_pt_lon());
-//            minLat = Math.min(minLat, lat);
-//            maxLat = Math.max(maxLat, lat);
-//            minLon = Math.min(minLon, lon);
-//            maxLon = Math.max(maxLon, lon);
-//        }
-//
-//        GeoPosition center = new GeoPosition((minLat + maxLat) / 2.0, (minLon + maxLon) / 2.0);
-//
-//        // metti il centro prima, così il calcolo zoom è stabile
-//        map.setCenterPosition(center);
-//        model.setCenter(center);
-//
-//        // calcolo zoom: trova il massimo zoom che fa stare tutto nei bounds + padding
-//        int bestZoom = findBestZoomForBounds(map, minLat, maxLat, minLon, maxLon, paddingPx);
-//
-//        map.setZoom(bestZoom);
-//        model.setZoom(bestZoom);
-//        targetZoom = bestZoom;
-//    }
-//
-//    private int findBestZoomForBounds(JXMapViewer map,
-//                                      double minLat, double maxLat,
-//                                      double minLon, double maxLon,
-//                                      int paddingPx) {
-//        int minZoom = 1;
-//        int maxZoom = 15;
-//
-//        int viewW = Math.max(1, map.getViewportBounds().width);
-//        int viewH = Math.max(1, map.getViewportBounds().height);
-//
-//        // proviamo da zoom alto a zoom basso: il primo che “ci sta” è il migliore
-//        for (int z = maxZoom; z >= minZoom; z--) {
-//            Point2D p1 = map.getTileFactory().geoToPixel(new GeoPosition(maxLat, minLon), z);
-//            Point2D p2 = map.getTileFactory().geoToPixel(new GeoPosition(minLat, maxLon), z);
-//
-//            double widthPx  = Math.abs(p2.getX() - p1.getX());
-//            double heightPx = Math.abs(p2.getY() - p1.getY());
-//
-//            if (widthPx <= (viewW - 2.0 * paddingPx) && heightPx <= (viewH - 2.0 * paddingPx)) {
-//                return z;
-//            }
-//        }
-//
-//        return minZoom;
-//    }
-//
-//    // ✅ STOP-MODE: tutte le direzioni, SOLO colore, nessun cambio zoom/centro
-//    public void highlightRouteAllDirectionsKeepStopView(String routeId) {
-//        if (routeId == null || routeId.isBlank()) return;
-//
-//        List<String> shapeIds = TripsService.getAllTrips(tripsPath).stream()
-//                .filter(trip -> routeId.equals(trip.getRoute_id()))
-//                .map(TripsModel::getShape_id)
-//                .filter(id -> id != null && !id.isEmpty())
-//                .distinct()
-//                .toList();
-//
-//        List<ShapesModel> shapesToDraw = ShapesService.getAllShapes(shapesPath).stream()
-//                .filter(shape -> shapeIds.contains(shape.getShape_id()))
-//                .toList();
-//
-//        shapePainter.setHighlightedShapes(shapesToDraw);
-//
-//        // ✅ NON zoommare
-//        refreshView();
-//    }
+    public void highlightRouteAllDirections(String routeId) {
+        if (routeId == null || routeId.isBlank()) return;
+
+        // Tutti gli shape_id associati alla route (entrambe le direzioni)
+        List<String> shapeIds = TripsService.getAllTrips(tripsPath).stream()
+                .filter(trip -> routeId.equals(trip.getRoute_id()))
+                .map(TripsModel::getShape_id)
+                .filter(id -> id != null && !id.isEmpty())
+                .distinct()
+                .toList();
+
+        // Punti shapes
+        List<ShapesModel> shapesToDraw = ShapesService.getAllShapes(shapesPath).stream()
+                .filter(shape -> shapeIds.contains(shape.getShape_id()))
+                .toList();
+
+        shapePainter.setHighlightedShapes(shapesToDraw);
+
+        refreshView();
+    }
+    // ✅ LINE-SEARCH: evidenzia e fa fit-zoom sulla shape
+    public void highlightRouteFitLine(String routeId, String directionId) {
+        if (routeId == null || routeId.isBlank() || directionId == null) return;
+
+        List<String> shapeIds = TripsService.getAllTrips(tripsPath).stream()
+                .filter(trip -> routeId.equals(trip.getRoute_id())
+                        && directionId.equals(trip.getDirection_id()))
+                .map(TripsModel::getShape_id)
+                .filter(id -> id != null && !id.isEmpty())
+                .distinct()
+                .toList();
+
+        List<ShapesModel> shapesToDraw = ShapesService.getAllShapes(shapesPath).stream()
+                .filter(shape -> shapeIds.contains(shape.getShape_id()))
+                .toList();
+
+        shapePainter.setHighlightedShapes(shapesToDraw);
+
+        // ✅ dinamico: fit sull'interità linea
+        fitMapToShapes(shapesToDraw, /*paddingPx*/ 60);
+
+        refreshView();
+    }
+
+    // ✅ STOP-SEARCH: evidenzia SOLO colore, NON tocca zoom/centro
+    public void highlightRouteKeepStopView(String routeId, String directionId) {
+        if (routeId == null || routeId.isBlank() || directionId == null) return;
+
+        List<String> shapeIds = TripsService.getAllTrips(tripsPath).stream()
+                .filter(trip -> routeId.equals(trip.getRoute_id())
+                        && directionId.equals(trip.getDirection_id()))
+                .map(TripsModel::getShape_id)
+                .filter(id -> id != null && !id.isEmpty())
+                .distinct()
+                .toList();
+
+        List<ShapesModel> shapesToDraw = ShapesService.getAllShapes(shapesPath).stream()
+                .filter(shape -> shapeIds.contains(shape.getShape_id()))
+                .toList();
+
+        shapePainter.setHighlightedShapes(shapesToDraw);
+
+        // ✅ niente zoom!
+        refreshView();
+    }
+
+    private void fitMapToShapes(List<ShapesModel> shapes, int paddingPx) {
+        if (shapes == null || shapes.isEmpty()) return;
+
+        JXMapViewer map = view.getMapViewer();
+
+        // bounds in GeoPosition
+        double minLat = Double.POSITIVE_INFINITY, maxLat = Double.NEGATIVE_INFINITY;
+        double minLon = Double.POSITIVE_INFINITY, maxLon = Double.NEGATIVE_INFINITY;
+
+        for (ShapesModel s : shapes) {
+            double lat = Double.parseDouble(s.getShape_pt_lat());
+            double lon = Double.parseDouble(s.getShape_pt_lon());
+            minLat = Math.min(minLat, lat);
+            maxLat = Math.max(maxLat, lat);
+            minLon = Math.min(minLon, lon);
+            maxLon = Math.max(maxLon, lon);
+        }
+
+        GeoPosition center = new GeoPosition((minLat + maxLat) / 2.0, (minLon + maxLon) / 2.0);
+
+        // metti il centro prima, così il calcolo zoom è stabile
+        map.setCenterPosition(center);
+        model.setCenter(center);
+
+        // calcolo zoom: trova il massimo zoom che fa stare tutto nei bounds + padding
+        int bestZoom = findBestZoomForBounds(map, minLat, maxLat, minLon, maxLon, paddingPx);
+
+        map.setZoom(bestZoom);
+        model.setZoom(bestZoom);
+        targetZoom = bestZoom;
+    }
+
+    private int findBestZoomForBounds(JXMapViewer map,
+                                      double minLat, double maxLat,
+                                      double minLon, double maxLon,
+                                      int paddingPx) {
+        int minZoom = 1;
+        int maxZoom = 15;
+
+        int viewW = Math.max(1, map.getViewportBounds().width);
+        int viewH = Math.max(1, map.getViewportBounds().height);
+
+        // proviamo da zoom alto a zoom basso: il primo che “ci sta” è il migliore
+        for (int z = maxZoom; z >= minZoom; z--) {
+            Point2D p1 = map.getTileFactory().geoToPixel(new GeoPosition(maxLat, minLon), z);
+            Point2D p2 = map.getTileFactory().geoToPixel(new GeoPosition(minLat, maxLon), z);
+
+            double widthPx  = Math.abs(p2.getX() - p1.getX());
+            double heightPx = Math.abs(p2.getY() - p1.getY());
+
+            if (widthPx <= (viewW - 2.0 * paddingPx) && heightPx <= (viewH - 2.0 * paddingPx)) {
+                return z;
+            }
+        }
+
+        return minZoom;
+    }
+
+    // ✅ STOP-MODE: tutte le direzioni, SOLO colore, nessun cambio zoom/centro
+    public void highlightRouteAllDirectionsKeepStopView(String routeId) {
+        if (routeId == null || routeId.isBlank()) return;
+
+        List<String> shapeIds = TripsService.getAllTrips(tripsPath).stream()
+                .filter(trip -> routeId.equals(trip.getRoute_id()))
+                .map(TripsModel::getShape_id)
+                .filter(id -> id != null && !id.isEmpty())
+                .distinct()
+                .toList();
+
+        List<ShapesModel> shapesToDraw = ShapesService.getAllShapes(shapesPath).stream()
+                .filter(shape -> shapeIds.contains(shape.getShape_id()))
+                .toList();
+
+        shapePainter.setHighlightedShapes(shapesToDraw);
+
+        // ✅ NON zoommare
+        refreshView();
+    }
 }
