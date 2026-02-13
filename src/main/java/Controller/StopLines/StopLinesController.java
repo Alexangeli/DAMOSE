@@ -1,9 +1,10 @@
 package Controller.StopLines;
 
 import Controller.Map.MapController;
-import Model.Points.StopModel;                 // stop selezionato dalla searchbar
+import Model.Map.RouteDirectionOption;
 import Model.Parsing.Static.RoutesModel;
-import Service.Parsing.RouteDirectionsService;
+import Model.Points.StopModel;
+import Service.Parsing.RouteDirectionService;
 import Service.Parsing.StopLinesService;
 import View.Map.LineStopsView;
 
@@ -36,42 +37,54 @@ public class StopLinesController {
         this.routesCsvPath = routesCsvPath;
         this.mapController = mapController;
 
-        // ✅ Registriamo UNA SOLA VOLTA il comportamento al click sulla route (STOP-mode)
+        // ✅ comportamento al click sulla route (STOP-mode)
         this.view.setOnRouteSelected(route -> {
             if (route == null) return;
 
             mapController.clearRouteHighlight();
 
             String routeId = route.getRoute_id();
+            String shortName = route.getRoute_short_name();
 
-            // 1) Direzioni disponibili per la route (tipicamente 0 e 1)
-            List<String> dirs = RouteDirectionsService.getDirectionsForRoute(routeId, tripsCsvPath);
+            // 1) Ricavo le direzioni usando il service del gruppo (con headsign)
+            List<RouteDirectionOption> allOpts =
+                    RouteDirectionService.getDirectionsForRouteShortNameLike(
+                            shortName,
+                            routesCsvPath,
+                            tripsCsvPath
+                    );
 
-            // 2) Se non ho direzioni, disegno tutta la route ma SENZA cambiare zoom
-            if (dirs == null || dirs.isEmpty()) {
+            // 2) Tengo solo le opzioni della routeId cliccata
+            List<RouteDirectionOption> opts = allOpts.stream()
+                    .filter(o -> routeId.equals(o.getRouteId())) // <-- se getter diverso, cambialo
+                    .toList();
+
+            // 3) Se non trovo direzioni, fallback: disegna tutto SENZA cambiare zoom
+            if (opts.isEmpty()) {
                 mapController.highlightRouteAllDirectionsKeepStopView(routeId);
                 return;
             }
 
-            // 3) Se una sola direzione -> uso quella, altrimenti popup
-            String chosenDir;
-            if (dirs.size() == 1) {
-                chosenDir = dirs.get(0);
+            // 4) Se una sola direzione -> uso quella, altrimenti popup con headsign
+            RouteDirectionOption chosen;
+            if (opts.size() == 1) {
+                chosen = opts.get(0);
             } else {
                 Object selected = JOptionPane.showInputDialog(
                         null,
                         "Scegli la direzione:",
-                        "Direzione linea " + route.getRoute_short_name(),
+                        "Direzione linea " + shortName,
                         JOptionPane.QUESTION_MESSAGE,
                         null,
-                        dirs.toArray(),
-                        dirs.get(0)
+                        opts.toArray(),
+                        opts.get(0)
                 );
                 if (selected == null) return;
-                chosenDir = selected.toString();
+                chosen = (RouteDirectionOption) selected;
             }
 
-            // 4) Disegna SOLO quella direzione, SENZA cambiare zoom/centro (resta sulla fermata)
+            // 5) Disegna SOLO quella direzione, SENZA cambiare zoom/centro
+            String chosenDir = String.valueOf(chosen.getDirectionId()); // <-- se getter diverso, cambialo
             mapController.highlightRouteKeepStopView(routeId, chosenDir);
         });
     }
