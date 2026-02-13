@@ -3,6 +3,7 @@ package Service.Points;
 import Model.Parsing.Static.RoutesModel;
 import Model.Points.StopModel;
 import Service.Parsing.StopTimesService;
+import Service.Index.StopSearchIndex;
 
 import com.opencsv.CSVReader;
 import com.opencsv.exceptions.CsvValidationException;
@@ -29,6 +30,12 @@ public class StopService {
      */
     private static List<StopModel> cachedStops = null;
 
+    /**
+     * Indice di ricerca per nome e codice delle fermate.
+     * Viene popolato alla prima chiamata a {@link #getAllStops(String)} e riutilizzato per le chiamate successive.
+     */
+    private static StopSearchIndex searchIndex = null;
+
     // ==================== ACCESSO DATI ====================
 
     /**
@@ -40,6 +47,7 @@ public class StopService {
     public static List<StopModel> getAllStops(String filePath) {
         if (cachedStops == null) {
             cachedStops = readFromCSV(filePath);
+            searchIndex = new StopSearchIndex(cachedStops);
         }
         return cachedStops;
     }
@@ -122,11 +130,8 @@ public class StopService {
      * @return lista di {@link StopModel} corrispondenti
      */
     public static List<StopModel> searchByName(String name, String filePath) {
-        String q = name.toLowerCase().trim();
-        return getAllStops(filePath)
-                .stream()
-                .filter(s -> s.getName().toLowerCase().contains(q))
-                .toList();
+        getAllStops(filePath); // ensure index built
+        return searchIndex.searchByName(name);
     }
 
     /**
@@ -144,11 +149,8 @@ public class StopService {
      * @return lista di {@link StopModel} corrispondenti
      */
     public static List<StopModel> searchByCode(String code, String filePath) {
-        String q = code.toLowerCase().trim();
-        return getAllStops(filePath)
-                .stream()
-                .filter(s -> s.getCode() != null && s.getCode().toLowerCase().contains(q))
-                .toList();
+        getAllStops(filePath);
+        return searchIndex.searchByCode(code);
     }
 
     /**
