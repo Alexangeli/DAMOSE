@@ -3,6 +3,8 @@ package Controller.SearchMode;
 import Model.Map.RouteDirectionOption;
 import Model.Parsing.Static.RoutesModel;
 import Service.Parsing.RoutesService;
+import Service.Index.LineSearchIndex;
+import Service.Index.LineSearchIndex.TripInfo;
 import View.SearchBar.SearchBarView;
 
 import com.opencsv.CSVReader;
@@ -41,20 +43,7 @@ public class LineSearchController {
 
     private static boolean tripsLoaded = false;
     private static Map<String, List<TripInfo>> tripsByRouteId = new HashMap<>();
-
-    private static class TripInfo {
-        final String routeId;
-        final String tripId;
-        final int directionId;
-        final String headsign;
-
-        TripInfo(String routeId, String tripId, int directionId, String headsign) {
-            this.routeId = routeId;
-            this.tripId = tripId;
-            this.directionId = directionId;
-            this.headsign = headsign;
-        }
-    }
+    private static LineSearchIndex lineIndex = null;
 
     public LineSearchController(SearchBarView searchView,
                                 MapController mapController,
@@ -107,6 +96,7 @@ public class LineSearchController {
 
         tripsByRouteId = map;
         tripsLoaded = true;
+        lineIndex = new LineSearchIndex(allRoutes, tripsByRouteId);
         System.out.println("---LineSearchController--- Trips caricati, route distinte = " + tripsByRouteId.size());
     }
 
@@ -115,79 +105,8 @@ public class LineSearchController {
             searchView.hideSuggestions();
             return;
         }
-        String q = text.trim().toLowerCase();
-
-        // ✅ ora teniamo anche routeType
-        // routeId -> (shortName, routeType)
-        class RouteMeta {
-            final String shortName;
-            final int routeType;
-            RouteMeta(String shortName, int routeType) {
-                this.shortName = shortName;
-                this.routeType = routeType;
-            }
-        }
-
-        Map<String, RouteMeta> routeIdToMeta = new LinkedHashMap<>();
-
-        for (RoutesModel route : allRoutes) {
-            String shortName = route.getRoute_short_name();
-            if (shortName == null) continue;
-
-            if (shortName.toLowerCase().contains(q)) {
-                int type = parseRouteType(route.getRoute_type()); // ✅ GTFS route_type
-                routeIdToMeta.put(route.getRoute_id(), new RouteMeta(shortName, type));
-            }
-        }
-
-        if (routeIdToMeta.isEmpty()) {
-            searchView.showLineSuggestions(List.of());
-            return;
-        }
-
-        List<RouteDirectionOption> options = new ArrayList<>();
-
-        for (String routeId : routeIdToMeta.keySet()) {
-            RouteMeta meta = routeIdToMeta.get(routeId);
-            String shortName = meta.shortName;
-            int routeType = meta.routeType;
-
-            List<TripInfo> trips = tripsByRouteId.get(routeId);
-            if (trips == null || trips.isEmpty()) {
-                options.add(new RouteDirectionOption(routeId, shortName, -1, "", routeType));
-                continue;
-            }
-
-            Map<String, RouteDirectionOption> byDirAndHead = new LinkedHashMap<>();
-
-            for (TripInfo t : trips) {
-                if (t.directionId < 0) continue;
-                String headsign = (t.headsign == null) ? "" : t.headsign.trim();
-                String key = t.directionId + "|" + headsign;
-
-                if (!byDirAndHead.containsKey(key)) {
-                    RouteDirectionOption opt = new RouteDirectionOption(
-                            routeId,
-                            shortName,
-                            t.directionId,
-                            headsign,
-                            routeType // ✅ qui passa route_type
-                    );
-                    byDirAndHead.put(key, opt);
-                }
-            }
-
-            if (byDirAndHead.isEmpty()) {
-                options.add(new RouteDirectionOption(routeId, shortName, -1, "", routeType));
-            } else {
-                options.addAll(byDirAndHead.values());
-            }
-        }
-
-        if (options.size() > 50) {
-            options = options.subList(0, 50);
-        }
-
+        loadTripsIfNeeded(); // ensure index built
+        List<RouteDirectionOption> options = lineIndex.search(text);
         searchView.showLineSuggestions(options);
     }
 
@@ -212,11 +131,11 @@ public class LineSearchController {
     }
 
     private int parseRouteType(String s) {
-    if (s == null) return -1;
-    try {
-        return Integer.parseInt(s.trim());
-    } catch (NumberFormatException e) {
-        return -1;
+        if (s == null) return -1;
+        try {
+            return Integer.parseInt(s.trim());
+        } catch (NumberFormatException e) {
+            return -1;
+        }
     }
-}
 }
