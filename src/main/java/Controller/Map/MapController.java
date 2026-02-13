@@ -364,46 +364,6 @@ public class MapController {
         return 0;
     }
 
-    public void highlightRoute(String routeId, String directionId) {  // ← directionId AGGIUNTO
-        // Trova SOLO i trip di QUESTA direzione specifica
-        List<String> shapeIds = TripsService.getAllTrips(tripsPath).stream()
-                .filter(trip -> trip.getRoute_id().equals(routeId)
-                        && trip.getDirection_id().equals(directionId))  // ← SOLO QUESTA DIREZIONE
-                .map(TripsModel::getShape_id)
-                .filter(id -> id != null && !id.isEmpty())
-                .distinct()
-                .toList();
-
-        // Trova i punti di quelle shapes
-        List<ShapesModel> shapesToDraw = ShapesService.getAllShapes(shapesPath).stream()
-                .filter(shape -> shapeIds.contains(shape.getShape_id()))
-                .toList();
-
-        shapePainter.setHighlightedShapes(shapesToDraw);
-
-        zoomToRouteOptimal(shapesToDraw);
-    }
-
-    private void zoomToRouteOptimal(List<ShapesModel> shapes) {
-        if (shapes.isEmpty()) return;
-
-        Set<GeoPosition> positions = new HashSet<>();
-        for (ShapesModel shape : shapes) {
-            positions.add(new GeoPosition(
-                    Double.parseDouble(shape.getShape_pt_lat()),
-                    Double.parseDouble(shape.getShape_pt_lon())
-            ));
-        }
-
-        view.getMapViewer().setZoom(0);
-        view.getMapViewer().calculateZoomFrom(positions);
-
-        int finalZoom = view.getMapViewer().getZoom() - 1;
-        finalZoom = Math.max(4, Math.min(15, finalZoom));
-
-        view.getMapViewer().setZoom(finalZoom);
-    }
-
     public void clearRouteHighlight() {
         shapePainter.setHighlightedShapes(List.of());
         refreshView();
@@ -559,35 +519,80 @@ public class MapController {
         // calcolo zoom: trova il massimo zoom che fa stare tutto nei bounds + padding
         int bestZoom = findBestZoomForBounds(map, minLat, maxLat, minLon, maxLon, paddingPx);
 
-        map.setZoom(bestZoom);
-        model.setZoom(bestZoom);
-        targetZoom = bestZoom;
+        int minAllowedZoom = 10; // scegli tu (10-12)
+        int finalZoom = Math.max(minAllowedZoom, bestZoom);
+
+        map.setZoom(finalZoom);
+        model.setZoom(finalZoom);
+        targetZoom = finalZoom;
+
+        System.out.println("[fitMapToShapes] map size=" + map.getWidth() + "x" + map.getHeight()
+                + " viewport=" + map.getViewportBounds()
+                + " bestZoom=" + bestZoom);
     }
+
 
     private int findBestZoomForBounds(JXMapViewer map,
                                       double minLat, double maxLat,
                                       double minLon, double maxLon,
                                       int paddingPx) {
-        int minZoom = 1;
-        int maxZoom = 15;
 
-        int viewW = Math.max(1, map.getViewportBounds().width);
-        int viewH = Math.max(1, map.getViewportBounds().height);
+        // Range tipico JXMapViewer (dipende dal TileFactory, ma 1..15 va bene nel tuo progetto)
+        final int MIN_ZOOM = 1;
+        final int MAX_ZOOM = 15;
 
-        // proviamo da zoom alto a zoom basso: il primo che “ci sta” è il migliore
-        for (int z = maxZoom; z >= minZoom; z--) {
+        // ✅ Impedisci zoom troppo lontani (metti 10/11/12 a seconda di quanto vuoi vicino)
+        final int MIN_ALLOWED_ZOOM = 11;
+
+        // ✅ Avvicina rispetto al fit "conservativo" (0 = nessun boost, 1-3 = più vicino)
+        final int ZOOM_BOOST = 2;
+
+        // 1) Dimensioni utili del componente (più affidabili del viewport all’avvio)
+        int viewW = map.getWidth();
+        int viewH = map.getHeight();
+
+        // Fallback su viewportBounds se width/height non sono ancora pronti
+        if (viewW <= 1 || viewH <= 1) {
+            Rectangle vb = map.getViewportBounds();
+            if (vb != null) {
+                viewW = vb.width;
+                viewH = vb.height;
+            }
+        }
+
+        // Se ancora non ho una size decente, ritorno un valore sensato (vicino)
+        if (viewW <= 1 || viewH <= 1) {
+            return MIN_ALLOWED_ZOOM;
+        }
+
+        // 2) Area utilizzabile considerando padding (mai negativa)
+        int usableW = Math.max(1, viewW - 2 * paddingPx);
+        int usableH = Math.max(1, viewH - 2 * paddingPx);
+
+        // 3) Cerco lo zoom più alto (più vicino) che fa entrare i bounds
+        int best = MIN_ZOOM;
+
+        for (int z = MAX_ZOOM; z >= MIN_ZOOM; z--) {
             Point2D p1 = map.getTileFactory().geoToPixel(new GeoPosition(maxLat, minLon), z);
             Point2D p2 = map.getTileFactory().geoToPixel(new GeoPosition(minLat, maxLon), z);
 
             double widthPx  = Math.abs(p2.getX() - p1.getX());
             double heightPx = Math.abs(p2.getY() - p1.getY());
 
-            if (widthPx <= (viewW - 2.0 * paddingPx) && heightPx <= (viewH - 2.0 * paddingPx)) {
-                return z;
+            if (widthPx <= usableW && heightPx <= usableH) {
+                best = z;
+                break;
             }
         }
 
-        return minZoom;
+        // 4) Applico boost e clamp finale
+        int finalZoom = best + ZOOM_BOOST;
+        finalZoom = Math.min(MAX_ZOOM, finalZoom);
+
+        // 5) Non andare mai troppo lontano
+        finalZoom = Math.max(MIN_ALLOWED_ZOOM, finalZoom);
+
+        return finalZoom;
     }
 
     // ✅ STOP-MODE: tutte le direzioni, SOLO colore, nessun cambio zoom/centro
