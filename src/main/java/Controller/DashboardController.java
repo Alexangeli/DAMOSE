@@ -30,7 +30,7 @@ import java.awt.*;
  *        - linea   → fermate)
  *  - FavoritesView (in un popup modale aperto con il bottone ★)
  *
- * Creatore: Simone Bonuso
+ * Creatore: Simone Bonuso, Andrea Brandolini, Alessandro Angeli
  */
 public class DashboardController {
 

@@ -271,7 +271,6 @@ public class SearchBarView extends JPanel {
                 if (text == null || text.isBlank()) {
                     hideSuggestions();
                     debounceTimer.stop();
-                    setStarTarget(null);
                     return;
                 }
 
@@ -279,7 +278,6 @@ public class SearchBarView extends JPanel {
                 if (trimmed.length() < 3) {
                     hideSuggestions();
                     debounceTimer.stop();
-                    setStarTarget(null);
                     return;
                 }
 
@@ -826,6 +824,16 @@ public class SearchBarView extends JPanel {
     //                         BRIDGE METHODS (Dashboard)
     // ==================================================================
 
+    /** True se esiste una selezione (stop/linea) su cui la stella può lavorare. */
+    public boolean hasCurrentSelection() {
+        return currentStarTarget != null;
+    }
+
+    /** True se la selezione corrente è già nei preferiti. */
+    public boolean isCurrentSelectionFavorite() {
+        return currentStarTarget != null && isFavorite(currentStarTarget);
+    }
+
     public void setMode(SearchMode mode) {
         if (mode == null) return;
         if (this.currentMode == mode) return;
@@ -877,8 +885,8 @@ public class SearchBarView extends JPanel {
     public void setOnRouteDirectionSelected(Consumer<RouteDirectionOption> onRouteDirectionSelected) { this.onRouteDirectionSelected = onRouteDirectionSelected; }
     private Runnable onClear;
     public void setOnClear(Runnable onClear) {
-    this.onClear = onClear;
-}
+        this.onClear = onClear;
+    }
     // ==================================================================
     //                 ✅ POPUP SUGGERIMENTI (solo compact, ma con SuggestionsView)
     // ==================================================================
@@ -1199,7 +1207,6 @@ public class SearchBarView extends JPanel {
             if (placeholder == null) return;
             String t = getText();
             if (t != null && !t.isEmpty()) return;
-            if (isFocusOwner()) return;
 
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);

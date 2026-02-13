@@ -51,20 +51,14 @@ public class Main {
         // ---- Connection status service (ONLINE/OFFLINE) ----
         ConnectionStatusService statusService = new ConnectionStatusService(GTFS_RT_HEALTH_URL);
 
-        // Espongo al resto dell'app SOLO l'interfaccia (così la UI non dipende dalla classe concreta)
+        // Espongo al resto dell'app SOLO l'interfaccia
         ConnectionStatusProvider statusProvider = statusService;
 
-        // Stato iniziale (utile se il frontend vuole settare subito il pallino)
         System.out.println("Stato iniziale connessione: " + statusProvider.getState());
 
-        // Listener per aggiornare UI/altre parti quando cambia stato
         statusProvider.addListener(state -> {
             System.out.println("Stato connessione: " + state);
-
-            // Se il frontend aggiorna Swing, farlo su EDT:
-            // SwingUtilities.invokeLater(() -> dashboardView.setOnlineDot(state == ConnectionState.ONLINE));
-
-            // Oppure se avete un metodo dedicato nel controller/view:
+            // Se serve aggiornare Swing, usare EDT.
             // SwingUtilities.invokeLater(() -> controller.onConnectionStateChanged(state));
         });
 
@@ -95,10 +89,20 @@ public class Main {
                 if (shell != null) shell.refreshAuthButton();
 
                 // preferiti disponibili solo se loggato
-                dashboardView.getFavoritesButton().setEnabled(Session.isLoggedIn());
+                if (dashboardView.getFavoritesButton() != null) {
+                    dashboardView.getFavoritesButton().setEnabled(Session.isLoggedIn());
+                }
             });
             dlg.setVisible(true);
         };
+
+        // Se DashboardView supporta callback diretto per auth, aggancialo.
+        // (non è obbligatorio: se il metodo non esiste, commenta questa riga)
+        try {
+            dashboardView.getClass().getMethod("setOnRequireAuth", Runnable.class)
+                    .invoke(dashboardView, openAuthDialog);
+        } catch (Exception ignored) {
+        }
 
         // ---- dropdown account (Profilo / Log-out) ----
         AccountDropdown dropdown = new AccountDropdown(
@@ -116,11 +120,15 @@ public class Main {
 
                     AccountDropdown dd = dropdownRef.get();
                     if (dd != null) dd.hide();
+
+                    if (dashboardView.getFavoritesButton() != null) {
+                        dashboardView.getFavoritesButton().setEnabled(false);
+                    }
                 }
         );
         dropdownRef.set(dropdown);
         dropdown.bindConnectionStatus(statusProvider);
-        
+
         // ---- shell (dashboard + floating account button) ----
         AppShellView shell = new AppShellView(dashboardView, () -> {
 
@@ -146,17 +154,20 @@ public class Main {
 
         // ---- ★ preferiti: guest -> login, loggato -> comportamento originale ----
         JButton favBtn = dashboardView.getFavoritesButton();
-        ActionListener[] existing = favBtn.getActionListeners();
-        for (ActionListener al : existing) favBtn.removeActionListener(al);
+        if (favBtn != null) {
+            ActionListener[] existing = favBtn.getActionListeners();
+            for (ActionListener al : existing) favBtn.removeActionListener(al);
 
-        favBtn.addActionListener(e -> {
-            if (!Session.isLoggedIn()) {
-                openAuthDialog.run();
-                return;
-            }
-            for (ActionListener al : existing) al.actionPerformed(e);
-        });
-        favBtn.setEnabled(true);
+            favBtn.addActionListener(e -> {
+                if (!Session.isLoggedIn()) {
+                    openAuthDialog.run();
+                    return;
+                }
+                for (ActionListener al : existing) al.actionPerformed(e);
+            });
+
+            favBtn.setEnabled(Session.isLoggedIn());
+        }
 
         // ---- reattività dropdown: move/resize + timer ----
         myFrame.addComponentListener(new ComponentAdapter() {
@@ -192,6 +203,7 @@ public class Main {
     private static void updateDropdownPosition(JFrame frame, DashboardView dashboardView, AppShellView shell, AccountDropdown dd) {
         if (frame == null || dashboardView == null || shell == null || dd == null) return;
 
+        // UI scale basata sulla dimensione finestra
         int minSide = Math.min(frame.getWidth(), frame.getHeight());
         double scaleFactor = minSide / 900.0;
         scaleFactor = Math.max(0.75, Math.min(1.15, scaleFactor));
@@ -208,7 +220,12 @@ public class Main {
         JComponent anchor = shell.getRootLayerForPopups();
 
         Point pInRoot = SwingUtilities.convertPoint(anchor, b.x, b.y, frame.getRootPane());
-        Point frameOnScreen = frame.getLocationOnScreen();
+        Point frameOnScreen;
+        try {
+            frameOnScreen = frame.getLocationOnScreen();
+        } catch (IllegalComponentStateException ex) {
+            return;
+        }
 
         int profileLeftX   = frameOnScreen.x + pInRoot.x;
         int profileBottomY = frameOnScreen.y + pInRoot.y + b.height;
