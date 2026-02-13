@@ -1,7 +1,5 @@
 package View;
 
-import Model.User.Session;
-
 import config.AppConfig;
 
 import Controller.SearchMode.SearchMode;
@@ -80,10 +78,7 @@ public class DashboardView extends JPanel {
     private final JLayeredPane layeredPane;
     private boolean clickAwayInstalled = false;
 
-    // Callback per richiedere login (apre AuthDialog). Viene impostato dal Main.
-    private Runnable onRequireAuth;
-
-    // Sync ★ stato (abilitata solo se c'è un elemento selezionato)
+    // Sync ★ stato (abilitata solo se c'è un elemento selezionato nella SearchBarView)
     private final Timer starSyncTimer;
 
     public DashboardView() {
@@ -280,11 +275,9 @@ public class DashboardView extends JPanel {
 
         // Timer leggero: tiene allineata ★ con la selezione reale (SearchBarView)
         starSyncTimer = new Timer(120, e -> {
-            boolean hasSel = hasAnyCurrentSelection();
-            if (overlayStarBtn.isEnabled() != hasSel) {
-                overlayStarBtn.setEnabled(hasSel);
-            }
-            // repaint solo quando overlay è visibile (così non sprechiamo)
+            // ✅ Non disabilitiamo più la ★: il click deve essere sempre possibile.
+            // La logica di clickStar() nel backend gestisce il caso "nessuna selezione".
+            if (!overlayStarBtn.isEnabled()) overlayStarBtn.setEnabled(true);
             if (overlayVisible) overlayStarBtn.repaint();
         });
         starSyncTimer.setRepeats(true);
@@ -331,8 +324,8 @@ public class DashboardView extends JPanel {
         // allinea stato filtri dal backend
         pullLineFiltersFromSearchBar();
 
-        // Patch: keep enabled state and repaint star button
-        overlayStarBtn.setEnabled(hasAnyCurrentSelection());
+        // ★ sempre cliccabile: eventuale "nessuna selezione" viene gestito dal backend
+        overlayStarBtn.setEnabled(true);
         overlayStarBtn.repaint();
     }
 
@@ -438,18 +431,8 @@ public class DashboardView extends JPanel {
                 setToolTipText("Aggiungi/Rimuovi dai preferiti");
 
                 addActionListener(e -> {
-                    // Nessuna selezione -> niente
-                    if (!hasAnyCurrentSelection()) return;
-
-                    // Se non loggato -> AuthDialog (gestito dal Main)
-                    if (!Session.isLoggedIn()) {
-                        if (onRequireAuth != null) onRequireAuth.run();
-                        return;
-                    }
-
                     // delega al backend (aggiunge/rimuove preferito sull'elemento selezionato)
                     searchBarView.clickStar();
-
                     // la grafica viene letta dal backend: basta repaint
                     SwingUtilities.invokeLater(this::repaint);
                 });
@@ -476,14 +459,14 @@ public class DashboardView extends JPanel {
                 g2.setStroke(new BasicStroke(1.0f));
                 g2.drawRoundRect(0, 0, w - 1, h - 1, arc, arc);
 
-                boolean isFav = hasAnyCurrentSelection() && isCurrentSelectionFavorite();
+                boolean isFav = isCurrentSelectionFavorite();
                 String s = isFav ? "★" : "☆";
 
                 // colore: piena arancione, vuota grigio scuro, disabilitata grigio chiaro
                 Color onC = new Color(0xFF, 0x7A, 0x00);
                 Color offC = new Color(60, 60, 60);
                 Color disabledC = new Color(150, 150, 150);
-                g2.setColor(!isEnabled() ? disabledC : (isFav ? onC : offC));
+                g2.setColor(isFav ? onC : offC);
 
                 g2.setFont(getFont().deriveFont(Font.BOLD, 20f));
                 FontMetrics fm = g2.getFontMetrics();
@@ -495,11 +478,6 @@ public class DashboardView extends JPanel {
                 g2.dispose();
             }
         };
-    }
-    /** True se c'è una selezione valida (lista risultati oppure selezione interna SearchBarView). */
-    private boolean hasAnyCurrentSelection() {
-        if (lineStopsView != null && lineStopsView.hasSelection()) return true;
-        return hasCurrentSearchSelection();
     }
 
     /**
@@ -549,8 +527,8 @@ public class DashboardView extends JPanel {
      * La grafica della ★ deve dipendere SOLO da questo.
      */
     private boolean isCurrentSelectionFavorite() {
-        // Se non c'è selezione (nella SearchBarView o LineStopsView), non può essere preferito
-        if (!hasAnyCurrentSelection()) return false;
+        // Se non c'è selezione (nella SearchBarView), non può essere preferito
+        if (!hasCurrentSearchSelection()) return false;
 
         // Proviamo diversi nomi possibili sul backend (SearchBarView)
         String[] candidates = {
@@ -861,12 +839,5 @@ public class DashboardView extends JPanel {
 
             g2.dispose();
         }
-    }
-
-    /**
-     * Impostato dal Main: se l'utente clicca ★ senza essere loggato, apriamo l'AuthDialog.
-     */
-    public void setOnRequireAuth(Runnable onRequireAuth) {
-        this.onRequireAuth = onRequireAuth;
     }
 }

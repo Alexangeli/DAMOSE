@@ -63,6 +63,7 @@ public class SearchBarView extends JPanel {
     private Object currentStarTarget = null;
     private boolean suppressTextEvents = false;
     private final Timer debounceTimer;
+    private boolean inputUnlocked = false;
 
     // cache locale ultime opzioni LINEA ricevute
     private List<RouteDirectionOption> lastLineOptions = List.of();
@@ -154,6 +155,7 @@ public class SearchBarView extends JPanel {
         searchField = new PlaceholderTextField("Cerca...");
         searchField.setBorder(BorderFactory.createEmptyBorder(0, 12, 0, 12));
         searchField.setOpaque(false);
+        searchField.setEditable(false);
 
         searchButton = new MagnifierButton();
         searchButton.setToolTipText("Cerca");
@@ -212,6 +214,7 @@ public class SearchBarView extends JPanel {
 
         setStarTarget(null);
         updateLineFiltersVisibility();
+        
             
         // ====================== DEBOUNCE ======================
         debounceTimer = new Timer(500, e -> {
@@ -1302,5 +1305,50 @@ public class SearchBarView extends JPanel {
         public Insets getInsets() {
             return new Insets(6, 10, 6, 10);
         }
+    }
+
+    // ==================================================================
+    //                         BRIDGE METHODS (Dashboard)
+    // ==================================================================
+
+    // ✅ usati dalla Dashboard: selezione corrente e stato preferito
+    public boolean hasCurrentSelection() {
+        return currentStarTarget != null;
+    }
+
+    public boolean isCurrentSelectionFavorite() {
+        return currentStarTarget != null && isFavorite(currentStarTarget);
+    }
+
+    private void lockInput() {
+    inputUnlocked = false;
+
+    suppressTextEvents = true;
+    searchField.setText("");
+    suppressTextEvents = false;
+
+    updateClearButtonVisibility();
+    searchField.setEditable(false);
+
+    suggestions.hide();
+    if (compactOnlySearchRow && suggestionsPopup != null) {
+        suggestionsPopup.setVisible(false);
+    }
+}
+
+    private void unlockInputAndOpenDropdown() {
+        inputUnlocked = true;
+        searchField.setEditable(true);
+
+        if (compactOnlySearchRow) {
+            showSuggestionsPopupUnderAnchor();
+        } else {
+            suggestions.getPanel().setVisible(true);
+            revalidate();
+            repaint();
+        }
+
+        searchField.requestFocusInWindow();
+        searchField.setCaretPosition(searchField.getText().length());
     }
 }
