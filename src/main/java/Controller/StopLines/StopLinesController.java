@@ -2,10 +2,12 @@ package Controller.StopLines;
 
 import Controller.Map.MapController;
 import Model.Points.StopModel;                 // stop selezionato dalla searchbar
+import Model.Parsing.Static.RoutesModel;
+import Service.Parsing.RouteDirectionsService;
 import Service.Parsing.StopLinesService;
 import View.Map.LineStopsView;
-import Model.Parsing.Static.RoutesModel;
 
+import javax.swing.*;
 import java.util.List;
 
 /**
@@ -34,13 +36,43 @@ public class StopLinesController {
         this.routesCsvPath = routesCsvPath;
         this.mapController = mapController;
 
-        // Quando l'utente clicca una linea nella lista (modalità STOP), evidenzia la shape
+        // ✅ Registriamo UNA SOLA VOLTA il comportamento al click sulla route (STOP-mode)
         this.view.setOnRouteSelected(route -> {
             if (route == null) return;
 
-            // pulisci prima e poi evidenzia tutta la route (tutte le direzioni)
             mapController.clearRouteHighlight();
-            mapController.highlightRouteAllDirections(route.getRoute_id());
+
+            String routeId = route.getRoute_id();
+
+            // 1) Direzioni disponibili per la route (tipicamente 0 e 1)
+            List<String> dirs = RouteDirectionsService.getDirectionsForRoute(routeId, tripsCsvPath);
+
+            // 2) Se non ho direzioni, disegno tutta la route ma SENZA cambiare zoom
+            if (dirs == null || dirs.isEmpty()) {
+                mapController.highlightRouteAllDirectionsKeepStopView(routeId);
+                return;
+            }
+
+            // 3) Se una sola direzione -> uso quella, altrimenti popup
+            String chosenDir;
+            if (dirs.size() == 1) {
+                chosenDir = dirs.get(0);
+            } else {
+                Object selected = JOptionPane.showInputDialog(
+                        null,
+                        "Scegli la direzione:",
+                        "Direzione linea " + route.getRoute_short_name(),
+                        JOptionPane.QUESTION_MESSAGE,
+                        null,
+                        dirs.toArray(),
+                        dirs.get(0)
+                );
+                if (selected == null) return;
+                chosenDir = selected.toString();
+            }
+
+            // 4) Disegna SOLO quella direzione, SENZA cambiare zoom/centro (resta sulla fermata)
+            mapController.highlightRouteKeepStopView(routeId, chosenDir);
         });
     }
 
@@ -53,7 +85,7 @@ public class StopLinesController {
             return;
         }
 
-        String stopId   = stop.getId();    // assumiamo che sia lo stop_id di stops.csv
+        String stopId   = stop.getId();    // stop_id GTFS
         String stopName = stop.getName();
 
         System.out.println("---StopLinesController--- showLinesForStop | stopId=" + stopId);
