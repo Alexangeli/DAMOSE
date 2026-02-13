@@ -1,7 +1,7 @@
 package View.Map;
 
-import Model.Parsing.Static.RoutesModel;    // SOLO per showLinesAtStop (linee che passano da una fermata)
-import Model.Points.StopModel;      // SOLO per showLineStops (fermate di una linea)
+import Model.Parsing.Static.RoutesModel;    // modalità FERMATA: linee che passano per una fermata
+import Model.Points.StopModel;              // modalità LINEA: fermate di una linea
 
 import javax.swing.*;
 
@@ -11,14 +11,12 @@ import javax.swing.event.ListSelectionListener;
 import java.awt.*;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * Pannello informativo a sinistra: mostra
  *  - le fermate di una linea (modalità LINEA)
  *  - le linee che passano da una fermata (modalità FERMATA)
- *
- * Per semplicità interna usa una JList<String> per visualizzare il testo,
- * ma mantiene anche la lista di StopModel per poter zoomare sulla mappa.
  *
  * Creatore: Simone Bonuso
  */
@@ -28,9 +26,16 @@ public class LineStopsView extends JPanel {
     private final DefaultListModel<String> listModel;
     private final JList<String> list;
 
-    // === NUOVO: memorizziamo le fermate e il MapController ===
+    // ======= LINE MODE (linea -> fermate) =======
     private List<StopModel> currentStops = Collections.emptyList();
     private MapController mapController;
+
+    // ======= STOP MODE (fermata -> linee) =======
+    private List<RoutesModel> currentRoutes = Collections.emptyList();
+    private Consumer<RoutesModel> onRouteSelected;
+
+    private enum PanelMode { NONE, LINE_STOPS, STOP_ROUTES }
+    private PanelMode panelMode = PanelMode.NONE;
 
     public LineStopsView() {
         setLayout(new BorderLayout());
@@ -48,32 +53,53 @@ public class LineStopsView extends JPanel {
         JScrollPane scroll = new JScrollPane(list);
         add(scroll, BorderLayout.CENTER);
 
-        // === NUOVO: quando cambia la selezione (freccette o click) zoommiamo sulla fermata ===
+        // Listener unico: si comporta in modo diverso in base alla modalità
         list.addListSelectionListener(e -> {
-            if (e.getValueIsAdjusting()) return;           // evita eventi doppi
-            if (mapController == null) return;
-            if (currentStops == null || currentStops.isEmpty()) return;
+            if (e.getValueIsAdjusting()) return;
 
             int idx = list.getSelectedIndex();
-            if (idx < 0 || idx >= currentStops.size()) return;
+            if (idx < 0) return;
 
-            StopModel stop = currentStops.get(idx);
-            mapController.centerMapOnGtfsStop(stop);       // usa il metodo che hai già nel MapController
+            // --- LINEA -> FERMATE: zoom sulle fermate ---
+            if (panelMode == PanelMode.LINE_STOPS) {
+                if (mapController == null) return;
+                if (currentStops == null || currentStops.isEmpty()) return;
+                if (idx >= currentStops.size()) return;
+
+                StopModel stop = currentStops.get(idx);
+                mapController.centerMapOnGtfsStop(stop);
+                return;
+            }
+
+            // --- FERMATA -> LINEE: callback route selezionata ---
+            if (panelMode == PanelMode.STOP_ROUTES) {
+                if (currentRoutes == null || currentRoutes.isEmpty()) return;
+                if (idx >= currentRoutes.size()) return;
+                if (onRouteSelected == null) return;
+
+                onRouteSelected.accept(currentRoutes.get(idx));
+            }
         });
+    }
+
+    /** Consente al controller di ricevere la route selezionata in modalità STOP. */
+    public void setOnRouteSelected(Consumer<RoutesModel> cb) {
+        this.onRouteSelected = cb;
     }
 
     /**
      * Modalità LINEA:
      * mostra tutte le fermate della linea/direzione selezionata.
-     *
-     * @param label testo da mostrare come titolo
-     * @param stops lista di fermate GTFS (Model.Parsing.StopModel)
-     * @param mapController controller della mappa (serve per zoomare sulle fermate)
      */
     public void showLineStops(String label, List<StopModel> stops, MapController mapController) {
-        // salviamo per poter usare frecce/click
+        this.panelMode = PanelMode.LINE_STOPS;
+
+        // salviamo per poter usare click/frecce
         this.mapController = mapController;
         this.currentStops = (stops != null) ? stops : Collections.emptyList();
+
+        // reset stop-mode cache
+        this.currentRoutes = Collections.emptyList();
 
         titleLabel.setText(label != null ? label : "Fermate della linea");
         listModel.clear();
@@ -90,11 +116,9 @@ public class LineStopsView extends JPanel {
             }
         }
 
-        // se vuoi continuare a nascondere le fermate inutili:
+        // nasconde le fermate inutili (se vuoi mantenere questo comportamento)
         if (mapController != null && stops != null && !stops.isEmpty()) {
             mapController.hideUselessStops(stops);
-            // opzionale: centra subito sulla prima fermata della linea
-            // mapController.centerMapOnGtfsStop(stops.get(0));
         }
 
         revalidate();
@@ -106,13 +130,17 @@ public class LineStopsView extends JPanel {
      * mostra tutte le linee che passano per una fermata.
      */
     public void showLinesAtStop(String stopName, List<RoutesModel> routes) {
+        this.panelMode = PanelMode.STOP_ROUTES;
+
         String label = "Linee che passano per: " + stopName;
         titleLabel.setText(label);
         listModel.clear();
 
-        // in modalità FERMATA non usiamo currentStops / mapController
+        // reset line-mode cache
         this.currentStops = Collections.emptyList();
         this.mapController = null;
+
+        this.currentRoutes = (routes != null) ? routes : Collections.emptyList();
 
         if (routes != null && !routes.isEmpty()) {
             for (RoutesModel r : routes) {
@@ -132,24 +160,28 @@ public class LineStopsView extends JPanel {
         repaint();
     }
 
-    /**
-     * Pulisce il pannello.
-     */
+    /** Pulisce il pannello. */
     public void clear() {
+        panelMode = PanelMode.NONE;
+
         titleLabel.setText("Nessuna selezione");
         listModel.clear();
+
         currentStops = Collections.emptyList();
+        currentRoutes = Collections.emptyList();
         mapController = null;
+
         revalidate();
         repaint();
     }
-    /** True se c'è una selezione attiva nella lista (serve per abilitare/disabilitare la stella). */
-public boolean hasSelection() {
-    return list.getSelectedIndex() >= 0;
-}
 
-/** Permette a chi usa la view di ascoltare i cambi di selezione della lista. */
-public void addSelectionListener(ListSelectionListener l) {
-    list.addListSelectionListener(l);
-}
+    /** True se c'è una selezione attiva nella lista (serve per abilitare/disabilitare la stella). */
+    public boolean hasSelection() {
+        return list.getSelectedIndex() >= 0;
+    }
+
+    /** Permette a chi usa la view di ascoltare i cambi di selezione della lista. */
+    public void addSelectionListener(ListSelectionListener l) {
+        list.addListSelectionListener(l);
+    }
 }

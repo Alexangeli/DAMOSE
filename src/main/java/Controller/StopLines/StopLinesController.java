@@ -1,9 +1,10 @@
 package Controller.StopLines;
 
-import Model.Points.StopModel;           // Stop usato nella mappa / barra (quello dei suggerimenti)
+import Controller.Map.MapController;
+import Model.Points.StopModel;                 // stop selezionato dalla searchbar
 import Service.Parsing.StopLinesService;
 import View.Map.LineStopsView;
-import Model.Parsing.Static.RoutesModel;        // Modello GTFS delle routes
+import Model.Parsing.Static.RoutesModel;
 
 import java.util.List;
 
@@ -20,27 +21,31 @@ public class StopLinesController {
     private final String stopTimesPath;
     private final String tripsCsvPath;
     private final String routesCsvPath;
+    private final MapController mapController;
 
-    /**
-     * Costruttore usato in DashboardController:
-     *
-     * new StopLinesController(lineStops, stopTimesPath, tripsCsvPath, routesCsvPath);
-     */
     public StopLinesController(LineStopsView view,
                                String stopTimesPath,
                                String tripsCsvPath,
-                               String routesCsvPath) {
+                               String routesCsvPath,
+                               MapController mapController) {
         this.view = view;
         this.stopTimesPath = stopTimesPath;
         this.tripsCsvPath = tripsCsvPath;
         this.routesCsvPath = routesCsvPath;
+        this.mapController = mapController;
+
+        // Quando l'utente clicca una linea nella lista (modalità STOP), evidenzia la shape
+        this.view.setOnRouteSelected(route -> {
+            if (route == null) return;
+
+            // pulisci prima e poi evidenzia tutta la route (tutte le direzioni)
+            mapController.clearRouteHighlight();
+            mapController.highlightRouteAllDirections(route.getRoute_id());
+        });
     }
 
     /**
-     * Chiamato quando, in modalità FERMATA, l'utente ha selezionato una fermata
-     * (dalla tendina dei suggerimenti o da altro).
-     *
-     * Usa lo stopId del Model.Points.StopModel come stop_id GTFS.
+     * Chiamato quando, in modalità FERMATA, l'utente ha selezionato una fermata.
      */
     public void showLinesForStop(StopModel stop) {
         if (stop == null) {

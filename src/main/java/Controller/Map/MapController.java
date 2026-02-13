@@ -462,4 +462,26 @@ public class MapController {
         loadStops(stopsCsvPath);
         refreshView();
     }
+
+    public void highlightRouteAllDirections(String routeId) {
+        if (routeId == null || routeId.isBlank()) return;
+
+        // Tutti gli shape_id associati alla route (entrambe le direzioni)
+        List<String> shapeIds = TripsService.getAllTrips(tripsPath).stream()
+                .filter(trip -> routeId.equals(trip.getRoute_id()))
+                .map(TripsModel::getShape_id)
+                .filter(id -> id != null && !id.isEmpty())
+                .distinct()
+                .toList();
+
+        // Punti shapes
+        List<ShapesModel> shapesToDraw = ShapesService.getAllShapes(shapesPath).stream()
+                .filter(shape -> shapeIds.contains(shape.getShape_id()))
+                .toList();
+
+        shapePainter.setHighlightedShapes(shapesToDraw);
+
+        zoomToRouteOptimal(shapesToDraw);
+        refreshView();
+    }
 }

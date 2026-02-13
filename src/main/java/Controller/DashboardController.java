@@ -103,7 +103,8 @@ public class DashboardController {
                         lineStopsView,
                         stopTimesPath,
                         tripsCsvPath,
-                        routesCsvPath
+                        routesCsvPath,
+                        mapController
                 );
 
         // ====== PREFERITI ======
@@ -157,6 +158,9 @@ public class DashboardController {
 
         searchBar.setOnSuggestionSelected((StopModel stop) -> {
             if (stop == null) return;
+
+            // ✅ se cambio fermata, tolgo eventuale shape precedente
+            mapController.clearRouteHighlight();
 
             stopSearchController.onSuggestionSelected(stop);
 
