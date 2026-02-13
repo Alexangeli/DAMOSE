@@ -1,10 +1,14 @@
 package Controller.StopLines;
 
-import Model.Points.StopModel;           // Stop usato nella mappa / barra (quello dei suggerimenti)
+import Controller.Map.MapController;
+import Model.Map.RouteDirectionOption;
+import Model.Parsing.Static.RoutesModel;
+import Model.Points.StopModel;
+import Service.Parsing.RouteDirectionService;
 import Service.Parsing.StopLinesService;
 import View.Map.LineStopsView;
-import Model.Parsing.Static.RoutesModel;        // Modello GTFS delle routes
 
+import javax.swing.*;
 import java.util.List;
 
 /**
@@ -20,27 +24,73 @@ public class StopLinesController {
     private final String stopTimesPath;
     private final String tripsCsvPath;
     private final String routesCsvPath;
+    private final MapController mapController;
 
-    /**
-     * Costruttore usato in DashboardController:
-     *
-     * new StopLinesController(lineStops, stopTimesPath, tripsCsvPath, routesCsvPath);
-     */
     public StopLinesController(LineStopsView view,
                                String stopTimesPath,
                                String tripsCsvPath,
-                               String routesCsvPath) {
+                               String routesCsvPath,
+                               MapController mapController) {
         this.view = view;
         this.stopTimesPath = stopTimesPath;
         this.tripsCsvPath = tripsCsvPath;
         this.routesCsvPath = routesCsvPath;
+        this.mapController = mapController;
+
+        // ✅ comportamento al click sulla route (STOP-mode)
+        this.view.setOnRouteSelected(route -> {
+            if (route == null) return;
+
+            mapController.clearRouteHighlight();
+
+            String routeId = route.getRoute_id();
+            String shortName = route.getRoute_short_name();
+
+            // 1) Ricavo le direzioni usando il service del gruppo (con headsign)
+            List<RouteDirectionOption> allOpts =
+                    RouteDirectionService.getDirectionsForRouteShortNameLike(
+                            shortName,
+                            routesCsvPath,
+                            tripsCsvPath
+                    );
+
+            // 2) Tengo solo le opzioni della routeId cliccata
+            List<RouteDirectionOption> opts = allOpts.stream()
+                    .filter(o -> routeId.equals(o.getRouteId())) // <-- se getter diverso, cambialo
+                    .toList();
+
+            // 3) Se non trovo direzioni, fallback: disegna tutto SENZA cambiare zoom
+            if (opts.isEmpty()) {
+                mapController.highlightRouteAllDirectionsKeepStopView(routeId);
+                return;
+            }
+
+            // 4) Se una sola direzione -> uso quella, altrimenti popup con headsign
+            RouteDirectionOption chosen;
+            if (opts.size() == 1) {
+                chosen = opts.get(0);
+            } else {
+                Object selected = JOptionPane.showInputDialog(
+                        null,
+                        "Scegli la direzione:",
+                        "Direzione linea " + shortName,
+                        JOptionPane.QUESTION_MESSAGE,
+                        null,
+                        opts.toArray(),
+                        opts.get(0)
+                );
+                if (selected == null) return;
+                chosen = (RouteDirectionOption) selected;
+            }
+
+            // 5) Disegna SOLO quella direzione, SENZA cambiare zoom/centro
+            String chosenDir = String.valueOf(chosen.getDirectionId()); // <-- se getter diverso, cambialo
+            mapController.highlightRouteKeepStopView(routeId, chosenDir);
+        });
     }
 
     /**
-     * Chiamato quando, in modalità FERMATA, l'utente ha selezionato una fermata
-     * (dalla tendina dei suggerimenti o da altro).
-     *
-     * Usa lo stopId del Model.Points.StopModel come stop_id GTFS.
+     * Chiamato quando, in modalità FERMATA, l'utente ha selezionato una fermata.
      */
     public void showLinesForStop(StopModel stop) {
         if (stop == null) {
@@ -48,7 +98,7 @@ public class StopLinesController {
             return;
         }
 
-        String stopId   = stop.getId();    // assumiamo che sia lo stop_id di stops.csv
+        String stopId   = stop.getId();    // stop_id GTFS
         String stopName = stop.getName();
 
         System.out.println("---StopLinesController--- showLinesForStop | stopId=" + stopId);

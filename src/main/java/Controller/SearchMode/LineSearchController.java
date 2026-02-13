@@ -121,7 +121,7 @@ public class LineSearchController {
         int directionInt = option.getDirectionId();
         String directionId = String.valueOf(directionInt);
 
-        mapController.highlightRoute(routeId, directionId);
+        mapController.highlightRouteFitLine(routeId, directionId);
 
         System.out.println("---LineSearchController--- linea selezionata: "
                 + option.getRouteShortName()
