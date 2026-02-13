@@ -1,6 +1,7 @@
 package Service.Index;
 
 import Model.Points.StopModel;
+
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -24,7 +25,10 @@ public final class StopSearchIndex {
     }
 
     public List<StopModel> searchByName(String query) {
+        if (query == null) return Collections.emptyList();
         String q = query.toLowerCase().trim();
+        if (q.isEmpty()) return Collections.emptyList();
+
         return byNameLower.entrySet().stream()
                 .filter(e -> e.getKey().contains(q))
                 .flatMap(e -> e.getValue().stream())
@@ -32,7 +36,10 @@ public final class StopSearchIndex {
     }
 
     public List<StopModel> searchByCode(String query) {
+        if (query == null) return Collections.emptyList();
         String q = query.toLowerCase().trim();
+        if (q.isEmpty()) return Collections.emptyList();
+
         return byCodeLower.entrySet().stream()
                 .filter(e -> e.getKey().contains(q))
                 .flatMap(e -> e.getValue().stream())
