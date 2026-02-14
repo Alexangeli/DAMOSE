@@ -2,6 +2,7 @@ package View.User.Account;
 
 import Model.Net.ConnectionState;
 import Model.Net.ConnectionStatusProvider;
+import Model.User.Session;
 
 import javax.swing.*;
 import java.awt.*;
@@ -33,7 +34,7 @@ public class AccountDropdown {
     // Se arriva una nuova scala mentre la window è visibile, la applichiamo solo alla prossima apertura
     private double pendingScale = -1.0;
 
-    private String username = "Nome";
+    private String username = "nome";
     private boolean online = true;
 
     // binding status provider (una sola volta)
@@ -199,6 +200,27 @@ public class AccountDropdown {
         helloLabel.setText("Ciao, " + username);
     }
 
+    /**
+     * Aggiorna lo username leggendo l'utente attualmente loggato (best-effort).
+     * Usa reflection per non dipendere da una specifica implementazione di User.
+     */
+    private void syncUsernameFromSession() {
+        try {
+            Object u = Session.getCurrentUser();
+            if (u == null) return;
+            var m = u.getClass().getMethod("getUsername");
+            Object out = m.invoke(u);
+            if (out == null) return;
+            String s = String.valueOf(out).trim();
+            if (!s.isEmpty() && !s.equals(username)) {
+                username = s;
+                refreshTexts();
+            }
+        } catch (Exception ignored) {
+            // noop
+        }
+    }
+
     // ================= API pubblica =================
 
     public void setUiScale(double s) {
@@ -240,6 +262,7 @@ public class AccountDropdown {
     }
 
     public void showAtScreen(int x, int y) {
+        syncUsernameFromSession();
         // Applica eventuale scala rimandata (arrivata mentre era visibile)
         if (pendingScale > 0 && (lastAppliedScale < 0 || Math.abs(pendingScale - lastAppliedScale) > SCALE_EPS)) {
             uiScale = pendingScale;
