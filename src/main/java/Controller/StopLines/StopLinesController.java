@@ -8,7 +8,6 @@ import Service.Parsing.RouteDirectionService;
 import Service.Parsing.StopLinesService;
 import View.Map.LineStopsView;
 
-import javax.swing.*;
 import java.util.List;
 
 /**
@@ -37,55 +36,18 @@ public class StopLinesController {
         this.routesCsvPath = routesCsvPath;
         this.mapController = mapController;
 
-        // ✅ comportamento al click sulla route (STOP-mode)
-        this.view.setOnRouteSelected(route -> {
-            if (route == null) return;
+        // ✅ comportamento al click sulla route (STOP-mode): NIENTE POPUP.
+        // La view fornisce già la scelta route+direction (capolinea) come RouteDirectionOption.
+        this.view.setOnRouteSelected(opt -> {
+            if (opt == null) return;
 
             mapController.clearRouteHighlight();
 
-            String routeId = route.getRoute_id();
-            String shortName = route.getRoute_short_name();
+            String routeId = opt.getRouteId();
+            String dirId = String.valueOf(opt.getDirectionId());
 
-            // 1) Ricavo le direzioni usando il service del gruppo (con headsign)
-            List<RouteDirectionOption> allOpts =
-                    RouteDirectionService.getDirectionsForRouteShortNameLike(
-                            shortName,
-                            routesCsvPath,
-                            tripsCsvPath
-                    );
-
-            // 2) Tengo solo le opzioni della routeId cliccata
-            List<RouteDirectionOption> opts = allOpts.stream()
-                    .filter(o -> routeId.equals(o.getRouteId())) // <-- se getter diverso, cambialo
-                    .toList();
-
-            // 3) Se non trovo direzioni, fallback: disegna tutto SENZA cambiare zoom
-            if (opts.isEmpty()) {
-                mapController.highlightRouteAllDirectionsKeepStopView(routeId);
-                return;
-            }
-
-            // 4) Se una sola direzione -> uso quella, altrimenti popup con headsign
-            RouteDirectionOption chosen;
-            if (opts.size() == 1) {
-                chosen = opts.get(0);
-            } else {
-                Object selected = JOptionPane.showInputDialog(
-                        null,
-                        "Scegli la direzione:",
-                        "Direzione linea " + shortName,
-                        JOptionPane.QUESTION_MESSAGE,
-                        null,
-                        opts.toArray(),
-                        opts.get(0)
-                );
-                if (selected == null) return;
-                chosen = (RouteDirectionOption) selected;
-            }
-
-            // 5) Disegna SOLO quella direzione, SENZA cambiare zoom/centro
-            String chosenDir = String.valueOf(chosen.getDirectionId()); // <-- se getter diverso, cambialo
-            mapController.highlightRouteKeepStopView(routeId, chosenDir);
+            // Disegna SOLO quella direzione, SENZA cambiare zoom/centro
+            mapController.highlightRouteKeepStopView(routeId, dirId);
         });
     }
 
@@ -111,6 +73,32 @@ public class StopLinesController {
                         routesCsvPath
                 );
 
-        view.showLinesAtStop(stopName, routes);
+        // ✅ Feature: se una linea ha 2 capolinea/direzioni, la mostriamo 2 volte in lista.
+        // Costruiamo una lista di RouteDirectionOption (route + direction + headsign).
+        java.util.List<RouteDirectionOption> expanded = new java.util.ArrayList<>();
+
+        for (RoutesModel r : routes) {
+            if (r == null) continue;
+
+            String routeId = r.getRoute_id();
+            String shortName = r.getRoute_short_name();
+
+            int routeType = -1;
+            try {
+                if (r.getRoute_type() != null) routeType = Integer.parseInt(r.getRoute_type().trim());
+            } catch (Exception ignored) {}
+
+            java.util.List<RouteDirectionOption> opts =
+                    RouteDirectionService.getDirectionOptionsForRouteId(routeId, routesCsvPath, tripsCsvPath);
+
+            if (opts == null || opts.isEmpty()) {
+                // fallback: almeno una riga senza headsign (evita popup)
+                expanded.add(new RouteDirectionOption(routeId, shortName, 0, "", routeType));
+            } else {
+                expanded.addAll(opts);
+            }
+        }
+
+        view.showLinesAtStop(stopName, expanded);
     }
 }

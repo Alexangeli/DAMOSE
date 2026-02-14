@@ -1,13 +1,11 @@
 package View.Map;
 
-import Model.Parsing.Static.RoutesModel;    // modalità FERMATA: linee che passano per una fermata
-import Model.Points.StopModel;              // modalità LINEA: fermate di una linea
+import Controller.Map.MapController;
+import Model.Map.RouteDirectionOption;
+import Model.Points.StopModel;
 
 import javax.swing.*;
-
-import Controller.Map.MapController;
 import javax.swing.event.ListSelectionListener;
-
 import java.awt.*;
 import java.util.Collections;
 import java.util.List;
@@ -16,9 +14,9 @@ import java.util.function.Consumer;
 /**
  * Pannello informativo a sinistra: mostra
  *  - le fermate di una linea (modalità LINEA)
- *  - le linee che passano da una fermata (modalità FERMATA)
+ *  - le linee direzionate (capolinea) che passano da una fermata (modalità FERMATA)
  *
- * Creatore: Simone Bonuso
+ * Creatore: Simone Bonuso (adattato per STOP-mode direzionato)
  */
 public class LineStopsView extends JPanel {
 
@@ -30,9 +28,9 @@ public class LineStopsView extends JPanel {
     private List<StopModel> currentStops = Collections.emptyList();
     private MapController mapController;
 
-    // ======= STOP MODE (fermata -> linee) =======
-    private List<RoutesModel> currentRoutes = Collections.emptyList();
-    private Consumer<RoutesModel> onRouteSelected;
+    // ======= STOP MODE (fermata -> linee + direction/headsign) =======
+    private List<RouteDirectionOption> currentRoutes = Collections.emptyList();
+    private Consumer<RouteDirectionOption> onRouteSelected;
 
     private enum PanelMode { NONE, LINE_STOPS, STOP_ROUTES }
     private PanelMode panelMode = PanelMode.NONE;
@@ -53,7 +51,6 @@ public class LineStopsView extends JPanel {
         JScrollPane scroll = new JScrollPane(list);
         add(scroll, BorderLayout.CENTER);
 
-        // Listener unico: si comporta in modo diverso in base alla modalità
         list.addListSelectionListener(e -> {
             if (e.getValueIsAdjusting()) return;
 
@@ -71,7 +68,7 @@ public class LineStopsView extends JPanel {
                 return;
             }
 
-            // --- FERMATA -> LINEE: callback route selezionata ---
+            // --- FERMATA -> LINEE DIREZIONATE: callback (NO popup) ---
             if (panelMode == PanelMode.STOP_ROUTES) {
                 if (currentRoutes == null || currentRoutes.isEmpty()) return;
                 if (idx >= currentRoutes.size()) return;
@@ -82,31 +79,29 @@ public class LineStopsView extends JPanel {
         });
     }
 
-    /** Consente al controller di ricevere la route selezionata in modalità STOP. */
-    public void setOnRouteSelected(Consumer<RoutesModel> cb) {
+    /** Consente al controller di ricevere la route+direction selezionata in modalità STOP. */
+    public void setOnRouteSelected(Consumer<RouteDirectionOption> cb) {
         this.onRouteSelected = cb;
     }
 
     /**
-     * Modalità LINEA:
-     * mostra tutte le fermate della linea/direzione selezionata.
+     * Modalità LINEA: mostra tutte le fermate della linea/direzione selezionata.
      */
     public void showLineStops(String label, List<StopModel> stops, MapController mapController) {
         this.panelMode = PanelMode.LINE_STOPS;
 
-        // salviamo per poter usare click/frecce
         this.mapController = mapController;
         this.currentStops = (stops != null) ? stops : Collections.emptyList();
 
-        // reset stop-mode cache
+        // reset stop-mode
         this.currentRoutes = Collections.emptyList();
 
         titleLabel.setText(label != null ? label : "Fermate della linea");
         listModel.clear();
 
-        if (stops != null) {
+        if (currentStops != null && !currentStops.isEmpty()) {
             int i = 1;
-            for (StopModel s : stops) {
+            for (StopModel s : currentStops) {
                 String txt = s.getName();
                 if (s.getCode() != null && !s.getCode().isBlank()) {
                     txt += " (" + s.getCode() + ")";
@@ -116,9 +111,8 @@ public class LineStopsView extends JPanel {
             }
         }
 
-        // nasconde le fermate inutili (se vuoi mantenere questo comportamento)
-        if (mapController != null && stops != null && !stops.isEmpty()) {
-            mapController.hideUselessStops(stops);
+        if (mapController != null && currentStops != null && !currentStops.isEmpty()) {
+            mapController.hideUselessStops(currentStops);
         }
 
         revalidate();
@@ -126,31 +120,26 @@ public class LineStopsView extends JPanel {
     }
 
     /**
-     * Modalità FERMATA:
-     * mostra tutte le linee che passano per una fermata.
+     * Modalità FERMATA: mostra tutte le linee DIREZIONATE (route + capolinea).
+     * Qui entra la feature: se la linea ha 2 capolinea, riceverai 2 RouteDirectionOption e quindi 2 righe.
      */
-    public void showLinesAtStop(String stopName, List<RoutesModel> routes) {
+    public void showLinesAtStop(String stopName, List<RouteDirectionOption> options) {
         this.panelMode = PanelMode.STOP_ROUTES;
 
         String label = "Linee che passano per: " + stopName;
         titleLabel.setText(label);
         listModel.clear();
 
-        // reset line-mode cache
+        // reset line-mode
         this.currentStops = Collections.emptyList();
         this.mapController = null;
 
-        this.currentRoutes = (routes != null) ? routes : Collections.emptyList();
+        this.currentRoutes = (options != null) ? options : Collections.emptyList();
 
-        if (routes != null && !routes.isEmpty()) {
-            for (RoutesModel r : routes) {
-                String line = r.getRoute_short_name();
-                String desc = r.getRoute_long_name();
-                if (desc != null && !desc.isBlank()) {
-                    listModel.addElement(line + " - " + desc);
-                } else {
-                    listModel.addElement(line);
-                }
+        if (!currentRoutes.isEmpty()) {
+            for (RouteDirectionOption opt : currentRoutes) {
+                // toString() => "64 → Laurentina"
+                listModel.addElement(opt.toString());
             }
         } else {
             listModel.addElement("Nessuna linea trovata per questa fermata.");
@@ -183,5 +172,10 @@ public class LineStopsView extends JPanel {
     /** Permette a chi usa la view di ascoltare i cambi di selezione della lista. */
     public void addSelectionListener(ListSelectionListener l) {
         list.addListSelectionListener(l);
+    }
+
+    /** (Opzionale) comodo per contare righe */
+    public int getItemCount() {
+        return listModel.getSize();
     }
 }

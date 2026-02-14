@@ -12,36 +12,63 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 /**
- * Service che calcola le direzioni (capolinea) per una linea
- * leggendo i dati da trips.csv.
- *
- * Per ogni route (route_id) individua le direzioni distinte (direction_id)
- * e un trip_headsign rappresentativo per ciascuna direction.
+ * Service che calcola le direzioni (capolinea) per una linea leggendo trips.csv.
+ * Cache: route_id -> (direction_id -> headsign)
  *
  * Creatore: Simone Bonuso
  */
 public class RouteDirectionService {
 
     // cache minimale: route_id -> directionId -> headsign
-    private static Map<String, Map<Integer, String>> directionsCache = new HashMap<>();
+    private static final Map<String, Map<Integer, String>> directionsCache = new HashMap<>();
 
     /**
-     * Restituisce le opzioni di direzione (RouteDirectionOption) per
-     * tutte le route che hanno route_short_name che contiene "query"
-     * (case-insensitive).
-     *
-     * @param query         testo digitato (es. "163")
-     * @param routesCsvPath path di routes.csv
-     * @param tripsCsvPath  path di trips.csv
+     * Restituisce le opzioni di direzione per una routeId specifica.
+     * Serve per STOP-mode: vuoi già in lista "64 → Laurentina" e "64 → S.Pietro".
+     */
+    public static List<RouteDirectionOption> getDirectionOptionsForRouteId(
+            String routeId,
+            String routesCsvPath,
+            String tripsCsvPath
+    ) {
+        if (routeId == null || routeId.isBlank()) return List.of();
+
+        RoutesModel route = RoutesService.getAllRoutes(routesCsvPath).stream()
+                .filter(r -> routeId.equals(r.getRoute_id()))
+                .findFirst()
+                .orElse(null);
+
+        String shortName = (route != null && route.getRoute_short_name() != null)
+                ? route.getRoute_short_name()
+                : routeId;
+
+        int routeType = (route != null)
+                ? RoutesService.parseRouteType(route.getRoute_type())
+                : -1;
+
+        Map<Integer, String> dirMap = getDirectionsMapForRouteId(routeId, tripsCsvPath);
+
+        List<RouteDirectionOption> out = new ArrayList<>();
+        for (Map.Entry<Integer, String> e : dirMap.entrySet()) {
+            int dirId = e.getKey();
+            String headsign = e.getValue();
+            out.add(new RouteDirectionOption(routeId, shortName, dirId, headsign, routeType));
+        }
+        return out;
+    }
+
+    /**
+     * (Facoltativo) Ricerca per short_name "like" (lo tenevi già).
      */
     public static List<RouteDirectionOption> getDirectionsForRouteShortNameLike(
             String query,
             String routesCsvPath,
             String tripsCsvPath
     ) {
+        if (query == null) return List.of();
         String q = query.trim().toLowerCase();
+        if (q.isEmpty()) return List.of();
 
-        // 1) Trova le route compatibili col nome/numero linea (short_name)
         List<RoutesModel> matchingRoutes = RoutesService.getAllRoutes(routesCsvPath).stream()
                 .filter(r -> r.getRoute_short_name() != null
                         && r.getRoute_short_name().trim().toLowerCase().contains(q))
@@ -51,22 +78,21 @@ public class RouteDirectionService {
         for (RoutesModel route : matchingRoutes) {
             String routeId = route.getRoute_id();
             String shortName = route.getRoute_short_name();
-            Map<Integer, String> dirMap = getDirectionsForRouteId(routeId, tripsCsvPath);
+            int routeType = RoutesService.parseRouteType(route.getRoute_type());
+
+            Map<Integer, String> dirMap = getDirectionsMapForRouteId(routeId, tripsCsvPath);
             for (Map.Entry<Integer, String> e : dirMap.entrySet()) {
-                int dirId = e.getKey();
-                String headsign = e.getValue();
-                result.add(new RouteDirectionOption(routeId, shortName, dirId, headsign));
+                result.add(new RouteDirectionOption(routeId, shortName, e.getKey(), e.getValue(), routeType));
             }
         }
         return result;
     }
 
     /**
-     * Restituisce una mappa direction_id -> headsign rappresentativo
-     * per una singola route_id.
+     * Cache + parsing trips.csv per routeId.
+     * Ritorna direction_id -> headsign (rappresentativo).
      */
-    private static Map<Integer, String> getDirectionsForRouteId(String routeId, String tripsCsvPath) {
-        // se in cache, usiamo quello
+    static Map<Integer, String> getDirectionsMapForRouteId(String routeId, String tripsCsvPath) {
         if (directionsCache.containsKey(routeId)) {
             return directionsCache.get(routeId);
         }
@@ -76,9 +102,8 @@ public class RouteDirectionService {
         try (CSVReader reader = new CSVReader(
                 new InputStreamReader(new FileInputStream(tripsCsvPath), StandardCharsets.UTF_8))) {
 
+            reader.readNext(); // header
             String[] next;
-            // header
-            reader.readNext();
 
             while ((next = reader.readNext()) != null) {
                 if (next.length < 6) continue;
@@ -86,8 +111,8 @@ public class RouteDirectionService {
                 String csvRouteId = next[0].trim();
                 if (!csvRouteId.equals(routeId)) continue;
 
-                String headsign = next[3].trim();       // trip_headsign
-                String dirStr   = next[5].trim();       // direction_id
+                String headsign = next[3] != null ? next[3].trim() : "";
+                String dirStr   = next[5] != null ? next[5].trim() : "";
 
                 int dirId;
                 try {
@@ -96,10 +121,12 @@ public class RouteDirectionService {
                     continue;
                 }
 
-                // se non abbiamo ancora salvato nulla per questa direction,
-                // usiamo il primo headsign non vuoto che troviamo.
+                // primo headsign non vuoto per quella direction
                 if (!dirToHeadsign.containsKey(dirId) && !headsign.isEmpty()) {
                     dirToHeadsign.put(dirId, headsign);
+                } else if (!dirToHeadsign.containsKey(dirId)) {
+                    // se headsign vuoto, mettiamo placeholder e poi magari verrà sovrascritto (ma qui non succede)
+                    dirToHeadsign.put(dirId, "");
                 }
             }
 
@@ -107,7 +134,13 @@ public class RouteDirectionService {
             System.err.println("Errore lettura trips.csv: " + e.getMessage());
         }
 
+        // Se non trovi nulla, ritorna mappa vuota (chi chiama gestisce fallback)
         directionsCache.put(routeId, dirToHeadsign);
         return dirToHeadsign;
+    }
+
+    /** Per test/debug: reset cache */
+    public static void clearCache() {
+        directionsCache.clear();
     }
 }
