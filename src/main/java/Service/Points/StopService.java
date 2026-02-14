@@ -2,8 +2,10 @@ package Service.Points;
 
 import Model.Parsing.Static.RoutesModel;
 import Model.Points.StopModel;
+
+import Service.Index.StopSearchIndexV2;
 import Service.Parsing.StopTimesService;
-import Service.Index.StopSearchIndex;
+import Service.Util.TextNormalize;
 
 import com.opencsv.CSVReader;
 import com.opencsv.exceptions.CsvValidationException;
@@ -13,62 +15,41 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
 /**
  * Service per la gestione delle fermate (stops.csv).
- * Combina le funzionalità delle implementazioni precedenti di StopService,
- * unificando la cache, la lettura del CSV, la ricerca e il calcolo delle distanze.
+ *
+ * - Cache in-memory (lista fermate)
+ * - Index V2:
+ *     - byId O(1)
+ *     - byCode exact O(1)
+ *     - suggest prefisso code O(log n + k)
+ *     - search name con token index (molto più veloce)
  */
 public class StopService {
 
-    /**
-     * Cache in-memory delle fermate già caricate. Viene popolata alla prima
-     * chiamata a {@link #getAllStops(String)} e riutilizzata per le chiamate successive.
-     */
     private static List<StopModel> cachedStops = null;
-
-    /**
-     * Indice di ricerca per nome e codice delle fermate.
-     * Viene popolato alla prima chiamata a {@link #getAllStops(String)} e riutilizzato per le chiamate successive.
-     */
-    private static StopSearchIndex searchIndex = null;
+    private static StopSearchIndexV2 indexV2 = null;
 
     // ==================== ACCESSO DATI ====================
 
-    /**
-     * Restituisce tutte le fermate dal CSV, usando la cache se già popolata.
-     *
-     * @param filePath path assoluto del file CSV stops.csv
-     * @return lista di {@link StopModel}
-     */
     public static List<StopModel> getAllStops(String filePath) {
         if (cachedStops == null) {
             cachedStops = readFromCSV(filePath);
-            searchIndex = new StopSearchIndex(cachedStops);
+            indexV2 = new StopSearchIndexV2(cachedStops);
         }
         return cachedStops;
     }
 
-    /**
-     * Forza il ricaricamento del CSV, svuotando la cache.
-     *
-     * @param filePath path assoluto del file CSV stops.csv
-     */
     public static void reloadStops(String filePath) {
         cachedStops = readFromCSV(filePath);
-        searchIndex = new StopSearchIndex(cachedStops);
+        indexV2 = new StopSearchIndexV2(cachedStops);
     }
 
-    /**
-     * Lettura e parsing del file CSV delle fermate.
-     * Il metodo converte ogni riga valida in un oggetto {@link StopModel}.
-     *
-     * @param filePath path assoluto del file CSV stops.csv
-     * @return lista di {@link StopModel}
-     */
     private static List<StopModel> readFromCSV(String filePath) {
         List<StopModel> stops = new ArrayList<>();
 
@@ -76,7 +57,7 @@ public class StopService {
                 new InputStreamReader(new FileInputStream(filePath), StandardCharsets.UTF_8))) {
 
             String[] next;
-            reader.readNext(); // salta intestazione
+            reader.readNext(); // header
 
             while ((next = reader.readNext()) != null) {
                 if (next.length < 11) continue;
@@ -86,11 +67,18 @@ public class StopService {
                 stop.setCode(next[1].trim());
                 stop.setName(next[2].trim());
                 stop.setDescription(next[3].trim());
-                stop.setLatitude(Double.parseDouble(next[4].trim()));
-                stop.setLongitude(Double.parseDouble(next[5].trim()));
+
+                // lat/lon
+                try {
+                    stop.setLatitude(Double.parseDouble(next[4].trim()));
+                    stop.setLongitude(Double.parseDouble(next[5].trim()));
+                } catch (Exception ignored) {
+                    // se manca lat/lon, salta la fermata (senza coordinate è poco utile)
+                    continue;
+                }
+
                 stop.setUrl(next[6].trim());
                 stop.setWheelchair_boarding(next[7].trim());
-                // Nel CSV il campo è "stop_timezone"; StopModel espone setTimezone() per questo campo
                 stop.setTimezone(next[8].trim());
                 stop.setLocation_type(next[9].trim());
                 stop.setParent_station(next[10].trim());
@@ -108,68 +96,75 @@ public class StopService {
 
     // ==================== RICERCHE ====================
 
-    /**
-     * Trova la fermata con ID esatto.
-     *
-     * @param id identificativo univoco della fermata
-     * @param filePath path assoluto del file CSV
-     * @return {@link StopModel} se trovato, altrimenti null
-     */
     public static StopModel findById(String id, String filePath) {
-        return getAllStops(filePath)
-                .stream()
-                .filter(s -> s.getId().equals(id))
-                .findFirst()
-                .orElse(null);
+        getAllStops(filePath);
+        if (indexV2 == null) return null;
+        return indexV2.findById(id);
     }
 
     /**
-     * Cerca fermate per nome (case-insensitive, substring).
-     *
-     * @param name query di ricerca sul nome
-     * @param filePath path assoluto del file CSV
-     * @return lista di {@link StopModel} corrispondenti
+     * Ricerca per nome (token/index).
+     * Limit di default: 50.
      */
     public static List<StopModel> searchByName(String name, String filePath) {
-        getAllStops(filePath); // ensure index built
-        return searchIndex.searchByName(name);
+        getAllStops(filePath);
+        if (indexV2 == null) return List.of();
+        return indexV2.searchByName(name, 50);
     }
 
-    /**
-     * Alias per compatibilità: searchStopByName() richiama searchByName().
-     */
     public static List<StopModel> searchStopByName(String name, String filePath) {
         return searchByName(name, filePath);
     }
 
     /**
-     * Cerca fermate per codice (case-insensitive, substring).
-     *
-     * @param code stringa da cercare nel campo codice
-     * @param filePath path assoluto del file CSV
-     * @return lista di {@link StopModel} corrispondenti
+     * Ricerca per codice:
+     * - prima exact
+     * - poi prefisso (molto veloce)
+     * Limit di default: 50.
      */
     public static List<StopModel> searchByCode(String code, String filePath) {
         getAllStops(filePath);
-        return searchIndex.searchByCode(code);
+        if (indexV2 == null) return List.of();
+
+        if (code == null || code.isBlank()) return List.of();
+
+        // 1) exact (normalizzato)
+        StopModel exact = indexV2.findByCodeExact(code);
+        if (exact != null) return List.of(exact);
+
+        // 2) prefisso
+        return indexV2.suggestByCodePrefix(code, 50);
     }
 
-    /**
-     * Alias per compatibilità: searchStopByCode() richiama searchByCode().
-     */
     public static List<StopModel> searchStopByCode(String code, String filePath) {
         return searchByCode(code, filePath);
     }
 
     /**
-     * Restituisce tutte le fermate entro un certo raggio da una posizione
-     * geografica, ordinate per distanza crescente.
+     * Ricerca "intelligente" unica:
+     * - se input numerico -> codice (prefisso)
+     * - altrimenti -> nome
      *
-     * @param pos       posizione geografica da cui misurare
-     * @param radiusKm  raggio massimo in km
-     * @param filePath  path del file CSV
-     * @return lista di {@link StopModel} ordinate per distanza
+     * Utile per StopSearchController.onTextChanged(...)
      */
+    public static List<StopModel> smartSearch(String query, String filePath, int limit) {
+        getAllStops(filePath);
+        if (indexV2 == null) return List.of();
+
+        if (query == null || query.isBlank()) return List.of();
+
+        if (TextNormalize.isMostlyNumeric(query)) {
+            // exact o prefisso code
+            StopModel exact = indexV2.findByCodeExact(query);
+            if (exact != null) return List.of(exact);
+            return indexV2.suggestByCodePrefix(query, limit);
+        }
+
+        return indexV2.searchByName(query, limit);
+    }
+
+    // ==================== GEO / DISTANZE ====================
+
     public static List<StopModel> searchNearby(GeoPosition pos, double radiusKm, String filePath) {
         return getAllStops(filePath).stream()
                 .filter(s -> isWithinRadius(pos, s, radiusKm))
@@ -177,14 +172,6 @@ public class StopService {
                 .toList();
     }
 
-    /**
-     * Trova tutte le fermate appartenenti a una lista di route, usando stop_times.csv come ponte.
-     *
-     * @param routes       lista di {@link RoutesModel}
-     * @param stopTimesPath path di stop_times.csv
-     * @param stopsPath     path di stops.csv
-     * @return lista di {@link StopModel} corrispondenti
-     */
     public static List<StopModel> findStopsByRoutes(
             List<RoutesModel> routes,
             String stopTimesPath,
@@ -196,16 +183,6 @@ public class StopService {
                 .toList();
     }
 
-    // ==================== HELPER DISTANZE ====================
-
-    /**
-     * Verifica se una fermata è entro un raggio (km) da una posizione.
-     *
-     * @param coords   posizione di riferimento
-     * @param stop     fermata da valutare
-     * @param radiusKm raggio massimo in km
-     * @return true se la fermata è entro il raggio, altrimenti false
-     */
     public static boolean isWithinRadius(GeoPosition coords, StopModel stop, double radiusKm) {
         try {
             return calculateDistance(coords, stop.getGeoPosition()) <= radiusKm;
@@ -214,15 +191,8 @@ public class StopService {
         }
     }
 
-    /**
-     * Calcola la distanza (in km) tra due coordinate geografiche.
-     *
-     * @param a prima posizione
-     * @param b seconda posizione
-     * @return distanza in km
-     */
     public static double calculateDistance(GeoPosition a, GeoPosition b) {
-        final int R = 6371; // raggio medio della Terra in km
+        final int R = 6371;
         double lat = Math.toRadians(b.getLatitude() - a.getLatitude());
         double lon = Math.toRadians(b.getLongitude() - a.getLongitude());
         double h = Math.sin(lat / 2) * Math.sin(lat / 2)
@@ -232,13 +202,6 @@ public class StopService {
         return 2 * R * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
     }
 
-    /**
-     * Alias che calcola la distanza (km) tra una posizione e la fermata.
-     *
-     * @param coords posizione di riferimento
-     * @param stop   fermata
-     * @return distanza in km
-     */
     public static double calculateDistanceFrom(GeoPosition coords, StopModel stop) {
         return calculateDistance(coords, stop.getGeoPosition());
     }
