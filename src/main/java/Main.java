@@ -8,6 +8,7 @@ import Controller.GTFS_RT.RealTimeController;
 
 import Model.User.Session;
 import Model.Favorites.FavoriteItem;
+import Model.Favorites.FavoriteType;
 
 import Model.Net.ConnectionStatusProvider;
 import Service.GTFS_RT.Status.ConnectionStatusService;
@@ -15,6 +16,8 @@ import Service.GTFS_RT.Status.ConnectionStatusService;
 import Service.GTFS_RT.Fetcher.Vehicle.VehiclePositionsService;
 import Service.GTFS_RT.Fetcher.TripUpdates.TripUpdatesService;
 import Service.GTFS_RT.Fetcher.Alerts.AlertsService;
+
+import Service.User.Fav.FavoritesService;
 
 import View.User.Account.AppShellView;
 import View.DashboardView;
@@ -24,8 +27,10 @@ import View.User.Account.AuthDialog;
 
 import java.awt.*;
 import java.awt.event.*;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 import View.User.Fav.FavoritesDialogView;
 
@@ -34,11 +39,9 @@ public class Main {
     private static volatile int lastScreenX = 0;
     private static volatile int lastScreenY = 0;
 
-    // === GTFS-RT STATUS (health check) ===
     private static final String GTFS_RT_HEALTH_URL =
             "https://romamobilita.it/sites/default/files/rome_rtgtfs_vehicle_positions_feed.pb";
 
-    // === GTFS-RT REALTIME FEEDS ===
     private static final String GTFS_RT_VEHICLE_URL =
             "https://romamobilita.it/sites/default/files/rome_rtgtfs_vehicle_positions_feed.pb";
 
@@ -55,83 +58,76 @@ public class Main {
     private static void startApp() {
         JFrame myFrame = createFrame();
 
-        // ---- percorsi GTFS static ----
         final String stopsCsvPath     = "src/main/resources/rome_static_gtfs/stops.csv";
         final String routesCsvPath    = "src/main/resources/rome_static_gtfs/routes.csv";
         final String tripsCsvPath     = "src/main/resources/rome_static_gtfs/trips.csv";
         final String stopTimesCsvPath = "src/main/resources/rome_static_gtfs/stop_times.csv";
 
-        // ---- Controller / View ----
         DashboardController controller =
                 new DashboardController(stopsCsvPath, routesCsvPath, tripsCsvPath, stopTimesCsvPath);
 
         DashboardView dashboardView = controller.getView();
-        System.out.println("Avvio");
 
-        // ---- Connection status service (ONLINE/OFFLINE) ----
+        // ====== RT ======
         ConnectionStatusService statusService = new ConnectionStatusService(GTFS_RT_HEALTH_URL);
         ConnectionStatusProvider statusProvider = statusService;
 
-        // ---- GTFS-RT realtime services ----
         VehiclePositionsService vehicleSvc = new VehiclePositionsService(GTFS_RT_VEHICLE_URL);
         TripUpdatesService tripSvc = new TripUpdatesService(GTFS_RT_TRIP_URL);
         AlertsService alertsSvc = new AlertsService(GTFS_RT_ALERTS_URL);
 
-        // ---- RealTime controller (gated by statusProvider) ----
         RealTimeController rtController = new RealTimeController(statusProvider, vehicleSvc, tripSvc, alertsSvc);
-
-        rtController.setOnVehicles(vehicles -> System.out.println("[RT] vehicles=" + vehicles.size()));
-        rtController.setOnTripUpdates(trips -> System.out.println("[RT] tripUpdates=" + trips.size()));
-        rtController.setOnAlerts(alerts -> System.out.println("[RT] alerts=" + alerts.size()));
-        rtController.setOnConnectionState(state -> System.out.println("[STATUS] " + state));
-
-        // ---- Start background services ----
         statusService.start();
         rtController.start();
 
-        // ---- Shell + Account UI ----
         AtomicReference<AppShellView> shellRef = new AtomicReference<>();
         AtomicReference<AccountDropdown> dropdownRef = new AtomicReference<>();
+
+        // ===================== PREFERITI: UNA SOLA SORGENTE (DB) =====================
+        FavoritesService favoritesService = new FavoritesService();
 
         AtomicReference<JDialog> favoritesDialogRef = new AtomicReference<>();
         AtomicReference<FavoritesDialogView> favoritesViewRef = new AtomicReference<>();
         AtomicBoolean pendingOpenFavoritesAfterLogin = new AtomicBoolean(false);
 
-        // ---- forward reference safe ----
-        Runnable[] openFavoritesDialogHolder = new Runnable[1];
+        // Guardia anti doppio-open
+        AtomicBoolean openingFavoritesGuard = new AtomicBoolean(false);
 
-        // ---- funzione comoda: apri login/register ----
+        // per richiamare openFavorites dopo login
+        AtomicReference<Runnable> openFavoritesDialogRefRunnable = new AtomicReference<>();
+
+        // ===================== AUTH =====================
         Runnable openAuthDialog = () -> {
             AuthDialog dlg = new AuthDialog(myFrame, () -> {
+                if (!Session.isLoggedIn()) {
+                    pendingOpenFavoritesAfterLogin.set(false);
+                    return;
+                }
+
                 AppShellView shell = shellRef.get();
                 if (shell != null) shell.refreshAuthButton();
 
-                // NON disabilitare il bottone preferiti: logica nel bottone
                 JButton favBtn = dashboardView.getFavoritesButton();
                 if (favBtn != null) favBtn.setEnabled(true);
 
-                // Se l'utente aveva cliccato ★ da guest, apriamo i preferiti dopo login
                 if (pendingOpenFavoritesAfterLogin.getAndSet(false)) {
-                    Runnable r = openFavoritesDialogHolder[0];
+                    Runnable r = openFavoritesDialogRefRunnable.get();
                     if (r != null) SwingUtilities.invokeLater(r);
                 }
             });
             dlg.setVisible(true);
         };
 
-        // set callback auth UNA VOLTA
         dashboardView.setOnRequireAuth(openAuthDialog);
 
-        // ---- dropdown account (Profilo / Log-out) ----
+        // ===================== DROPDOWN ACCOUNT =====================
         AccountDropdown dropdown = new AccountDropdown(
                 myFrame,
                 () -> {
-                    // evita NPE se per qualche motivo currentUser è null
                     Object u = Session.getCurrentUser();
                     String username = "(guest)";
                     try {
                         if (u != null) {
-                            // User ha getUsername(): usiamo reflection per non dipendere dal tipo concreto
                             var m = u.getClass().getMethod("getUsername");
                             Object out = m.invoke(u);
                             if (out != null) username = String.valueOf(out);
@@ -148,13 +144,14 @@ public class Main {
                 () -> {
                     Session.logout();
 
-                    // Chiudi eventuale dialog Preferiti aperto
-                    JDialog fd = favoritesDialogRef.get();
+                    // chiudi dialog preferiti
+                    JDialog fd = favoritesDialogRef.getAndSet(null);
                     if (fd != null) {
-                        fd.dispose();
-                        favoritesDialogRef.set(null);
-                        favoritesViewRef.set(null);
+                        try { fd.dispose(); } catch (Exception ignored) {}
                     }
+                    favoritesViewRef.set(null);
+                    pendingOpenFavoritesAfterLogin.set(false);
+                    openingFavoritesGuard.set(false);
 
                     AppShellView shell = shellRef.get();
                     if (shell != null) shell.refreshAuthButton();
@@ -162,7 +159,6 @@ public class Main {
                     AccountDropdown dd = dropdownRef.get();
                     if (dd != null) dd.hide();
 
-                    // NON disabilitare il bottone preferiti
                     JButton favBtn = dashboardView.getFavoritesButton();
                     if (favBtn != null) favBtn.setEnabled(true);
                 }
@@ -170,9 +166,8 @@ public class Main {
         dropdownRef.set(dropdown);
         dropdown.bindConnectionStatus(statusProvider);
 
-        // ---- shell (dashboard + floating account button) ----
+        // ===================== SHELL (ACCOUNT BUTTON) =====================
         AppShellView shell = new AppShellView(dashboardView, () -> {
-
             if (!Session.isLoggedIn()) {
                 openAuthDialog.run();
                 return;
@@ -191,86 +186,105 @@ public class Main {
         });
         shellRef.set(shell);
 
-        // Helper riusabile per aprire/refreshare il dialog Preferiti
+        // ===================== OPEN PREFERITI =====================
+
+        Runnable openFavoritesDialogEDT = () -> {
+            if (!openingFavoritesGuard.compareAndSet(false, true)) return;
+
+            try {
+                if (!Session.isLoggedIn()) return;
+
+                JDialog existing = favoritesDialogRef.get();
+                FavoritesDialogView existingPanel = favoritesViewRef.get();
+
+                if (existing != null && existing.isDisplayable() && existingPanel != null) {
+                    refreshFavoritesPanel(existingPanel, favoritesService);
+                    existing.setLocationRelativeTo(myFrame);
+                    existing.setVisible(true);
+                    existing.toFront();
+                    existing.requestFocus();
+                    return;
+                }
+
+                final JDialog dialog = new JDialog(myFrame, "Preferiti", false);
+                dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+
+                // ✅ anti-glitch: chiusura fuori finestra con guard + defer su EDT
+                AtomicBoolean closingFavDialog = new AtomicBoolean(false);
+                dialog.addWindowFocusListener(new WindowAdapter() {
+                    @Override
+                    public void windowLostFocus(WindowEvent e) {
+                        if (!dialog.isDisplayable()) return;
+                        if (!closingFavDialog.compareAndSet(false, true)) return;
+
+                        SwingUtilities.invokeLater(() -> {
+                            if (dialog.isDisplayable()) dialog.dispose();
+                        });
+                    }
+                });
+
+                FavoritesDialogView panel = new FavoritesDialogView();
+
+                panel.setOnModeChanged(m ->
+                        refreshFavoritesPanel(panel, favoritesService)
+                );
+
+                panel.setOnFiltersChanged(() ->
+                        refreshFavoritesPanel(panel, favoritesService)
+                );
+
+                panel.setOnRemoveSelected(item -> {
+                    if (item == null) return;
+                    favoritesService.remove(item);
+                    refreshFavoritesPanel(panel, favoritesService);
+                });
+
+                dialog.setContentPane(panel);
+                dialog.setMinimumSize(new Dimension(900, 650));
+                dialog.setSize(1000, 720);
+                dialog.setLocationRelativeTo(myFrame);
+
+                dialog.addWindowListener(new WindowAdapter() {
+                    @Override public void windowClosed(WindowEvent e) {
+                        favoritesDialogRef.set(null);
+                        favoritesViewRef.set(null);
+                        openingFavoritesGuard.set(false);
+                        // reset guard per sicurezza (se riusi lo stesso oggetto, non serve ma non fa male)
+                        closingFavDialog.set(false);
+                    }
+                });
+
+                favoritesDialogRef.set(dialog);
+                favoritesViewRef.set(panel);
+
+                refreshFavoritesPanel(panel, favoritesService);
+
+                // show: meglio dopo set refs e refresh
+                dialog.setVisible(true);
+
+            } finally {
+                if (favoritesDialogRef.get() == null)
+                    openingFavoritesGuard.set(false);
+            }
+        };
+
         Runnable openFavoritesDialog = () -> {
             if (!Session.isLoggedIn()) {
                 pendingOpenFavoritesAfterLogin.set(true);
                 openAuthDialog.run();
                 return;
             }
-
-            // rientra su EDT se necessario
-            if (!SwingUtilities.isEventDispatchThread()) {
-                Runnable r = openFavoritesDialogHolder[0];
-                if (r != null) SwingUtilities.invokeLater(r);
-                return;
-            }
-
-            FavoritesDialogView favPanel = favoritesViewRef.get();
-            JDialog favDialog = favoritesDialogRef.get();
-
-            if (favDialog == null || favPanel == null) {
-                JDialog newDialog = new JDialog(myFrame, "Preferiti", true);
-                newDialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
-
-                FavoritesDialogView newPanel = new FavoritesDialogView();
-
-                // ⚠️ FavoritesDialogView NON ha setOnFavoriteRemove / setFavorites direttamente.
-                // Dobbiamo passare tramite la FavoritesView interna:
-                newPanel.getFavoritesView().setOnFavoriteRemove(item -> {
-                    boolean removed = removeFavoriteFromSessionUser(item);
-                    if (removed) {
-                        newPanel.getFavoritesView().setFavorites(loadFavoritesFromSessionUser());
-                    }
-                });
-
-                newDialog.setContentPane(newPanel);
-
-                newDialog.setMinimumSize(new Dimension(900, 650));
-                newDialog.setSize(1000, 720);
-                newDialog.setLocationRelativeTo(myFrame);
-
-                // Quando chiudi, azzera i riferimenti
-                JDialog finalFavDialog = newDialog;
-                newDialog.addWindowListener(new WindowAdapter() {
-                    @Override
-                    public void windowClosed(WindowEvent e) {
-                        if (favoritesDialogRef.get() == finalFavDialog) {
-                            favoritesDialogRef.set(null);
-                            favoritesViewRef.set(null);
-                        }
-                    }
-                });
-
-                favoritesDialogRef.set(newDialog);
-                favoritesViewRef.set(newPanel);
-
-                // riallinea le variabili locali per il resto della lambda
-                favDialog = newDialog;
-                favPanel = newPanel;
-            }
-
-            // Refresh dati SEMPRE ad ogni apertura
-            favPanel.getFavoritesView().setFavorites(loadFavoritesFromSessionUser());
-
-            // Mostra
-            favDialog.setLocationRelativeTo(myFrame);
-            if (!favDialog.isVisible()) {
-                favDialog.setVisible(true);
-            } else {
-                favDialog.toFront();
-            }
+            if (!SwingUtilities.isEventDispatchThread()) SwingUtilities.invokeLater(openFavoritesDialogEDT);
+            else openFavoritesDialogEDT.run();
         };
 
-        // callback apertura preferiti (★ in basso a destra)
+        openFavoritesDialogRefRunnable.set(openFavoritesDialog);
         dashboardView.setOnOpenFavorites(openFavoritesDialog);
-        openFavoritesDialogHolder[0] = openFavoritesDialog;
 
-        // NON disabilitare mai il bottone preferiti
         JButton favBtn = dashboardView.getFavoritesButton();
         if (favBtn != null) favBtn.setEnabled(true);
 
-        // ---- reattività dropdown: move/resize + timer ----
+        // ===================== DROPDOWN FOLLOW =====================
         myFrame.addComponentListener(new ComponentAdapter() {
             @Override public void componentMoved(ComponentEvent e) {
                 updateDropdownPosition(myFrame, dashboardView, shellRef.get(), dropdownRef.get());
@@ -285,7 +299,6 @@ public class Main {
         );
         followTimer.start();
 
-        // ---- Stop pulito dei thread alla chiusura ----
         myFrame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
         myFrame.addWindowListener(new WindowAdapter() {
             @Override
@@ -301,11 +314,12 @@ public class Main {
             }
         });
 
-        // ---- mostra UI ----
         myFrame.setContentPane(shell);
         myFrame.setLocationRelativeTo(null);
         myFrame.setVisible(true);
     }
+
+    // ===================== HELPERS =====================
 
     private static JFrame createFrame() {
         JFrame myFrame = new JFrame();
@@ -379,55 +393,59 @@ public class Main {
         lastScreenX = screenX;
         lastScreenY = screenY;
 
-        if (dd.isVisible()) {
-            dd.setLocationOnScreen(screenX, screenY);
+        if (dd.isVisible()) dd.setLocationOnScreen(screenX, screenY);
+    }
+
+    private static void refreshFavoritesPanel(FavoritesDialogView panel,
+                                             FavoritesService favoritesService) {
+
+        if (panel == null) return;
+
+        List<FavoriteItem> all = favoritesService.getAll();
+
+        List<FavoriteItem> filtered = all.stream()
+                .filter(it ->
+                        panel.getMode() == FavoritesDialogView.Mode.FERMATA
+                                ? it.getType() == FavoriteType.STOP
+                                : it.getType() == FavoriteType.LINE
+                )
+                .collect(Collectors.toList());
+
+        if (panel.getMode() == FavoritesDialogView.Mode.LINEA) {
+
+            boolean busOn   = panel.isBusEnabled();
+            boolean tramOn  = panel.isTramEnabled();
+            boolean metroOn = panel.isMetroEnabled();
+
+            filtered = filtered.stream()
+                    .filter(it -> {
+                        if (it.getType() != FavoriteType.LINE) return false;
+
+                        TransportGuess t = guessTransport(it);
+
+                        return (t == TransportGuess.BUS && busOn)
+                                || (t == TransportGuess.TRAM && tramOn)
+                                || (t == TransportGuess.METRO && metroOn);
+                    })
+                    .collect(Collectors.toList());
         }
+
+        panel.getFavoritesView().setFavorites(filtered);
     }
 
-    // ===================== FAVORITES: load/remove senza cambiare il tuo model =====================
+    private enum TransportGuess { BUS, TRAM, METRO, UNKNOWN }
 
-    private static java.util.List<FavoriteItem> loadFavoritesFromSessionUser() {
+    private static TransportGuess guessTransport(FavoriteItem it) {
         try {
-            Object user = Session.getCurrentUser();
-            if (user == null) return java.util.List.of();
+            String s = (it.getRouteShortName() != null ? it.getRouteShortName() : "") +
+                    " " +
+                    (it.getHeadsign() != null ? it.getHeadsign() : "");
+            s = s.toLowerCase();
 
-            String[] getters = {"getFavorites", "getFavoriteItems", "favorites"};
-            for (String m : getters) {
-                try {
-                    Object out = user.getClass().getMethod(m).invoke(user);
-                    if (out instanceof java.util.List<?> l) {
-                        java.util.List<FavoriteItem> res = new java.util.ArrayList<>();
-                        for (Object o : l) {
-                            if (o instanceof FavoriteItem fi) res.add(fi);
-                        }
-                        return res;
-                    }
-                } catch (Exception ignored) {}
-            }
+            if (s.contains("metro") || s.startsWith("m")) return TransportGuess.METRO;
+            if (s.contains("tram") || s.startsWith("t")) return TransportGuess.TRAM;
+            if (!s.isBlank()) return TransportGuess.BUS;
         } catch (Exception ignored) {}
-
-        return java.util.List.of();
-    }
-
-    private static boolean removeFavoriteFromSessionUser(FavoriteItem item) {
-        try {
-            Object user = Session.getCurrentUser();
-            if (user == null || item == null) return false;
-
-            String[] rms = {"removeFavorite", "removeFromFavorites", "deleteFavorite"};
-            for (String m : rms) {
-                try {
-                    user.getClass().getMethod(m, item.getClass()).invoke(user, item);
-                    return true;
-                } catch (NoSuchMethodException ex) {
-                    try {
-                        user.getClass().getMethod(m, Object.class).invoke(user, item);
-                        return true;
-                    } catch (Exception ignored2) {}
-                } catch (Exception ignored) {}
-            }
-        } catch (Exception ignored) {}
-
-        return false;
+        return TransportGuess.UNKNOWN;
     }
 }

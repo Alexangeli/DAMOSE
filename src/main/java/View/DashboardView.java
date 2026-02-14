@@ -10,8 +10,7 @@ import View.SearchBar.SearchBarView;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
+import java.awt.event.*;
 import java.awt.geom.RoundRectangle2D;
 
 /**
@@ -21,6 +20,11 @@ import java.awt.geom.RoundRectangle2D;
  * - Card bianca dei risultati (Dettagli) visibile SOLO quando ci sono elementi
  * - Filtri bus/tram/metro visibili solo in modalità LINE (come floating buttons)
  * - ★ sempre visibile (floating)
+ *
+ * ✅ FIX anti-riapertura preferiti:
+ *   - RIMOSSO qualsiasi forcing di doClick() dal listener globale (AWTEventListener)
+ *   - RIMOSSO il mousePressed "bypass" sul bottone ★ preferiti (doClick forzato)
+ *   -> la finestra preferiti può aprirsi SOLO tramite ActionListener del bottone.
  */
 public class DashboardView extends JPanel {
 
@@ -82,6 +86,7 @@ public class DashboardView extends JPanel {
         // ===================== COMPONENTI (backend invariato) =====================
         searchBarView = new SearchBarView(true); // compact=true => solo barra visibile
         lineStopsView = new LineStopsView();
+
         // LineStopsView ha un suo header interno ("Dettagli", "Linee che passano per..."):
         // qui lo nascondiamo perché usiamo l'header moderno della card.
         stripInternalHeaderFromLineStopsView();
@@ -155,7 +160,6 @@ public class DashboardView extends JPanel {
 
         JPanel headerWrap = new JPanel(new BorderLayout());
         headerWrap.setOpaque(false);
-        // più aria a sinistra/alto: look “app” e niente attaccato ai bordi
         headerWrap.setBorder(BorderFactory.createEmptyBorder(18, 22, 12, 18));
         headerWrap.add(detailsHeader, BorderLayout.CENTER);
 
@@ -168,32 +172,25 @@ public class DashboardView extends JPanel {
 
         resultsBody = new JPanel(new BorderLayout());
         resultsBody.setOpaque(false);
-        // spazio coerente con headerWrap
         resultsBody.setBorder(BorderFactory.createEmptyBorder(10, 22, 18, 18));
 
-
-        // Placeholder mostrato quando c'è una selezione ma la lista non è ancora popolata
         detailsPlaceholder = new JLabel("Dettagli in caricamento…", SwingConstants.CENTER);
         detailsPlaceholder.setOpaque(false);
         detailsPlaceholder.setForeground(new Color(70, 70, 70));
         detailsPlaceholder.setFont(detailsPlaceholder.getFont().deriveFont(Font.BOLD, 16.5f));
 
-        // CardLayout: placeholder <-> risultati
         detailsContainer = new JPanel(new CardLayout());
         detailsContainer.setOpaque(false);
         detailsContainer.add(detailsPlaceholder, "EMPTY");
-        // LineStopsView contiene già la propria scroll area: evitare doppia scrollbar
         detailsContainer.add(lineStopsView, "LIST");
 
         resultsBody.add(detailsContainer, BorderLayout.CENTER);
 
-        // rende la lista dentro LineStopsView più "app-like" (font grandi, righe alte, padding)
         applyModernDetailsListStyle();
         updateDetailsHeaderText();
 
-        // la card contiene SOLO il body
         overlayCard.add(resultsBody, BorderLayout.CENTER);
-        overlayCard.setVisible(false); // nasce nascosta
+        overlayCard.setVisible(false);
 
         // ===================== LAYERED PANE =====================
         layeredPane = new JLayeredPane() {
@@ -215,32 +212,24 @@ public class DashboardView extends JPanel {
                 int gap = 10;
                 int btnSize = 54;
 
-                // pill tra searchbar e ★ (stessa altezza della ★)
                 int pillW = 120;
-                int pillH = btnSize; // uguale al pulsante preferiti (★)
+                int pillH = btnSize;
                 int pillX = x + barW + gap;
                 int pillY = y + (barH - pillH) / 2;
                 floatingModeToggle.setBounds(pillX, pillY, pillW, pillH);
 
-                // ★ a destra della pill
                 int starX = pillX + pillW + gap;
-                // allineamento verticale perfetto con searchbar e pill
                 int starY = y + (barH - btnSize) / 2;
                 floatingStarBtn.setBounds(starX, starY, btnSize, btnSize);
 
-                // Filtri: Bus+Tram sotto la pill, Metro sotto la ★ (preferiti)
-                int gridGap = 14; // spazio tra i bottoni
-                int gridX = pillX; // allineata a sinistra con la pill
+                int gridGap = 14;
+                int gridX = pillX;
                 int gridY = starY + btnSize + gap;
 
-                // riga 1 sotto la pill
                 busBtn.setBounds(gridX, gridY, btnSize, btnSize);
                 tramBtn.setBounds(gridX + btnSize + gridGap, gridY, btnSize, btnSize);
-
-                // Metro: sotto/colonna della ★ ma ALLA STESSA ALTEZZA di Bus/Tram
                 metroBtn.setBounds(starX, gridY, btnSize, btnSize);
 
-                // Clamp a destra: se star esce, trasla pill + star + filtri
                 int maxX = w - btnSize - 12;
                 if (starX > maxX) {
                     int shift = starX - maxX;
@@ -261,13 +250,8 @@ public class DashboardView extends JPanel {
                     int topY = y + barH + ogap;
                     int availH = h - topY - 60;
 
-                    // Altezza dinamica in base al contenuto (righe) + padding interno.
                     int items = getLineStopsItemCount();
-
-                    // stima: altezza riga moderna (Renderer) ~ 76px (fixedCellHeight)
                     int rowH = 76;
-
-                    // base (titolo / padding / scroll bar breathing)
                     int baseH = 120;
 
                     int contentH = (items <= 0) ? 220 : (baseH + (items * rowH));
@@ -298,39 +282,30 @@ public class DashboardView extends JPanel {
         layeredPane.add(mapView, JLayeredPane.DEFAULT_LAYER);
         layeredPane.add(searchBarView, JLayeredPane.PALETTE_LAYER);
 
-        // floating pill + card
         layeredPane.add(floatingModeToggle, JLayeredPane.PALETTE_LAYER);
         layeredPane.add(overlayCard, JLayeredPane.PALETTE_LAYER);
 
-        // floating buttons
         layeredPane.add(floatingStarBtn, JLayeredPane.PALETTE_LAYER);
         layeredPane.add(busBtn, JLayeredPane.PALETTE_LAYER);
         layeredPane.add(tramBtn, JLayeredPane.PALETTE_LAYER);
         layeredPane.add(metroBtn, JLayeredPane.PALETTE_LAYER);
 
         layeredPane.add(favoritesButton, JLayeredPane.PALETTE_LAYER);
-        // Assicura che la ★ dei preferiti sia sempre sopra tutto e cliccabile
         layeredPane.setLayer(favoritesButton, JLayeredPane.DRAG_LAYER);
         layeredPane.moveToFront(favoritesButton);
 
         add(layeredPane, BorderLayout.CENTER);
 
-        // click searchbar -> apri overlay (pill visibile, card solo se risultati)
         installExpandOnClick(searchBarView);
-        // ENTER nella searchbar: apre overlay e mostra Dettagli appena arrivano risultati
         installShowDetailsOnEnter();
-        
 
-        // click-away -> chiudi overlay (nasconde pill + card)
+        // ✅ Click-away SAFE: non forza MAI click sul bottone preferiti
         installGlobalClickAwayOnce();
 
-        // stato iniziale coerente
         syncOverlayFromSearchBar();
         setOverlayVisible(false);
-        // sicurezza: se il backend popola subito la lista, riallinea la card
         syncDetailsVisibilityFromContent();
 
-        // Timer: ★ + visibilità card quando cambia contenuto
         starSyncTimer = new Timer(120, e -> {
             boolean hasSel = hasAnyCurrentSelection();
             if (overlayStarBtn.isEnabled() != hasSel) {
@@ -344,20 +319,13 @@ public class DashboardView extends JPanel {
     }
 
     // ============================================================
-    // REGOLE DI VISIBILITÀ (questa è la parte chiave)
+    // REGOLE DI VISIBILITÀ
     // ============================================================
 
-    /**
-     * La card bianca DEVE comparire SOLO se:
-     * - overlayVisible == true (ho cliccato la searchbar)
-     * - ci sono risultati (lista non vuota)
-     */
     private void syncDetailsVisibilityFromContent() {
         boolean hasItems = getLineStopsItemCount() > 0;
         boolean hasSelection = hasCurrentSearchSelection();
 
-        // La card deve comparire quando l'overlay è aperto e l'utente ha selezionato qualcosa,
-        // anche se la lista non è ancora popolata (placeholder).
         boolean shouldShowCard = overlayVisible && (hasItems || hasSelection);
         if (overlayVisible) updateDetailsHeaderText();
 
@@ -365,7 +333,6 @@ public class DashboardView extends JPanel {
             overlayCard.setVisible(shouldShowCard);
         }
 
-        // Se la card è visibile, scegli cosa mostrare: placeholder oppure lista
         if (shouldShowCard) {
             showDetailsCardState(hasItems);
         }
@@ -376,14 +343,9 @@ public class DashboardView extends JPanel {
         layeredPane.repaint();
     }
 
-    /**
-     * Evita errori se LineStopsView non ha getItemCount():
-     * prova con reflection vari metodi; se fallisce ritorna 0.
-     */
     private int getLineStopsItemCount() {
         if (lineStopsView == null) return 0;
 
-        // 1) Prova metodi espliciti, se presenti
         String[] candidates = {
                 "getItemCount",
                 "getItemsCount",
@@ -402,13 +364,11 @@ public class DashboardView extends JPanel {
             } catch (Exception ignored) {}
         }
 
-        // 2) Cerca una JList dentro LineStopsView e usa la size del suo model
         try {
             int fromJList = findFirstJListModelSize(lineStopsView);
             if (fromJList >= 0) return fromJList;
         } catch (Exception ignored) {}
 
-        // 3) Fallback: se LineStopsView espone un getModel(), usa quello
         try {
             Object model = lineStopsView.getClass().getMethod("getModel").invoke(lineStopsView);
             if (model instanceof ListModel<?> lm) return lm.getSize();
@@ -417,10 +377,6 @@ public class DashboardView extends JPanel {
         return 0;
     }
 
-    /**
-     * Cerca ricorsivamente la prima JList dentro un container e ritorna la size del suo model.
-     * Ritorna -1 se non trova nessuna JList.
-     */
     private int findFirstJListModelSize(Component root) {
         if (root instanceof JList<?> jl) {
             ListModel<?> m = jl.getModel();
@@ -435,9 +391,6 @@ public class DashboardView extends JPanel {
         return -1;
     }
 
-    /**
-     * Utility: mostra la LISTA quando almeno un elemento è presente, altrimenti placeholder.
-     */
     private void showDetailsCardState(boolean hasItems) {
         if (detailsContainer == null) return;
         CardLayout cl = (CardLayout) detailsContainer.getLayout();
@@ -450,16 +403,13 @@ public class DashboardView extends JPanel {
         if (this.overlayVisible == visible) return;
         this.overlayVisible = visible;
 
-        // quando overlay è aperto -> pill visibile
         floatingModeToggle.setVisible(visible);
-        // quando overlay è aperto -> anche ★ visibile
         floatingStarBtn.setVisible(visible);
 
         if (visible) {
             syncOverlayFromSearchBar();
-            syncDetailsVisibilityFromContent(); // card solo se ci sono risultati
+            syncDetailsVisibilityFromContent();
         } else {
-            // chiudendo: spariscono card e filtri
             overlayCard.setVisible(false);
             setLineFiltersVisible(false);
             floatingStarBtn.setVisible(false);
@@ -472,7 +422,6 @@ public class DashboardView extends JPanel {
     private void syncOverlayFromSearchBar() {
         boolean isLine = (searchBarView.getCurrentMode() == SearchMode.LINE);
 
-        // aggiorna pill floating
         if (isLine) {
             floatingModeToggle.setText("Linea");
             floatingModeToggle.setToolTipText("Clicca per passare a ricerca per FERMATA");
@@ -483,10 +432,7 @@ public class DashboardView extends JPanel {
         floatingModeToggle.revalidate();
         floatingModeToggle.repaint();
 
-        // filtri visibili solo se LINE + overlay aperto
         setLineFiltersVisible(isLine && overlayVisible);
-
-        // allinea stato filtri dal backend
         pullLineFiltersFromSearchBar();
 
         overlayStarBtn.setEnabled(hasAnyCurrentSelection());
@@ -507,41 +453,21 @@ public class DashboardView extends JPanel {
         });
     }
 
-    /**
-     * ENTER nella searchbar: deve aprire l'overlay (pill + ★) e far comparire la card Dettagli
-     * non appena i risultati vengono popolati.
-     */
     private void installShowDetailsOnEnter() {
         try {
             JTextField field = searchBarView.getSearchField();
             if (field == null) return;
-
-            // Evita doppio binding se per qualche motivo il costruttore venisse richiamato più volte
-            for (var l : field.getActionListeners()) {
-                if (l != null && l.getClass().getName().contains("DashboardView")) {
-                    // non affidabile ma evita casi strani; comunque non interrompe se non trova
-                }
-            }
-
             field.addActionListener(e -> openOverlayAndWaitForDetails());
-        } catch (Exception ignored) {
-            // Se SearchBarView non espone la JTextField, non facciamo nulla.
-        }
+        } catch (Exception ignored) {}
     }
 
-    /**
-     * Apre overlay (pill + ★ + filtri in LINE) e fa comparire Dettagli appena la lista ha elementi.
-     * Usa un polling leggero per coprire il caso in cui il backend aggiorni la lista in asincrono.
-     */
     private void openOverlayAndWaitForDetails() {
-        // ENTER deve sempre aprire l'overlay
         if (!overlayVisible) {
             setOverlayVisible(true);
         } else {
             syncOverlayFromSearchBar();
         }
 
-        // prova subito (magari la lista è già pronta)
         syncDetailsVisibilityFromContent();
         updateDetailsHeaderText();
 
@@ -550,7 +476,6 @@ public class DashboardView extends JPanel {
 
         Timer t = new Timer(60, null);
         t.addActionListener(ev -> {
-            // riallinea pill/filtri e visibilità card
             syncOverlayFromSearchBar();
             syncDetailsVisibilityFromContent();
 
@@ -559,25 +484,19 @@ public class DashboardView extends JPanel {
 
             boolean hasItems = getLineStopsItemCount() > 0;
             boolean timeout = (System.currentTimeMillis() - start) > timeoutMs;
-            // se arrivano elementi smettiamo subito; se non arrivano, dopo timeout lasciamo il placeholder
             if (hasItems || timeout) t.stop();
         });
         t.setRepeats(true);
         t.start();
     }
 
-    /** Aggiorna titolo/sottotitolo della card Dettagli in base a modalità e testo selezionato. */
-    /**
-     * LineStopsView (storico) mostra un header interno (es. "Dettagli" + "Linee che passano per...").
-     * Ora che la card ha un header moderno, lo nascondiamo per evitare doppioni.
-     */
+    // ===================== HEADER INTERNAL STRIP =====================
+
     private void stripInternalHeaderFromLineStopsView() {
         try {
-            // togli bordi esterni (se presenti)
             lineStopsView.setBorder(BorderFactory.createEmptyBorder());
             lineStopsView.setOpaque(false);
 
-            // nasconde label tipiche dell'header interno
             hideLabelsByText(lineStopsView,
                     "Dettagli",
                     "Linee che passano per",
@@ -586,8 +505,6 @@ public class DashboardView extends JPanel {
                     "Fermate che passano",
                     "Linee:");
 
-            // se l'header è un pannello in cima con BorderLayout, spesso è il primo componente: se dopo aver
-            // nascosto le label resta un pannello vuoto, nascondiamolo.
             hideEmptyHeaderPanels(lineStopsView);
         } catch (Exception ignored) {}
     }
@@ -614,7 +531,6 @@ public class DashboardView extends JPanel {
         }
     }
 
-    /** Nasconde pannelli che risultano vuoti (tutti i figli invisibili) dopo la rimozione dell'header. */
     private void hideEmptyHeaderPanels(Container root) {
         for (Component child : root.getComponents()) {
             if (child instanceof Container cc) {
@@ -625,13 +541,13 @@ public class DashboardView extends JPanel {
                     if (grand.isVisible()) { anyVisible = true; break; }
                 }
 
-                // euristica: se è un pannello "alto" e vuoto, probabilmente era l'header
                 if (!anyVisible && cc.getPreferredSize() != null && cc.getPreferredSize().height >= 22) {
                     cc.setVisible(false);
                 }
             }
         }
     }
+
     private void updateDetailsHeaderText() {
         if (detailsTitleLabel == null || detailsSubtitleLabel == null) return;
 
@@ -654,7 +570,8 @@ public class DashboardView extends JPanel {
         detailsHeader.repaint();
     }
 
-    /** Cerca la prima JList dentro LineStopsView e le applica uno stile moderno. */
+    // ===================== LIST STYLE =====================
+
     private void applyModernDetailsListStyle() {
         try {
             JList<?> jl = findFirstJList(lineStopsView);
@@ -664,18 +581,16 @@ public class DashboardView extends JPanel {
             jl.setBackground(new Color(0, 0, 0, 0));
             jl.setSelectionBackground(new Color(230, 230, 230));
             jl.setSelectionForeground(new Color(25, 25, 25));
-            // più alta: evita che “Tocca per vedere i dettagli” venga tagliato
             jl.setFixedCellHeight(76);
             jl.setCellRenderer(new ModernListCellRenderer());
             jl.setBorder(BorderFactory.createEmptyBorder(4, 0, 8, 0));
 
-            // rimuovi bordi/padding inutili dal viewport
             Container p = jl.getParent();
             if (p instanceof JViewport vp) {
                 vp.setOpaque(false);
                 vp.setBorder(null);
             }
-            // Se esiste uno JScrollPane interno (in LineStopsView), uniforma look ed evita bordi doppi
+
             JScrollPane sp = (JScrollPane) SwingUtilities.getAncestorOfClass(JScrollPane.class, jl);
             if (sp != null) {
                 sp.setBorder(BorderFactory.createEmptyBorder());
@@ -710,6 +625,12 @@ public class DashboardView extends JPanel {
         }
     }
 
+    /**
+     * ✅ VERSIONE SAFE:
+     * - NON fa doClick() sul bottone preferiti
+     * - NON consuma eventi
+     * - chiude solo overlay quando clicchi fuori dai componenti overlay
+     */
     private void installGlobalClickAwayOnce() {
         if (clickAwayInstalled) return;
         clickAwayInstalled = true;
@@ -721,21 +642,14 @@ public class DashboardView extends JPanel {
             Object src = me.getSource();
             if (!(src instanceof Component srcComp)) return;
 
-            Point p = SwingUtilities.convertPoint(srcComp, me.getPoint(), layeredPane);
+            // Ignora click che arrivano da ALTRE finestre (JDialog, popup, ecc.)
+            Window srcWin = SwingUtilities.getWindowAncestor(srcComp);
+            Window myWin  = SwingUtilities.getWindowAncestor(DashboardView.this);
+            if (srcWin == null || myWin == null || srcWin != myWin) return;
 
-            // ✅ FIX deterministico: se il click cade nei bounds della ★ Preferiti,
-            // eseguiamo SEMPRE l'azione del bottone e consumiamo l'evento.
-            // Questo copre sia il caso di overlay/glasspane sia il caso di altri listener globali
-            // (es. map drag) che consumano MOUSE_PRESSED prima che JButton generi l'ActionEvent.
-            if (favoritesButton != null && favoritesButton.isShowing() && favoritesButton.getBounds().contains(p)) {
-                me.consume();
-                SwingUtilities.invokeLater(favoritesButton::doClick);
-                return;
-            }
-
-            // Se overlay non è aperto, non fare altro
             if (!overlayVisible) return;
 
+            Point p = SwingUtilities.convertPoint(srcComp, me.getPoint(), layeredPane);
             Component at = SwingUtilities.getDeepestComponentAt(layeredPane, p.x, p.y);
 
             if (at == null) {
@@ -743,22 +657,21 @@ public class DashboardView extends JPanel {
                 return;
             }
 
-            // clic dentro searchbar / pill / card -> non chiudere
+            // Se click su uno dei componenti overlay → non chiudere
             if (SwingUtilities.isDescendingFrom(at, searchBarView)) return;
             if (SwingUtilities.isDescendingFrom(at, floatingModeToggle)) return;
             if (SwingUtilities.isDescendingFrom(at, overlayCard)) return;
 
-            // clic sui floating buttons -> non chiudere
             if (SwingUtilities.isDescendingFrom(at, floatingStarBtn)) return;
             if (SwingUtilities.isDescendingFrom(at, busBtn)) return;
             if (SwingUtilities.isDescendingFrom(at, tramBtn)) return;
             if (SwingUtilities.isDescendingFrom(at, metroBtn)) return;
 
-            // clic sul bottone Preferiti (★ in basso a destra) -> non chiudere
             if (SwingUtilities.isDescendingFrom(at, favoritesButton)) return;
 
-            // altrimenti chiudi overlay
+            // Click fuori → chiudi overlay
             setOverlayVisible(false);
+
         }, AWTEvent.MOUSE_EVENT_MASK);
     }
 
@@ -916,6 +829,10 @@ public class DashboardView extends JPanel {
         return false;
     }
 
+    /**
+     * ✅ FIX: rimosso il mousePressed che forzava doClick().
+     * Il bottone deve aprire preferiti SOLO tramite ActionListener normale.
+     */
     private JButton createFloatingFavoritesButton() {
         return new JButton("★") {
 
@@ -935,32 +852,14 @@ public class DashboardView extends JPanel {
 
                 setPreferredSize(new Dimension(76, 76));
                 setToolTipText("Apri preferiti");
-                
-                addMouseListener(new MouseAdapter() {
-                    @Override
-                    public void mousePressed(MouseEvent e) {
-                        // bypass totale: se qualcuno consuma MOUSE_PRESSED prima dell'ActionEvent,
-                        // forziamo comunque il click logico del JButton.
-                        if (SwingUtilities.isLeftMouseButton(e) && isEnabled()) {
-                            e.consume();
-                            SwingUtilities.invokeLater(() -> doClick(0));
-                        }
-                    }
-                });
 
+                // ✅ SOLO ActionListener (niente doClick forzati)
                 addActionListener(e -> {
-                    // Se NON loggato → apri AuthDialog
                     if (!Session.isLoggedIn()) {
-                        if (onRequireAuth != null) {
-                            onRequireAuth.run();
-                        }
+                        if (onRequireAuth != null) onRequireAuth.run();
                         return;
                     }
-
-                    // Se loggato → apri finestra Preferiti
-                    if (onOpenFavorites != null) {
-                        onOpenFavorites.run();
-                    }
+                    if (onOpenFavorites != null) onOpenFavorites.run();
                 });
 
                 animTimer = new Timer(16, e -> {
@@ -981,9 +880,6 @@ public class DashboardView extends JPanel {
                         hover = true;
                         targetScale = 1.08;
 
-                        // Se qualche componente (es. MapView) imposta il cursore a livello finestra,
-                        // il cursore del singolo JButton viene ignorato. Forziamo quindi la manina
-                        // anche sull'ancestor Window.
                         setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
                         Window win = SwingUtilities.getWindowAncestor(DashboardView.this);
                         if (win != null) win.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
@@ -994,7 +890,6 @@ public class DashboardView extends JPanel {
                         hover = false;
                         targetScale = 1.0;
 
-                        // Ripristina cursore default sulla finestra.
                         setCursor(Cursor.getDefaultCursor());
                         Window win = SwingUtilities.getWindowAncestor(DashboardView.this);
                         if (win != null) win.setCursor(Cursor.getDefaultCursor());
@@ -1081,6 +976,8 @@ public class DashboardView extends JPanel {
         if (favoritesButton != null) favoritesButton.repaint();
     }
 
+    // ===================== SUPPORT PANELS / BUTTONS =====================
+
     private static class RoundedShadowPanel extends JPanel {
         @Override public boolean isOpaque() { return false; }
 
@@ -1088,7 +985,6 @@ public class DashboardView extends JPanel {
         protected void paintComponent(Graphics g) {
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
             g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
             g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
@@ -1098,14 +994,12 @@ public class DashboardView extends JPanel {
             int h = getHeight();
             int arc = 28;
 
-            // shadow morbida
             for (int i = 0; i < 10; i++) {
-                float alpha = (10 - i) / 200f; // soft
+                float alpha = (10 - i) / 200f;
                 g2.setColor(new Color(0, 0, 0, Math.round(alpha * 255)));
                 g2.fillRoundRect(6 + i, 6 + i, w - 12 - (i * 2), h - 12 - (i * 2), arc, arc);
             }
 
-            // card surface
             int inset = 10;
             int cw = w - inset;
             int ch = h - inset;
@@ -1113,13 +1007,11 @@ public class DashboardView extends JPanel {
             g2.setColor(new Color(250, 250, 250, 245));
             g2.fillRoundRect(0, 0, cw, ch, arc, arc);
 
-            // border leggero
             g2.setColor(new Color(210, 210, 210, 170));
             g2.setStroke(new BasicStroke(1.2f));
             g2.drawRoundRect(0, 0, cw - 1, ch - 1, arc, arc);
 
             g2.dispose();
-
             super.paintComponent(g);
         }
 
@@ -1158,7 +1050,7 @@ public class DashboardView extends JPanel {
         }
 
         @Override
-        protected void paintComponent(Graphics g) {
+       	protected void paintComponent(Graphics g) {
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
@@ -1266,21 +1158,18 @@ public class DashboardView extends JPanel {
         }
     }
 
-    /**
-     * Impostato dal Main: se l'utente clicca ★ senza essere loggato, apriamo l'AuthDialog.
-     */
+    // ===================== CALLBACKS DAL MAIN =====================
+
     public void setOnRequireAuth(Runnable onRequireAuth) {
         this.onRequireAuth = onRequireAuth;
     }
 
-    /**
-     * Impostato dal Main: quando l'utente clicca la ★ in basso a destra, apriamo la finestra Preferiti.
-     */
     public void setOnOpenFavorites(Runnable onOpenFavorites) {
         this.onOpenFavorites = onOpenFavorites;
     }
 
-    /** Header con barra accent a sinistra, in stile "app". */
+    // ===================== HEADER / RENDERER =====================
+
     private static class DetailsHeaderPanel extends JPanel {
         private final JLabel title;
         private final JLabel subtitle;
@@ -1310,10 +1199,9 @@ public class DashboardView extends JPanel {
             int h = getHeight();
             int barW = 6;
             int arc = 10;
-            int barX = 6;     // stacca la barra dal bordo della card
-            int topPad = 6;   // stacca dall’alto
+            int barX = 6;
+            int topPad = 6;
 
-            // accent bar (orange)
             g2.setColor(new Color(0xFF, 0x7A, 0x00));
             g2.fillRoundRect(barX, topPad, barW, Math.max(10, h - (topPad * 2)), arc, arc);
 
@@ -1322,12 +1210,10 @@ public class DashboardView extends JPanel {
 
         @Override
         public Insets getInsets() {
-            // lascia spazio alla barra accent + aria a sinistra/alto
             return new Insets(4, 22, 4, 0);
         }
     }
 
-    /** Renderer moderno: riga alta, testo grande, badge/dot a sinistra. */
     private static class ModernListCellRenderer extends JPanel implements ListCellRenderer<Object> {
 
         private final JLabel main;
@@ -1351,13 +1237,12 @@ public class DashboardView extends JPanel {
             JPanel text = new JPanel();
             text.setOpaque(false);
             text.setLayout(new BoxLayout(text, BoxLayout.Y_AXIS));
-            text.setBorder(BorderFactory.createEmptyBorder(0, 22, 0, 0)); // spazio per il dot vicino al titolo
+            text.setBorder(BorderFactory.createEmptyBorder(0, 22, 0, 0));
             text.add(main);
             text.add(Box.createVerticalStrut(2));
             text.add(sub);
 
             add(text, BorderLayout.CENTER);
-            // padding complessivo: ordinato e con aria, senza tagliare il sottotitolo
             setBorder(BorderFactory.createEmptyBorder(12, 14, 12, 18));
         }
 
@@ -1368,9 +1253,7 @@ public class DashboardView extends JPanel {
 
             String s = (value == null) ? "" : value.toString();
 
-            // split semplice: se c'è una parentesi, mettiamo il codice nel sottotitolo
             String title = s;
-            // placeholder: verrà sostituito con dati realtime dal backend
             String subtitle = "Prossimo: tra —";
             int p = s.lastIndexOf('(');
             if (p > 0 && s.endsWith(")")) {
@@ -1393,7 +1276,6 @@ public class DashboardView extends JPanel {
             int h = getHeight();
             int arc = 16;
 
-            // background card-row
             if (selected) {
                 g2.setColor(new Color(230, 230, 230));
             } else {
@@ -1401,12 +1283,11 @@ public class DashboardView extends JPanel {
             }
             g2.fillRoundRect(4, 2, w - 8, h - 4, arc, arc);
 
-            // dot vicino al titolo (allineato alla prima riga, non tra titolo e sottotitolo)
             int dot = 10;
-            int dx = 14; // vicino al testo, coerente con il padding sinistro
+            int dx = 14;
             FontMetrics tfm = getFontMetrics(main.getFont());
             int ascent = tfm.getAscent();
-            int topPad = 12; // deve combaciare con il padding top della border
+            int topPad = 12;
             int dy = topPad + Math.max(0, (ascent - dot) / 2);
             g2.setColor(new Color(0xFF, 0x7A, 0x00));
             g2.fillOval(dx, dy, dot, dot);
