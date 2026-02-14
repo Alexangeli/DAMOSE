@@ -35,7 +35,6 @@ public class StopLinesController {
                                String tripsCsvPath,
                                String routesCsvPath,
                                String stopsCsvPath,
-                               String stopsCsvPath,
                                MapController mapController) {
         this.view = view;
         this.stopTimesPath = stopTimesPath;
@@ -81,7 +80,6 @@ public class StopLinesController {
                     routeId, dir, tripsCsvPath, stopTimesPath, stopsCsvPath);
             if (stops != null && !stops.isEmpty()) mapController.hideUselessStops(stops);
             // Disegna SOLO quella direzione, SENZA cambiare zoom/centro
-            mapController.highlightRouteKeepStopView(routeId, dirId);
         });
     }
 

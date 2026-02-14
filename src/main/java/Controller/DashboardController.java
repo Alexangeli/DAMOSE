@@ -167,6 +167,8 @@ public class DashboardController {
             if (stop == null) return;
 
             mapController.clearRouteHighlight();
+            mapController.clearVehicles();
+            mapController.showAllStops();
 
             stopSearchController.onSuggestionSelected(stop);
 
@@ -177,6 +179,8 @@ public class DashboardController {
 
         searchBar.setOnRouteDirectionSelected((RouteDirectionOption option) -> {
             if (option == null) return;
+
+            mapController.clearHighlightedStop();
 
             lineSearchController.onRouteDirectionSelected(option);
             mapController.showVehiclesForRoute(option.getRouteId(), option.getDirectionId());

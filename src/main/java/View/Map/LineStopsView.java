@@ -150,7 +150,8 @@ public class LineStopsView extends JPanel {
      * Modalità FERMATA (vecchio):
      * mostra tutte le linee che passano per una fermata.
      */
-    public void showLinesAtStop(String stopName, List<RouteDirectionOption> options) {
+// ✅ STOP MODE v1 (fermata -> linee) resta RoutesModel
+    public void showLinesAtStop(String stopName, List<RoutesModel> routes) {
         this.panelMode = PanelMode.STOP_ROUTES;
 
         String label = "Linee che passano per: " + stopName;
@@ -161,23 +162,30 @@ public class LineStopsView extends JPanel {
         this.currentStops = Collections.emptyList();
         this.mapController = null;
 
-        // reset nuovo stop-mode
+        // reset stop-mode v2
         this.currentRouteDirections = Collections.emptyList();
 
         this.currentRoutes = (routes != null) ? routes : Collections.emptyList();
 
         if (!currentRoutes.isEmpty()) {
-            for (RouteDirectionOption opt : currentRoutes) {
-                // toString() => "64 → Laurentina"
-                listModel.addElement(opt.toString());
+            for (RoutesModel r : currentRoutes) {
+                String line = r.getRoute_short_name();
+                String desc = r.getRoute_long_name();
+                if (desc != null && !desc.isBlank()) {
+                    listModel.addElement(line + " - " + desc);
+                } else {
+                    listModel.addElement(line);
+                }
             }
         } else {
             listModel.addElement("Nessuna linea trovata per questa fermata.");
         }
+
         list.clearSelection();
         revalidate();
         repaint();
     }
+
 
     /**
      * ✅ NUOVO: Modalità FERMATA (nuovo):
