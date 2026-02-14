@@ -29,7 +29,7 @@ public class Main {
     private static volatile int lastScreenX = 0;
     private static volatile int lastScreenY = 0;
 
-    // GTFS-RT endpoint usato come "health check" per capire ONLINE/OFFLINE
+    // === GTFS-RT STATUS (health check) ===
     private static final String GTFS_RT_HEALTH_URL =
             "https://romamobilita.it/sites/default/files/rome_rtgtfs_vehicle_positions_feed.pb";
 
@@ -41,7 +41,7 @@ public class Main {
             "https://romamobilita.it/sites/default/files/rome_rtgtfs_trip_updates_feed.pb";
 
     private static final String GTFS_RT_ALERTS_URL =
-            "https://romamobilita.it/sites/default/files/rome_rtgtfs_alerts_feed.pb";
+            "https://romamobilita.it/sites/default/files/rome_rtgtfs_service_alerts_feed.pb";
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(Main::startApp);
@@ -65,71 +65,35 @@ public class Main {
 
         // ---- Connection status service (ONLINE/OFFLINE) ----
         ConnectionStatusService statusService = new ConnectionStatusService(GTFS_RT_HEALTH_URL);
-
-        // Espongo al resto dell'app SOLO l'interfaccia
         ConnectionStatusProvider statusProvider = statusService;
 
-        System.out.println("Stato iniziale connessione: " + statusProvider.getState());
-
-        statusProvider.addListener(state -> {
-            System.out.println("Stato connessione: " + state);
-            // Se vuoi aggiornare UI/Controller:
-            // SwingUtilities.invokeLater(() -> controller.onConnectionStateChanged(state));
-        });
-
-        statusService.start();
-
-        // === GTFS-RT REALTIME (Services + Controller) ===
+        // ---- GTFS-RT realtime services ----
         VehiclePositionsService vehicleSvc = new VehiclePositionsService(GTFS_RT_VEHICLE_URL);
         TripUpdatesService tripSvc = new TripUpdatesService(GTFS_RT_TRIP_URL);
         AlertsService alertsSvc = new AlertsService(GTFS_RT_ALERTS_URL);
 
+        // ---- RealTime controller (gated by statusProvider) ----
         RealTimeController rtController = new RealTimeController(statusProvider, vehicleSvc, tripSvc, alertsSvc);
 
-        // Hook: qui decidi cosa aggiornare nella UI.
-        // Se non hai ancora i metodi, lascia solo i log per test.
-        rtController.setOnVehicles(vehicles -> {
-            // Esempio minimo: log quantità
-            System.out.println("[RT] vehicles=" + vehicles.size());
-
-            // TODO: aggiorna mappa/pannello (me lo dici e ti scrivo il codice preciso)
-            // controller.onRealtimeVehicles(vehicles);
-        });
-
-        rtController.setOnTripUpdates(trips -> {
-            System.out.println("[RT] tripUpdates=" + trips.size());
-            // controller.onRealtimeTripUpdates(trips);
-        });
-
-        rtController.setOnAlerts(alerts -> {
-            System.out.println("[RT] alerts=" + alerts.size());
-            // controller.onRealtimeAlerts(alerts);
-        });
-
+        // Hook minimi: per ora log (poi li colleghiamo a MapController / View)
+        rtController.setOnVehicles(vehicles ->
+                System.out.println("[RT] vehicles=" + vehicles.size())
+        );
+        rtController.setOnTripUpdates(trips ->
+                System.out.println("[RT] tripUpdates=" + trips.size())
+        );
+        rtController.setOnAlerts(alerts ->
+                System.out.println("[RT] alerts=" + alerts.size())
+        );
         rtController.setOnConnectionState(state -> {
-            // Questo arriva dai ConnectionManager interni ai 3 service
-            // Se vuoi tenere UNA sola fonte di verità, commenta questo e usa statusProvider.
-            System.out.println("[RT] connection=" + state);
+            System.out.println("[STATUS] " + state);
+            // Qui puoi anche notificare la UI se vuoi:
+            // SwingUtilities.invokeLater(() -> controller.onConnectionStateChanged(state));
         });
 
-        rtController.start();
-        // === /GTFS-RT REALTIME ===
-
-        // Stop pulito dei thread alla chiusura
-        myFrame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
-        myFrame.addWindowListener(new WindowAdapter() {
-            @Override
-            public void windowClosing(WindowEvent e) {
-                try {
-                    // stop servizi
-                    rtController.stop();
-                    statusService.stop();
-                } finally {
-                    myFrame.dispose();
-                    System.exit(0);
-                }
-            }
-        });
+        // ---- Start background services ----
+        statusService.start();   // avvia health-check
+        rtController.start();    // avvia timer UI + si adegua allo stato corrente
 
         // ---- Shell + Account UI ----
         AtomicReference<AppShellView> shellRef = new AtomicReference<>();
@@ -141,7 +105,6 @@ public class Main {
                 AppShellView shell = shellRef.get();
                 if (shell != null) shell.refreshAuthButton();
 
-                // preferiti disponibili solo se loggato
                 if (dashboardView.getFavoritesButton() != null) {
                     dashboardView.getFavoritesButton().setEnabled(Session.isLoggedIn());
                 }
@@ -179,6 +142,8 @@ public class Main {
                 }
         );
         dropdownRef.set(dropdown);
+
+        // collega il pallino ONLINE/OFFLINE (frontend) al statusProvider
         dropdown.bindConnectionStatus(statusProvider);
 
         // ---- shell (dashboard + floating account button) ----
@@ -192,7 +157,6 @@ public class Main {
             AccountDropdown dd = dropdownRef.get();
             if (dd == null) return;
 
-            // toggle dropdown
             if (dd.isVisible()) {
                 dd.hide();
                 return;
@@ -235,6 +199,22 @@ public class Main {
                 updateDropdownPosition(myFrame, dashboardView, shellRef.get(), dropdownRef.get())
         );
         followTimer.start();
+
+        // ---- Stop pulito dei thread alla chiusura ----
+        myFrame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
+        myFrame.addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                try {
+                    followTimer.stop();
+                    rtController.stop();
+                    statusService.stop();
+                } finally {
+                    myFrame.dispose();
+                    System.exit(0);
+                }
+            }
+        });
 
         // ---- mostra UI ----
         myFrame.setContentPane(shell);

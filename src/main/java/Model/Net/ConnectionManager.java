@@ -95,6 +95,8 @@ public class ConnectionManager {
                 realtimeFetchTask.run();
                 fetchFailures = 0; // fetch ok
             } catch (Exception ex) {
+                ex.printStackTrace();   // <<< AGGIUNGI QUESTO
+
                 fetchFailures++;
                 if (fetchFailures >= failuresToGoOffline) {
                     setState(ConnectionState.OFFLINE);
@@ -143,7 +145,7 @@ public class ConnectionManager {
 
                 HttpResponse<Void> res = http.send(req, HttpResponse.BodyHandlers.discarding());
                 int code = res.statusCode();
-                return code >= 200 && code < 500;
+                return code >= 200 && code < 399;
             } catch (Exception e) {
                 return false;
             }
