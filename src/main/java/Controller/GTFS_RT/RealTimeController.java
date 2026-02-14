@@ -3,6 +3,7 @@ package Controller.GTFS_RT;
 import Model.GTFS_RT.AlertInfo;
 import Model.GTFS_RT.TripUpdateInfo;
 import Model.GTFS_RT.VehicleInfo;
+
 import Model.Net.ConnectionListener;
 import Model.Net.ConnectionState;
 import Model.Net.ConnectionStatusProvider;
@@ -20,16 +21,18 @@ import java.util.function.Consumer;
 /**
  * RealTimeController
  *
- * - Ascolta SOLO ConnectionStatusProvider (authority ONLINE/OFFLINE).
- * - Quando ONLINE: avvia i service realtime (che fanno fetch periodico).
- * - Quando OFFLINE: ferma i service realtime.
- * - Ogni uiPeriodMs (default 1000ms) legge le cache e notifica la View.
+ * - Authority ONLINE/OFFLINE: ConnectionStatusProvider (ConnectionStatusService).
+ * - ONLINE: avvia i 3 service realtime (polling).
+ * - OFFLINE: ferma i 3 service.
+ * - Timer UI: legge le cache e notifica la View.
  *
- * NOTE:
- * - I service realtime devono essere "fetch-only" (polling), non "health-check".
- * - Tutti gli update UI avvengono su EDT tramite SwingUtilities.invokeLater.
+ * Ottimizzazione:
+ * - Vehicles/Trips: pubblica solo se cambia (hash).
+ * - Alerts: pubblica se cambia oppure almeno ogni ALERTS_REPUBLISH_MS (default 30s).
  */
 public class RealTimeController {
+
+    private static final long ALERTS_REPUBLISH_MS = 30_000L;
 
     private final ConnectionStatusProvider statusProvider;
 
@@ -42,7 +45,7 @@ public class RealTimeController {
 
     private volatile boolean realtimeRunning = false;
 
-    // callback verso UI / controller superiori
+    // callback UI
     private Consumer<List<VehicleInfo>> onVehicles = v -> {};
     private Consumer<List<TripUpdateInfo>> onTripUpdates = t -> {};
     private Consumer<List<AlertInfo>> onAlerts = a -> {};
@@ -52,6 +55,9 @@ public class RealTimeController {
     private long lastVehiclesHash = Long.MIN_VALUE;
     private long lastTripsHash = Long.MIN_VALUE;
     private long lastAlertsHash = Long.MIN_VALUE;
+
+    // NEW: republish alerts anche se uguali
+    private long lastAlertsPublishMs = 0;
 
     public RealTimeController(ConnectionStatusProvider statusProvider,
                               VehiclePositionsService vehicleService,
@@ -65,18 +71,18 @@ public class RealTimeController {
                               TripUpdatesService tripUpdatesService,
                               AlertsService alertsService,
                               int uiPeriodMs) {
+
         this.statusProvider = statusProvider;
         this.vehicleService = vehicleService;
         this.tripUpdatesService = tripUpdatesService;
         this.alertsService = alertsService;
 
-        // timer UI: legge cache (NO rete)
-        this.uiTimer = new Timer(uiPeriodMs, e -> publishIfChanged());
+        this.uiTimer = new Timer(uiPeriodMs, e -> publishToUi());
         this.uiTimer.setRepeats(true);
 
-        // listener unico: stato connessione
         this.statusListener = newState -> SwingUtilities.invokeLater(() -> {
             onConnectionState.accept(newState);
+
             if (newState == ConnectionState.ONLINE) startRealtimeIfNeeded();
             else stopRealtimeIfNeeded();
         });
@@ -87,31 +93,28 @@ public class RealTimeController {
        ========================= */
 
     public void start() {
-        // aggancia listener e timer UI
         statusProvider.addListener(statusListener);
         uiTimer.start();
 
-        // applica subito stato attuale
+        // applica subito stato corrente
         ConnectionState s = statusProvider.getState();
         SwingUtilities.invokeLater(() -> onConnectionState.accept(s));
+
         if (s == ConnectionState.ONLINE) startRealtimeIfNeeded();
         else stopRealtimeIfNeeded();
     }
 
     public void stop() {
-        // stop realtime + timer UI + listener
         uiTimer.stop();
         stopRealtimeIfNeeded();
 
         try {
             statusProvider.removeListener(statusListener);
-        } catch (Exception ignored) {
-            // se l'impl non supporta remove, non crashiamo
-        }
+        } catch (Exception ignored) { }
     }
 
     /* =========================
-       Bind callback UI
+       Binding callback UI
        ========================= */
 
     public void setOnVehicles(Consumer<List<VehicleInfo>> cb) {
@@ -136,17 +139,17 @@ public class RealTimeController {
 
     public List<VehicleInfo> getVehicles() {
         List<VehicleInfo> v = vehicleService.getVehicles();
-        return v != null ? v : Collections.emptyList();
+        return (v != null) ? v : Collections.emptyList();
     }
 
     public List<TripUpdateInfo> getTripUpdates() {
         List<TripUpdateInfo> t = tripUpdatesService.getTripUpdates();
-        return t != null ? t : Collections.emptyList();
+        return (t != null) ? t : Collections.emptyList();
     }
 
     public List<AlertInfo> getAlerts() {
         List<AlertInfo> a = alertsService.getAlerts();
-        return a != null ? a : Collections.emptyList();
+        return (a != null) ? a : Collections.emptyList();
     }
 
     public ConnectionState getConnectionState() {
@@ -154,7 +157,7 @@ public class RealTimeController {
     }
 
     /* =========================
-       Internals
+       Internals: start/stop servizi
        ========================= */
 
     private void startRealtimeIfNeeded() {
@@ -170,20 +173,22 @@ public class RealTimeController {
         if (!realtimeRunning) return;
         realtimeRunning = false;
 
-        // stop poller thread dei service
         vehicleService.stop();
         tripUpdatesService.stop();
         alertsService.stop();
 
-        // opzionale: reset hash per forzare refresh al prossimo ONLINE
+        // reset per forzare refresh UI alla prossima ONLINE
         lastVehiclesHash = Long.MIN_VALUE;
         lastTripsHash = Long.MIN_VALUE;
         lastAlertsHash = Long.MIN_VALUE;
+        lastAlertsPublishMs = 0;
     }
 
-    private void publishIfChanged() {
-        // se vuoi: quando OFFLINE puoi ancora pubblicare cache (ultimo dato) oppure no.
-        // Io pubblico sempre (così la UI vede gli ultimi dati), ma solo se cambiano.
+    /* =========================
+       Internals: publish UI
+       ========================= */
+
+    private void publishToUi() {
         List<VehicleInfo> vehicles = getVehicles();
         List<TripUpdateInfo> trips = getTripUpdates();
         List<AlertInfo> alerts = getAlerts();
@@ -196,20 +201,31 @@ public class RealTimeController {
             lastVehiclesHash = vh;
             SwingUtilities.invokeLater(() -> onVehicles.accept(vehicles));
         }
+
         if (th != lastTripsHash) {
             lastTripsHash = th;
             SwingUtilities.invokeLater(() -> onTripUpdates.accept(trips));
         }
-        if (ah != lastAlertsHash) {
+
+        // ALERTS: cambia OR ripubblica almeno ogni 30s
+        long now = System.currentTimeMillis();
+        boolean timeToRepublish = (now - lastAlertsPublishMs) >= ALERTS_REPUBLISH_MS;
+
+        if (ah != lastAlertsHash || timeToRepublish) {
             lastAlertsHash = ah;
+            lastAlertsPublishMs = now;
             SwingUtilities.invokeLater(() -> onAlerts.accept(alerts));
         }
     }
 
-    // Hash economici per evitare costo alto. Limitati a 50 elementi per lista.
+    /* =========================
+       Cheap hashes (limit 50)
+       ========================= */
+
     private static long cheapHashVehicles(List<VehicleInfo> vehicles) {
         long h = vehicles.size();
         int limit = Math.min(vehicles.size(), 50);
+
         for (int i = 0; i < limit; i++) {
             VehicleInfo v = vehicles.get(i);
             h = 31 * h + safeHash(v.vehicleId);
@@ -223,6 +239,7 @@ public class RealTimeController {
     private static long cheapHashTrips(List<TripUpdateInfo> trips) {
         long h = trips.size();
         int limit = Math.min(trips.size(), 50);
+
         for (int i = 0; i < limit; i++) {
             TripUpdateInfo t = trips.get(i);
             h = 31 * h + safeHash(t.tripId);
@@ -236,6 +253,7 @@ public class RealTimeController {
     private static long cheapHashAlerts(List<AlertInfo> alerts) {
         long h = alerts.size();
         int limit = Math.min(alerts.size(), 50);
+
         for (int i = 0; i < limit; i++) {
             AlertInfo a = alerts.get(i);
             h = 31 * h + safeHash(a.id);

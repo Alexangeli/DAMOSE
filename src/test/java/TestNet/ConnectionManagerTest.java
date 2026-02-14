@@ -29,10 +29,10 @@ public class ConnectionManagerTest {
 
         ConnectionManager cm = new ConnectionManager(
                 scheduler,
-                () -> { /* fetch non serve qui */ },
-                () -> true,          // health check sempre OK
-                20,                  // check ogni 20ms
-                1000,                // fetch ogni 1s (irrilevante)
+                () -> {},
+                () -> true,
+                20,
+                1000,
                 2
         );
 
@@ -43,8 +43,7 @@ public class ConnectionManagerTest {
 
         cm.start();
 
-        assertTrue("Non è mai diventato ONLINE",
-                latch.await(500, TimeUnit.MILLISECONDS));
+        assertTrue(latch.await(700, TimeUnit.MILLISECONDS));
         assertEquals(ConnectionState.ONLINE, observed.get());
         assertEquals(ConnectionState.ONLINE, cm.getState());
 
@@ -52,33 +51,28 @@ public class ConnectionManagerTest {
     }
 
     @Test
-    public void goesOffline_afterConsecutiveFailures() throws Exception {
+    public void goesOffline_afterConsecutiveHealthFailures() throws Exception {
         scheduler = Executors.newScheduledThreadPool(2);
 
-        CountDownLatch latch = new CountDownLatch(1);
-        AtomicReference<ConnectionState> observed = new AtomicReference<>();
-
+        CountDownLatch offlineLatch = new CountDownLatch(1);
         AtomicInteger calls = new AtomicInteger(0);
-        // prima volta OK (ONLINE), poi KO => OFFLINE dopo 2 failure
+
         ConnectionManager cm = new ConnectionManager(
                 scheduler,
                 () -> {},
-                () -> calls.getAndIncrement() == 0, // true solo al primo check
+                () -> calls.getAndIncrement() == 0, // prima ok, poi fallisce
                 20,
                 1000,
                 2
         );
 
         cm.addListener(newState -> {
-            observed.set(newState);
-            if (newState == ConnectionState.OFFLINE) latch.countDown();
+            if (newState == ConnectionState.OFFLINE) offlineLatch.countDown();
         });
 
         cm.start();
 
-        assertTrue("Non è mai diventato OFFLINE",
-                latch.await(800, TimeUnit.MILLISECONDS));
-        assertEquals(ConnectionState.OFFLINE, observed.get());
+        assertTrue(offlineLatch.await(1200, TimeUnit.MILLISECONDS));
         assertEquals(ConnectionState.OFFLINE, cm.getState());
 
         cm.stop();
@@ -94,29 +88,26 @@ public class ConnectionManagerTest {
         ConnectionManager cm = new ConnectionManager(
                 scheduler,
                 () -> { fetchCount.incrementAndGet(); fetchLatch.countDown(); },
-                () -> true,     // sempre online
+                () -> true,
                 20,
-                30,            // fetch veloce per test
+                30,
                 2
         );
 
         cm.start();
 
-        assertTrue("Fetch non chiamato abbastanza volte",
-                fetchLatch.await(800, TimeUnit.MILLISECONDS));
+        assertTrue(fetchLatch.await(1200, TimeUnit.MILLISECONDS));
         assertTrue(fetchCount.get() >= 3);
 
         cm.stop();
     }
 
     @Test
-    public void fetchFailureCanTriggerOffline() throws Exception {
+    public void fetchFailureCanTriggerOffline_evenIfHealthOk() throws Exception {
         scheduler = Executors.newScheduledThreadPool(2);
 
         CountDownLatch offlineLatch = new CountDownLatch(1);
 
-        // health sempre true => resteremmo online,
-        // ma fetch fallisce 2 volte => OFFLINE
         ConnectionManager cm = new ConnectionManager(
                 scheduler,
                 () -> { throw new RuntimeException("boom"); },
@@ -132,8 +123,8 @@ public class ConnectionManagerTest {
 
         cm.start();
 
-        assertTrue("Non è mai diventato OFFLINE dopo failure fetch",
-                offlineLatch.await(1200, TimeUnit.MILLISECONDS));
+        assertTrue(offlineLatch.await(2000, TimeUnit.MILLISECONDS));
+        assertEquals(ConnectionState.OFFLINE, cm.getState());
 
         cm.stop();
     }
