@@ -59,6 +59,7 @@ public class StopService {
      */
     public static void reloadStops(String filePath) {
         cachedStops = readFromCSV(filePath);
+        searchIndex = new StopSearchIndex(cachedStops);
     }
 
     /**
