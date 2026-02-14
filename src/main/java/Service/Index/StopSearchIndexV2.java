@@ -6,21 +6,6 @@ import Service.Util.TextNormalize;
 import java.util.*;
 import java.util.stream.Collectors;
 
-/**
- * StopSearchIndexV2
- *
- * Indice in-memory per:
- * - findById: O(1)
- * - findByCodeExact: O(1)
- * - suggestByCodePrefix: O(log n + k) grazie a TreeMap.subMap()
- * - searchByName: token index + prefix index (>=3) + prefix2 (solo token "rari" e con cap)
- *
- * Note design:
- * - Prefissi nome >= 3 sempre (efficienti e selettivi)
- * - Prefissi nome = 2 SOLO se il token è "raro" (freq <= TOKEN_FREQ_MAX_FOR_PREFIX2)
- *   e SOLO finché il bucket resta sotto PREFIX2_MAX_BUCKET (anti-esplosione)
- * - Query 1 char: non supportata (troppo rumore). Puoi gestirla a livello UI.
- */
 public final class StopSearchIndexV2 {
 
     private final Map<String, StopModel> byId = new HashMap<>();
@@ -29,49 +14,30 @@ public final class StopSearchIndexV2 {
     // prefix search sul codice: TreeMap permette subMap() per range
     private final NavigableMap<String, List<StopModel>> byCodeSorted = new TreeMap<>();
 
-    // token -> stops (ricerca nome)
-    private final Map<String, List<StopModel>> nameTokenToStops = new HashMap<>();
-
-    // prefisso (>=3) -> stops (per query tipo "prenest")
+    // prefisso token (>=3) -> stops (per query tipo "prenest" -> "prenestina")
     private final Map<String, List<StopModel>> namePrefixToStops = new HashMap<>();
 
-    // === supporto query 2-char senza esplosione ===
-    // frequenza token (calcolata su tutti gli stop)
-    private final Map<String, Integer> tokenFreq = new HashMap<>();
-    // prefisso 2 -> stops (solo token rari, bucket con cap)
-    private final Map<String, List<StopModel>> namePrefix2ToStops = new HashMap<>();
-    // prefissi 2 disabilitati perché troppo grandi
-    private final Set<String> prefix2Oversized = new HashSet<>();
+    // token (>=2, no stopword) -> stops
+    private final Map<String, List<StopModel>> nameTokenToStops = new HashMap<>();
 
-    // tuning
-    private static final int PREFIX2_MAX_BUCKET = 200;            // cap lista per prefisso 2
-    private static final int TOKEN_FREQ_MAX_FOR_PREFIX2 = 80;     // token “rari” per indicizzazione a 2
-    private static final int NAME_PREFIX_MAX_LEN = 10;            // limitiamo prefissi nome fino a 10
+    // cache nome normalizzato per filtro contains + fuzzy
+    private final Map<StopModel, String> normNameCache = new IdentityHashMap<>();
+
+    // ---- tuning fuzzy ----
+    private static final int FUZZY_MAX_CANDIDATES = 600;  // massimo candidati su cui calcolare edit distance
+    private static final int FUZZY_MAX_DISTANCE_CAP = 5;  // limite assoluto, oltre non ha senso
+    private static final int PREFIX_MIN_FOR_PREFIX_INDEX = 3;
+    private static final int PREFIX_MAX = 10;
 
     public StopSearchIndexV2(List<StopModel> stops) {
-        if (stops == null) stops = List.of();
-
-        // 1) Conta token (serve per decidere quali token indicizzare a 2 char)
         for (StopModel s : stops) {
             if (s == null) continue;
 
-            String nameNorm = TextNormalize.norm(s.getName());
-            if (nameNorm.isEmpty()) continue;
-
-            for (String tok : tokenize(nameNorm)) {
-                tokenFreq.merge(tok, 1, Integer::sum);
-            }
-        }
-
-        // 2) Build indici
-        for (StopModel s : stops) {
-            if (s == null) continue;
-
-            // ---- id ----
+            // id
             String id = safe(s.getId());
             if (!id.isEmpty()) byId.put(id, s);
 
-            // ---- code exact + sorted ----
+            // code exact + sorted
             String code = safe(s.getCode());
             if (!code.isEmpty()) {
                 String codeNorm = TextNormalize.norm(code);
@@ -81,19 +47,31 @@ public final class StopSearchIndexV2 {
                 }
             }
 
-            // ---- name tokens + prefissi ----
-            String nameNorm = TextNormalize.norm(s.getName());
-            if (!nameNorm.isEmpty()) {
-                for (String token : tokenize(nameNorm)) {
-                    nameTokenToStops.computeIfAbsent(token, k -> new ArrayList<>()).add(s);
+            // name tokens + prefixes
+            String name = safe(s.getName());
+            if (!name.isEmpty()) {
+                String nameNorm = TextNormalize.norm(name);
+                if (!nameNorm.isEmpty()) {
+                    normNameCache.put(s, nameNorm);
 
-                    // prefissi >=3 sempre
-                    indexTokenPrefixes3Plus(token, s);
-
-                    // prefisso 2 solo se “utile”
-                    indexPrefix2IfUseful(token, s);
+                    for (String token : tokenize(nameNorm)) {
+                        nameTokenToStops.computeIfAbsent(token, k -> new ArrayList<>()).add(s);
+                        indexTokenPrefixes(token, s);
+                    }
                 }
             }
+        }
+    }
+
+    private void indexTokenPrefixes(String token, StopModel s) {
+        if (token == null) return;
+        int len = token.length();
+        if (len < PREFIX_MIN_FOR_PREFIX_INDEX) return;
+
+        int max = Math.min(PREFIX_MAX, len);
+        for (int i = PREFIX_MIN_FOR_PREFIX_INDEX; i <= max; i++) {
+            String prefix = token.substring(0, i);
+            namePrefixToStops.computeIfAbsent(prefix, k -> new ArrayList<>()).add(s);
         }
     }
 
@@ -116,12 +94,12 @@ public final class StopSearchIndexV2 {
     public List<StopModel> suggestByCodePrefix(String prefix, int limit) {
         if (prefix == null) return List.of();
         String p = TextNormalize.norm(prefix);
-        if (p.isEmpty() || limit <= 0) return List.of();
+        if (p.isEmpty()) return List.of();
 
         String hi = p + Character.MAX_VALUE;
         Collection<List<StopModel>> buckets = byCodeSorted.subMap(p, true, hi, true).values();
 
-        ArrayList<StopModel> out = new ArrayList<>(Math.min(limit, 32));
+        ArrayList<StopModel> out = new ArrayList<>();
         for (List<StopModel> bucket : buckets) {
             for (StopModel s : bucket) {
                 out.add(s);
@@ -133,66 +111,64 @@ public final class StopSearchIndexV2 {
 
     /**
      * Ricerca per nome:
-     * - normalizza e tokenizza query
-     * - usa indici: exact token / prefix(>=3) / prefix(2) “safe”
-     * - intersect candidati
-     * - filtro finale: contains sulla stringa normalizzata del nome (precisione)
+     * 1) indicizzata (token + prefissi) + filtro contains
+     * 2) se non trova nulla -> fuzzy fallback su candidati ristretti
      */
     public List<StopModel> searchByName(String query, int limit) {
         if (query == null) return List.of();
-        if (limit <= 0) return List.of();
-
         String q = TextNormalize.norm(query);
         if (q.isEmpty()) return List.of();
 
-        List<String> tokens = tokenizeQuery(q);
+        List<String> tokens = tokenize(q);
         if (tokens.isEmpty()) return List.of();
 
-        // 1) Recupero candidate lists per token (exact / prefix >=3 / prefix 2)
-        List<List<StopModel>> lists = new ArrayList<>(tokens.size());
+        // -------------- 1) indicizzata --------------
+        List<StopModel> exactOrPrefix = indexedSearch(q, tokens, limit);
+        if (!exactOrPrefix.isEmpty()) return exactOrPrefix;
+
+        // -------------- 2) fuzzy fallback --------------
+        // attivala solo da 3 char in su: su 1-2 è troppo rumorosa
+        if (q.length() < 3) return List.of();
+
+        List<StopModel> fuzzy = fuzzyFallback(q, tokens, limit);
+        return fuzzy;
+    }
+
+    private List<StopModel> indexedSearch(String q, List<String> tokens, int limit) {
+        List<List<StopModel>> lists = new ArrayList<>();
 
         for (String t : tokens) {
-            List<StopModel> l = nameTokenToStops.get(t); // exact
-            if (l == null) {
-                if (t.length() >= 3) {
-                    l = namePrefixToStops.get(t);
-                } else if (t.length() == 2) {
-                    l = namePrefix2ToStops.get(t);
-                } else {
-                    // 1 char: non supportato
-                    l = null;
-                }
+            List<StopModel> l = nameTokenToStops.get(t);
+            if (l == null && t.length() >= PREFIX_MIN_FOR_PREFIX_INDEX) {
+                l = namePrefixToStops.get(t); // fallback prefisso token
             }
             if (l != null) lists.add(l);
         }
-
         if (lists.isEmpty()) return List.of();
 
-        // 2) Intersect: parto dal token più raro (lista più piccola)
+        // intersect: parto dal token più raro
         lists.sort(Comparator.comparingInt(List::size));
         Set<StopModel> candidate = new LinkedHashSet<>(lists.get(0));
-
         for (int i = 1; i < lists.size(); i++) {
             candidate.retainAll(lists.get(i));
             if (candidate.isEmpty()) return List.of();
         }
 
-        // 3) filtro finale: contains su nome normalizzato
-        ArrayList<StopModel> out = new ArrayList<>(Math.min(limit, 32));
+        ArrayList<StopModel> out = new ArrayList<>();
         for (StopModel s : candidate) {
-            String nameNorm = TextNormalize.norm(s.getName());
+            String nameNorm = normNameCache.getOrDefault(s, TextNormalize.norm(s.getName()));
             if (nameNorm.contains(q)) {
                 out.add(s);
                 if (out.size() >= limit) break;
             }
         }
 
-        // 4) fallback: se out vuoto, prova con il “primo token” (più largo) ma sempre limitato
+        // fallback meno rigido: almeno primo token
         if (out.isEmpty()) {
             String t0 = tokens.get(0);
-            List<StopModel> broader = lookupTokenOrPrefixBucket(t0);
+            List<StopModel> broader = nameTokenToStops.getOrDefault(t0, List.of());
             for (StopModel s : broader) {
-                String nameNorm = TextNormalize.norm(s.getName());
+                String nameNorm = normNameCache.getOrDefault(s, TextNormalize.norm(s.getName()));
                 if (nameNorm.contains(q)) {
                     out.add(s);
                     if (out.size() >= limit) break;
@@ -203,98 +179,155 @@ public final class StopSearchIndexV2 {
         return out;
     }
 
-    // =======================
-    // Index builders
-    // =======================
+    /**
+     * Fuzzy fallback: genera candidati da token/prefissi e valuta somiglianza con edit-distance.
+     * NON scansiona tutte le fermate.
+     */
+    private List<StopModel> fuzzyFallback(String q, List<String> tokens, int limit) {
+        // 1) candidati: unione di bucket "ragionevoli"
+        LinkedHashSet<StopModel> candidate = new LinkedHashSet<>();
 
-    private void indexTokenPrefixes3Plus(String token, StopModel s) {
-        if (token == null) return;
-        int len = token.length();
-        if (len < 4) return; // token troppo corto: indicizzare prefissi è poco utile
+        // a) bucket per primo token (exact)
+        String t0 = tokens.get(0);
+        List<StopModel> base = nameTokenToStops.get(t0);
+        if (base != null) candidate.addAll(base);
 
-        int max = Math.min(NAME_PREFIX_MAX_LEN, len);
-        for (int i = 3; i <= max; i++) {
-            String prefix = token.substring(0, i);
-            namePrefixToStops.computeIfAbsent(prefix, k -> new ArrayList<>()).add(s);
+        // b) se token >= 3, anche prefisso (es. "pren" -> tante “prenestina”)
+        String t0prefix3 = (t0.length() >= 3) ? t0.substring(0, 3) : null;
+        if (t0prefix3 != null) {
+            List<StopModel> pref = namePrefixToStops.get(t0prefix3);
+            if (pref != null) candidate.addAll(pref);
         }
+
+        // c) aggiungi bucket degli altri token (ma senza esplodere)
+        for (int i = 1; i < tokens.size() && candidate.size() < FUZZY_MAX_CANDIDATES; i++) {
+            String t = tokens.get(i);
+            List<StopModel> l = nameTokenToStops.get(t);
+            if (l != null) {
+                for (StopModel s : l) {
+                    candidate.add(s);
+                    if (candidate.size() >= FUZZY_MAX_CANDIDATES) break;
+                }
+            }
+        }
+
+        if (candidate.isEmpty()) return List.of();
+
+        // 2) calcola distanza sul nome normalizzato (o su token match)
+        int maxDist = computeMaxDistance(q);
+
+        ArrayList<ScoredStop> scored = new ArrayList<>();
+        for (StopModel s : candidate) {
+            String nameNorm = normNameCache.getOrDefault(s, TextNormalize.norm(s.getName()));
+
+            // shortcut: se contiene, è praticamente match perfetto
+            if (nameNorm.contains(q)) {
+                scored.add(new ScoredStop(s, 0));
+                continue;
+            }
+
+            // calcolo distanza tra query e ogni token del nome: prendo la migliore
+            int best = Integer.MAX_VALUE;
+            for (String nt : tokenize(nameNorm)) {
+                int d = levenshteinBounded(q, nt, maxDist);
+                if (d < best) best = d;
+                if (best == 0) break;
+            }
+
+            // accetta solo se abbastanza simile
+            if (best <= maxDist) {
+                scored.add(new ScoredStop(s, best));
+            }
+        }
+
+        if (scored.isEmpty()) return List.of();
+
+        // 3) ordina per distanza, poi stabilizza per nome
+        scored.sort(Comparator
+                .comparingInt((ScoredStop ss) -> ss.distance)
+                .thenComparing(ss -> normNameCache.getOrDefault(ss.stop, "")));
+
+        ArrayList<StopModel> out = new ArrayList<>();
+        for (ScoredStop ss : scored) {
+            out.add(ss.stop);
+            if (out.size() >= limit) break;
+        }
+        return out;
     }
 
-    private void indexPrefix2IfUseful(String token, StopModel s) {
-        if (token == null) return;
-        if (token.length() < 4) return; // evitiamo token corti
-
-        Integer f = tokenFreq.get(token);
-        if (f == null || f > TOKEN_FREQ_MAX_FOR_PREFIX2) return;
-
-        String p2 = token.substring(0, 2);
-        if (prefix2Oversized.contains(p2)) return;
-
-        List<StopModel> bucket = namePrefix2ToStops.computeIfAbsent(p2, k -> new ArrayList<>());
-        bucket.add(s);
-
-        if (bucket.size() > PREFIX2_MAX_BUCKET) {
-            // Troppo grande -> disabilitiamo completamente questo prefisso 2
-            prefix2Oversized.add(p2);
-            namePrefix2ToStops.remove(p2);
-        }
+    private static int computeMaxDistance(String q) {
+        int n = q.length();
+        // regola pratica: 1 errore fino a 4, 2 fino a 7, 3 fino a 11, ecc.
+        int byLen = (n <= 4) ? 1 : (n <= 7) ? 2 : (n <= 11) ? 3 : 4;
+        return Math.min(FUZZY_MAX_DISTANCE_CAP, byLen);
     }
 
-    private List<StopModel> lookupTokenOrPrefixBucket(String t) {
-        List<StopModel> l = nameTokenToStops.get(t);
-        if (l != null) return l;
+    /**
+     * Levenshtein con "early exit" se supera max.
+     * Molto più veloce del Levenshtein pieno per i nostri casi.
+     */
+    private static int levenshteinBounded(String a, String b, int max) {
+        if (a.equals(b)) return 0;
+        int n = a.length();
+        int m = b.length();
 
-        if (t.length() >= 3) {
-            return namePrefixToStops.getOrDefault(t, List.of());
+        // se la differenza di lunghezza è già > max, inutile
+        if (Math.abs(n - m) > max) return max + 1;
+
+        // DP su due righe
+        int[] prev = new int[m + 1];
+        int[] curr = new int[m + 1];
+
+        for (int j = 0; j <= m; j++) prev[j] = j;
+
+        for (int i = 1; i <= n; i++) {
+            curr[0] = i;
+            int bestRow = curr[0];
+
+            char ca = a.charAt(i - 1);
+            for (int j = 1; j <= m; j++) {
+                int cost = (ca == b.charAt(j - 1)) ? 0 : 1;
+                int v = Math.min(
+                        Math.min(curr[j - 1] + 1, prev[j] + 1),
+                        prev[j - 1] + cost
+                );
+                curr[j] = v;
+                if (v < bestRow) bestRow = v;
+            }
+
+            // early exit: questa riga è già oltre max
+            if (bestRow > max) return max + 1;
+
+            // swap
+            int[] tmp = prev;
+            prev = curr;
+            curr = tmp;
         }
-        if (t.length() == 2) {
-            return namePrefix2ToStops.getOrDefault(t, List.of());
-        }
-        return List.of();
+
+        return prev[m];
     }
-
-    // =======================
-    // Tokenization helpers
-    // =======================
 
     private static String safe(String s) {
         return s == null ? "" : s.trim();
     }
 
-    /**
-     * Tokenizzazione per indicizzazione: scarta token piccoli e stopword,
-     * e mantiene distinct per ridurre duplicati.
-     */
     private static List<String> tokenize(String norm) {
         if (norm == null || norm.isBlank()) return List.of();
         return Arrays.stream(norm.split(" "))
                 .map(String::trim)
-                .filter(t -> t.length() >= 2)
-                .filter(t -> !isStopWord(t))
-                .distinct()
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Tokenizzazione query: vogliamo consentire token da 2 in su
-     * (così "pr" può funzionare), ma NON indicizziamo 1 char.
-     */
-    private static List<String> tokenizeQuery(String normQuery) {
-        if (normQuery == null || normQuery.isBlank()) return List.of();
-
-        return Arrays.stream(normQuery.split(" "))
-                .map(String::trim)
-                .filter(t -> !t.isEmpty())
-                .map(TextNormalize::norm) // sicurezza extra
-                .filter(t -> t.length() >= 2)         // query 1-char ignorata
+                .filter(t -> t.length() >= 2) // token min 2
                 .filter(t -> !isStopWord(t))
                 .distinct()
                 .collect(Collectors.toList());
     }
 
     private static boolean isStopWord(String t) {
-        // Set minimo: puoi espanderlo (es. "st", "santa", ecc.) ma attento a non perdere recall.
-        return t.equals("di") || t.equals("da") || t.equals("a") || t.equals("il") || t.equals("la")
-                || t.equals("lo") || t.equals("le") || t.equals("i")
+        // set minimo; puoi espanderlo
+        return t.equals("di") || t.equals("da") || t.equals("a")
+                || t.equals("il") || t.equals("la") || t.equals("lo")
+                || t.equals("le") || t.equals("i")
                 || t.equals("via") || t.equals("piazza");
     }
+
+    private record ScoredStop(StopModel stop, int distance) {}
 }

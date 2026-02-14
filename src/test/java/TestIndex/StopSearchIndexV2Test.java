@@ -2,7 +2,6 @@ package TestIndex;
 
 import Model.Points.StopModel;
 import Service.Index.StopSearchIndexV2;
-import org.jxmapviewer.viewer.GeoPosition;
 import org.junit.Test;
 
 import java.util.List;
@@ -12,22 +11,24 @@ import static org.junit.Assert.*;
 public class StopSearchIndexV2Test {
 
     @Test
-    public void findById_isO1AndWorks() {
+    public void findById_works() {
         StopModel s1 = stop("1", "905", "Termini");
         StopSearchIndexV2 idx = new StopSearchIndexV2(List.of(s1));
 
-        assertNotNull(idx.findById("1"));
-        assertEquals("905", idx.findById("1").getCode());
+        StopModel found = idx.findById("1");
+        assertNotNull(found);
+        assertEquals("905", found.getCode());
     }
 
     @Test
-    public void findByCodeExact_worksCaseInsensitive() {
+    public void findByCodeExact_worksWithTrimAndNormalize() {
         StopModel s1 = stop("1", "905", "Termini");
         StopSearchIndexV2 idx = new StopSearchIndexV2(List.of(s1));
 
         assertNotNull(idx.findByCodeExact("905"));
-        assertNotNull(idx.findByCodeExact(" 905 "));
-        assertNotNull(idx.findByCodeExact("905"));
+        assertNotNull(idx.findByCodeExact("  905  "));
+        // se TextNormalize fa lowercase/trim, questo resta ok anche con formati strani
+        assertNotNull(idx.findByCodeExact("\n905\t"));
     }
 
     @Test
@@ -44,14 +45,39 @@ public class StopSearchIndexV2Test {
     }
 
     @Test
-    public void searchByName_usesTokensAndContains() {
+    public void searchByName_supportsTokenPrefixMatches() {
         StopModel a = stop("1", "100", "Via Prenestina");
         StopModel b = stop("2", "101", "Piazza Venezia");
         StopSearchIndexV2 idx = new StopSearchIndexV2(List.of(a, b));
 
+        // "prenest" deve agganciare i prefissi indicizzati da "prenestina"
         List<StopModel> res = idx.searchByName("prenest", 10);
+
         assertEquals(1, res.size());
         assertEquals("Via Prenestina", res.get(0).getName());
+    }
+
+    @Test
+    public void searchByName_fuzzyFallback_handlesTypos() {
+        StopModel a = stop("1", "100", "Via Prenestina");
+        StopModel b = stop("2", "101", "Piazza Venezia");
+        StopSearchIndexV2 idx = new StopSearchIndexV2(List.of(a, b));
+
+        // typo: manca una lettera / scambio
+        List<StopModel> res = idx.searchByName("prenestna", 10);
+
+        assertFalse(res.isEmpty());
+        assertEquals("Via Prenestina", res.get(0).getName());
+    }
+
+    @Test
+    public void searchByName_doesNotRunFuzzyOnTooShortQueries() {
+        StopModel a = stop("1", "100", "Via Prenestina");
+        StopSearchIndexV2 idx = new StopSearchIndexV2(List.of(a));
+
+        // per query < 3 la fuzzy non scatta (comportamento voluto)
+        List<StopModel> res = idx.searchByName("pr", 10);
+        assertTrue(res.isEmpty());
     }
 
     private static StopModel stop(String id, String code, String name) {
