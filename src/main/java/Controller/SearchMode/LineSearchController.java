@@ -12,26 +12,13 @@ import com.opencsv.exceptions.CsvValidationException;
 
 import Controller.Map.MapController;
 
+import javax.swing.*;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
-/**
- * Controller per la ricerca delle LINEE.
- *
- * Usa:
- *   - routes.csv  → per i numeri di linea (route_short_name) + route_type
- *   - trips.csv   → per le direzioni (direction_id) e i capolinea (trip_headsign)
- *
- * Risultato:
- *   - suggerimenti del tipo "163 → REBIBBIA (MB)" e "163 → VERANO"
- *   - ogni suggerimento è una RouteDirectionOption con:
- *       routeId, routeShortName, directionId, headsign, routeType.
- *
- * Creatore: Simone Bonuso
- */
 public class LineSearchController {
 
     private final SearchBarView searchView;
@@ -55,7 +42,6 @@ public class LineSearchController {
         this.tripsCsvPath = tripsCsvPath;
 
         this.allRoutes = RoutesService.getAllRoutes(routesCsvPath);
-
         loadTripsIfNeeded();
     }
 
@@ -105,9 +91,15 @@ public class LineSearchController {
             searchView.hideSuggestions();
             return;
         }
-        loadTripsIfNeeded(); // ensure index built
+
+        loadTripsIfNeeded();
+
         List<RouteDirectionOption> options = lineIndex.search(text);
-        searchView.showLineSuggestions(options);
+        if (options != null && options.size() > 30) options = options.subList(0, 30);
+
+        searchView.showLineSuggestions(options == null ? List.of() : options);
+
+        clearSelectionSoTypingDoesNotOverwrite();
     }
 
     public void onSearch(String query) {
@@ -118,8 +110,7 @@ public class LineSearchController {
         if (option == null) return;
 
         String routeId = option.getRouteId();
-        int directionInt = option.getDirectionId();
-        String directionId = String.valueOf(directionInt);
+        String directionId = String.valueOf(option.getDirectionId());
 
         mapController.highlightRouteFitLine(routeId, directionId);
 
@@ -130,12 +121,15 @@ public class LineSearchController {
                 + " | type=" + option.getRouteType());
     }
 
-    private int parseRouteType(String s) {
-        if (s == null) return -1;
-        try {
-            return Integer.parseInt(s.trim());
-        } catch (NumberFormatException e) {
-            return -1;
-        }
+    private void clearSelectionSoTypingDoesNotOverwrite() {
+        SwingUtilities.invokeLater(() -> {
+            JTextField f = searchView.getSearchField();
+            int pos = f.getCaretPosition();
+            int len = f.getText() == null ? 0 : f.getText().length();
+            if (pos == 0 && len > 0) pos = len;
+
+            f.setCaretPosition(pos);
+            f.select(pos, pos);
+        });
     }
 }

@@ -5,21 +5,10 @@ import Service.Points.StopService;
 import View.SearchBar.SearchBarView;
 
 import javax.swing.*;
+import java.util.List;
 
 import Controller.Map.MapController;
 
-import java.util.List;
-
-/**
- * Controller dedicato alla ricerca delle fermate.
- *
- * Usa:
- * - StopService per leggere/cercare le fermate dal CSV
- * - SearchBarView per gestire suggerimenti e messaggi
- * - MapController per centrare la mappa sulla fermata.
- *
- * Creatore: Simone Bonuso
- */
 public class StopSearchController {
 
     private final SearchBarView searchView;
@@ -34,14 +23,8 @@ public class StopSearchController {
         this.stopsCsvPath = stopsCsvPath;
     }
 
-    /**
-     * Chiamato dal DashboardController quando l'utente preme CERCA
-     * in modalità STOP.
-     */
     public void onSearch(String query) {
-        if (query == null || query.isBlank()) {
-            return;
-        }
+        if (query == null || query.isBlank()) return;
 
         List<StopModel> results = StopService.searchStopByName(query, stopsCsvPath);
 
@@ -55,37 +38,45 @@ public class StopSearchController {
         } else if (results.size() == 1) {
             mapController.centerMapOnStop(results.get(0));
         } else {
+            if (results.size() > 30) results = results.subList(0, 30);
             searchView.showStopSuggestions(results);
+            clearSelectionSoTypingDoesNotOverwrite();
         }
     }
 
-    /**
-     * Chiamato dal DashboardController quando cambia il testo
-     * nella barra in modalità STOP (per suggerimenti live).
-     */
     public void onTextChanged(String text) {
         if (text == null || text.isBlank()) {
             searchView.hideSuggestions();
             return;
         }
-        if (text.length() < 2) {
-            searchView.hideSuggestions();
-            return;
-        }
 
+        // ✅ suggerimenti da subito (1 carattere)
         List<StopModel> results = StopService.searchStopByName(text, stopsCsvPath);
-        if (results.size() > 20) {
-            results = results.subList(0, 20);
-        }
+        if (results.size() > 30) results = results.subList(0, 30);
+
         searchView.showStopSuggestions(results);
+
+        // ✅ evita che il field rimanga selezionato e sovrascriva quello che digiti dopo
+        clearSelectionSoTypingDoesNotOverwrite();
     }
 
-    /**
-     * Chiamato dal DashboardController quando l'utente seleziona
-     * un suggerimento dalla lista (con frecce o doppio click).
-     */
     public void onSuggestionSelected(StopModel stop) {
         if (stop == null) return;
         mapController.centerMapOnStop(stop);
+    }
+
+    private void clearSelectionSoTypingDoesNotOverwrite() {
+        SwingUtilities.invokeLater(() -> {
+            JTextField f = searchView.getSearchField();
+
+            // se per qualche motivo il caret finisce a 0 mentre stai scrivendo,
+            // lo riportiamo in fondo per non “scrivere al contrario”
+            int pos = f.getCaretPosition();
+            int len = f.getText() == null ? 0 : f.getText().length();
+            if (pos == 0 && len > 0) pos = len;
+
+            f.setCaretPosition(pos);
+            f.select(pos, pos); // selection vuota
+        });
     }
 }
