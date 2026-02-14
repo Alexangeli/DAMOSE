@@ -240,8 +240,8 @@ public class Main {
                 });
 
                 dialog.setContentPane(panel);
-                dialog.setMinimumSize(new Dimension(900, 650));
-                dialog.setSize(1000, 720);
+                dialog.setMinimumSize(new Dimension(600,500));
+                dialog.setSize(600, 500);
                 dialog.setLocationRelativeTo(myFrame);
 
                 dialog.addWindowListener(new WindowAdapter() {
