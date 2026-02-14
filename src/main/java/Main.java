@@ -84,7 +84,7 @@ public class Main {
         TripUpdatesService tripSvc = new TripUpdatesService(GTFS_RT_TRIP_URL);
         AlertsService alertsSvc = new AlertsService(GTFS_RT_ALERTS_URL);
 
-        RealTimeController rtController = new RealTimeController(vehicleSvc, tripSvc, alertsSvc);
+        RealTimeController rtController = new RealTimeController(statusProvider, vehicleSvc, tripSvc, alertsSvc);
 
         // Hook: qui decidi cosa aggiornare nella UI.
         // Se non hai ancora i metodi, lascia solo i log per test.

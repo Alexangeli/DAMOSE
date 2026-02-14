@@ -32,16 +32,10 @@ public class VehiclePositionsService {
         var client = new HttpGtfsRtFeedClient(Duration.ofSeconds(8));
         this.fetcher = new GtfsRtVehiclePositionsFetcher(gtfsRtUrl, client);
 
-        this.connectionManager = new ConnectionManager(
-                URI.create(gtfsRtUrl),
-                () -> {
-                    try {
-                        refreshOnce();
-                    } catch (Exception e) {
-                        throw new RuntimeException(e);
-                    }
-                }
-        );
+        this.connectionManager = ConnectionManager.fetchOnly(() -> {
+            try { refreshOnce(); }
+            catch (Exception e) { throw new RuntimeException(e); }
+        }, 30_000L);
     }
 
     // TEST (dependency injection)

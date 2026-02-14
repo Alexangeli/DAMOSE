@@ -1,12 +1,9 @@
 package Service.GTFS_RT.Fetcher.TripUpdates;
 
 import Model.GTFS_RT.TripUpdateInfo;
-import Model.Net.ConnectionListener;
 import Model.Net.ConnectionManager;
-import Model.Net.ConnectionState;
 import Service.GTFS_RT.Client.HttpGtfsRtFeedClient;
 
-import java.net.URI;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
@@ -18,18 +15,15 @@ public class TripUpdatesService {
 
     private volatile List<TripUpdateInfo> lastTripUpdates = Collections.emptyList();
 
-    // PRODUZIONE
+    // PRODUZIONE (fetch-only)
     public TripUpdatesService(String gtfsRtUrl) {
         var client = new HttpGtfsRtFeedClient(Duration.ofSeconds(8));
         this.fetcher = new GtfsRtTripUpdatesFetcher(gtfsRtUrl, client);
 
-        this.connectionManager = new ConnectionManager(
-                URI.create(gtfsRtUrl),
-                () -> {
-                    try { refreshOnce(); }
-                    catch (Exception e) { throw new RuntimeException(e); }
-                }
-        );
+        this.connectionManager = ConnectionManager.fetchOnly(() -> {
+            try { refreshOnce(); }
+            catch (Exception e) { throw new RuntimeException(e); }
+        }, 30_000L);
     }
 
     // TEST (dependency injection)
@@ -40,9 +34,6 @@ public class TripUpdatesService {
 
     public void start() { connectionManager.start(); }
     public void stop() { connectionManager.stop(); }
-
-    public ConnectionState getConnectionState() { return connectionManager.getState(); }
-    public void addConnectionListener(ConnectionListener l) { connectionManager.addListener(l); }
 
     public List<TripUpdateInfo> getTripUpdates() { return lastTripUpdates; }
 

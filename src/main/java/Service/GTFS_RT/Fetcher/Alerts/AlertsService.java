@@ -1,12 +1,9 @@
 package Service.GTFS_RT.Fetcher.Alerts;
 
 import Model.GTFS_RT.AlertInfo;
-import Model.Net.ConnectionListener;
 import Model.Net.ConnectionManager;
-import Model.Net.ConnectionState;
 import Service.GTFS_RT.Client.HttpGtfsRtFeedClient;
 
-import java.net.URI;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
@@ -18,18 +15,15 @@ public class AlertsService {
 
     private volatile List<AlertInfo> lastAlerts = Collections.emptyList();
 
-    // PRODUZIONE
+    // PRODUZIONE (fetch-only)
     public AlertsService(String gtfsRtUrl) {
         var client = new HttpGtfsRtFeedClient(Duration.ofSeconds(8));
         this.fetcher = new GtfsRtAlertsFetcher(gtfsRtUrl, client);
 
-        this.connectionManager = new ConnectionManager(
-                URI.create(gtfsRtUrl),
-                () -> {
-                    try { refreshOnce(); }
-                    catch (Exception e) { throw new RuntimeException(e); }
-                }
-        );
+        this.connectionManager = ConnectionManager.fetchOnly(() -> {
+            try { refreshOnce(); }
+            catch (Exception e) { throw new RuntimeException(e); }
+        }, 30_000L);
     }
 
     // TEST (dependency injection)
@@ -40,9 +34,6 @@ public class AlertsService {
 
     public void start() { connectionManager.start(); }
     public void stop() { connectionManager.stop(); }
-
-    public ConnectionState getConnectionState() { return connectionManager.getState(); }
-    public void addConnectionListener(ConnectionListener l) { connectionManager.addListener(l); }
 
     public List<AlertInfo> getAlerts() { return lastAlerts; }
 

@@ -149,4 +149,20 @@ public class ConnectionManager {
             }
         };
     }
+
+    // ====== COSTRUTTORE "FETCH-ONLY" (nessun health check) ======
+    public static ConnectionManager fetchOnly(Runnable realtimeFetchTask, long fetchPeriodMs) {
+        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+        // healthCheck fittizio: non verrà mai usato
+        BooleanSupplier dummyHealth = () -> true;
+
+        return new ConnectionManager(
+                scheduler,
+                realtimeFetchTask,
+                dummyHealth,
+                Long.MAX_VALUE,     // check praticamente disabilitato
+                fetchPeriodMs,
+                Integer.MAX_VALUE   // non serve, ma per sicurezza
+        );
+    }
 }
