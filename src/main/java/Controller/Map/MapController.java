@@ -66,6 +66,7 @@ public class MapController {
     private volatile String selectedRouteId = null;
     private volatile Integer selectedDirectionId = null;
     private final Timer vehiclesRefreshTimer;
+    private StopWaypoint highlightedStopWaypoint = null;
 
 
     public MapController(MapModel model, MapView view, String stopsCsvPath, VehiclePositionsService vehiclePositionsService) {
@@ -284,11 +285,19 @@ public class MapController {
      */
     public void centerMapOnStop(StopModel stop) {
         if (stop == null || stop.getGeoPosition() == null) return;
-        GeoPosition pos = stop.getGeoPosition();
-        model.setCenter(pos);
-        highlightedPosition = pos;   // evidenziamo anche questa fermata
 
-        // Zoom più vicino per vedere meglio la fermata
+        GeoPosition pos = stop.getGeoPosition();
+
+        // Centro mappa
+        model.setCenter(pos);
+
+        // Salvo posizione per evidenziazione (se la usi nel painter)
+        highlightedPosition = pos;
+
+        // ✅ NUOVO: salvo anche il waypoint reale della fermata
+        highlightedStopWaypoint = new StopWaypoint(stop);
+
+        // Zoom ravvicinato
         double desiredZoom = 2.0;
         targetZoom = model.clampZoom(desiredZoom);
         model.setZoom(targetZoom);
@@ -296,21 +305,26 @@ public class MapController {
         refreshView();
     }
 
+
     /**
      * 👉 NUOVO: centra la mappa su una fermata GTFS (Model.Parsing.StopModel)
      * usando lat/lon del CSV.
      */
     public void centerMapOnGtfsStop(StopModel stop) {
         if (stop == null) return;
+
         try {
             double lat = stop.getLatitude();
             double lon = stop.getLongitude();
             GeoPosition pos = new GeoPosition(lat, lon);
 
             model.setCenter(pos);
-            highlightedPosition = pos;   // marker speciale su questa
+            highlightedPosition = pos;
 
-            double desiredZoom = 2.0;   // regola se vuoi più vicino/lontano
+            // ✅ anche qui
+            highlightedStopWaypoint = new StopWaypoint(stop);
+
+            double desiredZoom = 2.0;
             targetZoom = model.clampZoom(desiredZoom);
             model.setZoom(targetZoom);
 
@@ -320,6 +334,7 @@ public class MapController {
                     + stop.getId() + " (" + e.getMessage() + ")");
         }
     }
+
 
     // java
     public void centerMapOnCluster(ClusterModel cluster) {
@@ -348,19 +363,32 @@ public class MapController {
         Set<ClusterModel> clustersToDisplay;
 
         JXMapViewer map = view.getMapViewer();
-        // Ensure the viewer reflects the desired center/zoom before clustering
         map.setZoom(zoomInt);
         map.setCenterPosition(model.getCenter());
 
         if (zoomInt <= 3) {
-            stopsToDisplay = waypoints;
+            // ✅ In modalità "stops", mostro i waypoint normali
+            // ma GARANTISCO che la fermata evidenziata resti sempre visibile
+            Set<StopWaypoint> tmp = new HashSet<>(waypoints);
+            if (highlightedStopWaypoint != null) {
+                tmp.add(highlightedStopWaypoint);
+            }
+
+            stopsToDisplay = tmp;
             clustersToDisplay = Set.of();
+
         } else {
+            // ✅ In modalità "cluster", creo i cluster dai waypoint correnti
             int gridSizePx = getGridSizeForZoom(zoomInt);
-            // Now createClusters uses the updated map state
             clusters = ClusterService.createClusters(List.copyOf(waypoints), map, gridSizePx);
 
-            stopsToDisplay = Set.of();
+            // ✅ Mostro comunque la fermata evidenziata come marker singolo (se presente)
+            if (highlightedStopWaypoint != null) {
+                stopsToDisplay = Set.of(highlightedStopWaypoint);
+            } else {
+                stopsToDisplay = Set.of();
+            }
+
             clustersToDisplay = clusters;
         }
 
@@ -374,6 +402,7 @@ public class MapController {
                 visibleVehicles
         );
     }
+
 
     private int getGridSizeForZoom(int zoom) {
         if (zoom >= 8) return 240;
@@ -646,7 +675,7 @@ public class MapController {
         visibleVehicles = vehiclePositionsService.getVehicles().stream()
                 .filter(v -> v.routeId != null && routeId.equals(v.routeId))
                 .filter(v -> v.lat != null && v.lon != null)
-                .filter(v -> dir == null || (v.directionId != null && v.directionId.equals(dir)))
+                .filter(v -> dir == null || dir == -1 || (v.directionId != null && v.directionId.equals(dir)))
                 .toList();
     }
 
@@ -667,6 +696,12 @@ public class MapController {
     public void refreshVehiclesLayerIfNeeded() {
         if (selectedRouteId == null) return;
         updateVisibleVehiclesForSelectedRoute();
+        refreshView();
+    }
+
+    public void clearHighlightedStop() {
+        highlightedPosition = null;
+        highlightedStopWaypoint = null;
         refreshView();
     }
 }

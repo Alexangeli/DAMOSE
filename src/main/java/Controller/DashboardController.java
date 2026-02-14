@@ -20,36 +20,18 @@ import View.SearchBar.SearchBarView;
 import javax.swing.*;
 import java.awt.*;
 
-/**
- * Controller principale della dashboard.
- *
- * Coordina:
- *  - SearchBarView (barra di ricerca fermata/linea)
- *  - MapView + MapController (mappa)
- *  - LineStopsView (pannello sotto/sinistra, riutilizzato sia per:
- *        - fermata → linee
- *        - linea   → fermate)
- *  - FavoritesView (in un popup modale aperto con il bottone ★)
- *
- * Creatore: Simone Bonuso, Andrea Brandolini, Alessandro Angeli
- */
 public class DashboardController {
 
-    // ====== VISTE E MODELLO ======
     private final DashboardView dashboardView;
     private final MapModel mapModel;
 
-
-    // ====== CONTROLLER INTERNI ======
     private final MapController mapController;
     private final StopSearchController stopSearchController;
     private final LineSearchController lineSearchController;
-    private final LineStopsController lineStopsController;   // linea → fermate
-    private final StopLinesController stopLinesController;   // fermata → linee
-    private final FavoritesController favoritesController;   // preferiti
+    private final LineStopsController lineStopsController;
+    private final StopLinesController stopLinesController;
+    private final FavoritesController favoritesController;
 
-
-    // ====== PATH FILE GTFS ======
     private final String stopsCsvPath;
     private final String routesCsvPath;
     private final String tripsCsvPath;
@@ -65,16 +47,13 @@ public class DashboardController {
         this.tripsCsvPath  = tripsCsvPath;
         this.stopTimesPath = stopTimesPath;
 
-        // ====== VISTA PRINCIPALE ======
         this.dashboardView = new DashboardView();
 
-        // Componenti interni della view
         MapView mapView             = dashboardView.getMapView();
         SearchBarView searchBar     = dashboardView.getSearchBarView();
         LineStopsView lineStopsView = dashboardView.getLineStopsView();
-        JButton favoritesButton     = dashboardView.getFavoritesButton(); // ★
+        JButton favoritesButton     = dashboardView.getFavoritesButton();
 
-        // ====== MODELLO DELLA MAPPA ======
         this.mapModel = new MapModel();
 
         // ====== REALTIME: VEHICLE POSITIONS SERVICE ======
@@ -116,6 +95,7 @@ public class DashboardController {
                         stopTimesPath,
                         tripsCsvPath,
                         routesCsvPath,
+                        stopsCsvPath,
                         mapController
                 );
 
@@ -127,30 +107,44 @@ public class DashboardController {
                 lineStopsController
         );
 
-        // bottone ★ → apri popup
         favoritesButton.addActionListener(e -> {
-            // ✅ PICCOLA AGGIUNTA NECESSARIA:
-            // ricarica sempre dal service/DB prima di aprire il dialog
             favoritesController.refreshView();
-
             showFavoritesDialog(favoritesView);
         });
 
-        // ====== COLLEGAMENTO CALLBACK DALLA SEARCHBAR ======
-
+        // =====================================================
+        // ✅ CASO 1: CAMBIO MODALITÀ = RESET MAPPA
+        // =====================================================
         searchBar.setOnModeChanged(mode -> {
             System.out.println("---DashboardController--- modalità = " + mode);
             lineStopsView.clear();
             searchBar.hideSuggestions();
 
-            // ✅ FIX MINIMO: tornando in modalità FERMATA, ripristina tutte le fermate
-            if (mode == SearchMode.STOP) {
-                mapController.showAllStops();
-                mapController.clearRouteHighlight(); // opzionale ma consigliato: toglie il disegno linea
-                mapController.clearVehicles();
+            // reset sempre
+            mapController.showAllStops();
+            mapController.clearRouteHighlight();
+            mapController.clearVehicles();
+
+            // in modalità LINE non voglio fermata “appiccicata”
+            if (mode == SearchMode.LINE) {
+                mapController.clearHighlightedStop();
             }
         });
 
+        // =====================================================
+        // ✅ CASO 2: CLICK SULLA ❌ (CLEAR BUTTON) = RESET MAPPA
+        // =====================================================
+        searchBar.setOnClear(() -> {
+            // quando l’utente preme X: sta "uscendo" dalla ricerca corrente
+            lineStopsView.clear();
+
+            mapController.showAllStops();
+            mapController.clearRouteHighlight();
+            mapController.clearVehicles();
+            mapController.clearHighlightedStop();
+        });
+
+        // ====== CALLBACK RICERCA ======
         searchBar.setOnSearch(query -> {
             if (query == null || query.isBlank()) return;
 
@@ -172,7 +166,6 @@ public class DashboardController {
         searchBar.setOnSuggestionSelected((StopModel stop) -> {
             if (stop == null) return;
 
-            // ✅ se cambio fermata, tolgo eventuale shape precedente
             mapController.clearRouteHighlight();
 
             stopSearchController.onSuggestionSelected(stop);
