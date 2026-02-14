@@ -76,6 +76,9 @@ public class Main {
         TripUpdatesService tripSvc = new TripUpdatesService(GTFS_RT_TRIP_URL);
         AlertsService alertsSvc = new AlertsService(GTFS_RT_ALERTS_URL);
 
+        vehicleSvc.start();
+
+        // ---- RealTime controller (gated by statusProvider) ----
         RealTimeController rtController = new RealTimeController(statusProvider, vehicleSvc, tripSvc, alertsSvc);
         statusService.start();
         rtController.start();

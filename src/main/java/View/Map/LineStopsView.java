@@ -1,5 +1,11 @@
 package View.Map;
 
+import Model.Map.RouteDirectionOption;
+import Model.Parsing.Static.RoutesModel;    // modalità FERMATA: linee che passano per una fermata
+import Model.Points.StopModel;              // modalità LINEA: fermate di una linea
+
+import javax.swing.*;
+
 import Controller.Map.MapController;
 import Model.Map.RouteDirectionOption;
 import Model.Points.StopModel;
@@ -16,6 +22,7 @@ import java.util.function.Consumer;
  *  - le fermate di una linea (modalità LINEA)
  *  - le linee direzionate (capolinea) che passano da una fermata (modalità FERMATA)
  *
+ * MODIFICA: in STOP-mode può mostrare anche "linea + direzione" (2 righe) senza popup.
  * Creatore: Simone Bonuso (adattato per STOP-mode direzionato)
  */
 public class LineStopsView extends JPanel {
@@ -28,11 +35,15 @@ public class LineStopsView extends JPanel {
     private List<StopModel> currentStops = Collections.emptyList();
     private MapController mapController;
 
-    // ======= STOP MODE (fermata -> linee + direction/headsign) =======
-    private List<RouteDirectionOption> currentRoutes = Collections.emptyList();
-    private Consumer<RouteDirectionOption> onRouteSelected;
+    // ======= STOP MODE v1 (fermata -> linee) =======
+    private List<RoutesModel> currentRoutes = Collections.emptyList();
+    private Consumer<RoutesModel> onRouteSelected;
 
-    private enum PanelMode { NONE, LINE_STOPS, STOP_ROUTES }
+    // ======= STOP MODE v2 (fermata -> linee+direzioni) =======
+    private List<RouteDirectionOption> currentRouteDirections = Collections.emptyList();
+    private Consumer<RouteDirectionOption> onRouteDirectionSelected;
+
+    private enum PanelMode { NONE, LINE_STOPS, STOP_ROUTES, STOP_ROUTE_DIRECTIONS }
     private PanelMode panelMode = PanelMode.NONE;
 
     public LineStopsView() {
@@ -75,13 +86,28 @@ public class LineStopsView extends JPanel {
                 if (onRouteSelected == null) return;
 
                 onRouteSelected.accept(currentRoutes.get(idx));
+                return;
+            }
+
+            // --- FERMATA -> LINEE+DIR (nuovo): callback routeDirection selezionata ---
+            if (panelMode == PanelMode.STOP_ROUTE_DIRECTIONS) {
+                if (currentRouteDirections == null || currentRouteDirections.isEmpty()) return;
+                if (idx >= currentRouteDirections.size()) return;
+                if (onRouteDirectionSelected == null) return;
+
+                onRouteDirectionSelected.accept(currentRouteDirections.get(idx));
             }
         });
     }
 
-    /** Consente al controller di ricevere la route+direction selezionata in modalità STOP. */
-    public void setOnRouteSelected(Consumer<RouteDirectionOption> cb) {
+    /** Consente al controller di ricevere la route selezionata in modalità STOP (vecchio). */
+    public void setOnRouteSelected(Consumer<RoutesModel> cb) {
         this.onRouteSelected = cb;
+    }
+
+    /** ✅ NUOVO: callback quando si clicca "linea + direzione" in STOP-mode. */
+    public void setOnRouteDirectionSelected(Consumer<RouteDirectionOption> cb) {
+        this.onRouteDirectionSelected = cb;
     }
 
     /**
@@ -95,6 +121,7 @@ public class LineStopsView extends JPanel {
 
         // reset stop-mode
         this.currentRoutes = Collections.emptyList();
+        this.currentRouteDirections = Collections.emptyList();
 
         titleLabel.setText(label != null ? label : "Fermate della linea");
         listModel.clear();
@@ -120,8 +147,8 @@ public class LineStopsView extends JPanel {
     }
 
     /**
-     * Modalità FERMATA: mostra tutte le linee DIREZIONATE (route + capolinea).
-     * Qui entra la feature: se la linea ha 2 capolinea, riceverai 2 RouteDirectionOption e quindi 2 righe.
+     * Modalità FERMATA (vecchio):
+     * mostra tutte le linee che passano per una fermata.
      */
     public void showLinesAtStop(String stopName, List<RouteDirectionOption> options) {
         this.panelMode = PanelMode.STOP_ROUTES;
@@ -134,7 +161,10 @@ public class LineStopsView extends JPanel {
         this.currentStops = Collections.emptyList();
         this.mapController = null;
 
-        this.currentRoutes = (options != null) ? options : Collections.emptyList();
+        // reset nuovo stop-mode
+        this.currentRouteDirections = Collections.emptyList();
+
+        this.currentRoutes = (routes != null) ? routes : Collections.emptyList();
 
         if (!currentRoutes.isEmpty()) {
             for (RouteDirectionOption opt : currentRoutes) {
@@ -144,10 +174,48 @@ public class LineStopsView extends JPanel {
         } else {
             listModel.addElement("Nessuna linea trovata per questa fermata.");
         }
-
+        list.clearSelection();
         revalidate();
         repaint();
     }
+
+    /**
+     * ✅ NUOVO: Modalità FERMATA (nuovo):
+     * mostra "linea + direzione" (due righe) senza popup.
+     */
+    public void showRouteDirectionsAtStop(String stopName, List<RouteDirectionOption> options) {
+        this.panelMode = PanelMode.STOP_ROUTE_DIRECTIONS;
+
+        titleLabel.setText("Linee per: " + stopName);
+        listModel.clear();
+
+        // reset line-mode
+        this.currentStops = Collections.emptyList();
+        this.mapController = null;
+
+        // reset stop-mode vecchio
+        this.currentRoutes = Collections.emptyList();
+
+        this.currentRouteDirections = (options != null) ? options : Collections.emptyList();
+
+        if (currentRouteDirections.isEmpty()) {
+            listModel.addElement("Nessuna linea trovata per questa fermata.");
+        } else {
+            for (RouteDirectionOption o : currentRouteDirections) {
+                String txt = (o.getRouteShortName() != null ? o.getRouteShortName() : "");
+                String headsign = o.getHeadsign();
+
+                if (headsign != null && !headsign.isBlank()) {
+                    txt += " → " + headsign;
+                }
+                listModel.addElement(txt.trim());
+            }
+        }
+        list.clearSelection();
+        revalidate();
+        repaint();
+    }
+
 
     /** Pulisce il pannello. */
     public void clear() {
@@ -158,18 +226,17 @@ public class LineStopsView extends JPanel {
 
         currentStops = Collections.emptyList();
         currentRoutes = Collections.emptyList();
+        currentRouteDirections = Collections.emptyList();
         mapController = null;
 
         revalidate();
         repaint();
     }
 
-    /** True se c'è una selezione attiva nella lista (serve per abilitare/disabilitare la stella). */
     public boolean hasSelection() {
         return list.getSelectedIndex() >= 0;
     }
 
-    /** Permette a chi usa la view di ascoltare i cambi di selezione della lista. */
     public void addSelectionListener(ListSelectionListener l) {
         list.addListSelectionListener(l);
     }

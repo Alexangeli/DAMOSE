@@ -1,14 +1,13 @@
 package View.Map;
 
 import Model.Points.ClusterModel;
-import View.Waypointers.Painter.ClusterPainter;
-import View.Waypointers.Painter.MapOverlay;
-import View.Waypointers.Painter.ShapePainter;
-import View.Waypointers.Painter.StopPainter;
+import View.Waypointers.Painter.*;
 import View.Waypointers.Waypoint.StopWaypoint;
 import org.jxmapviewer.JXMapViewer;
 import org.jxmapviewer.viewer.GeoPosition;
+import Model.GTFS_RT.VehicleInfo;
 
+import java.util.List;
 import javax.swing.*;
 import java.awt.*;
 import java.util.Set;
@@ -40,15 +39,18 @@ public class MapView extends JPanel {
                            Set<StopWaypoint> stops,
                            Set<ClusterModel> clusters,
                            ShapePainter shapePainter,
-                           GeoPosition highlightedPosition) {   // 👈 nuovo parametro
+                           GeoPosition highlightedPosition,
+                           List<VehicleInfo> vehicles) {
+
         mapViewer.setAddressLocation(center);
         mapViewer.setCenterPosition(center);
         mapViewer.setZoom(zoom);
 
         StopPainter stopPainter = new StopPainter(stops, highlightedPosition);
         ClusterPainter clusterPainter = new ClusterPainter(clusters);
+        VehiclePainter vehiclePainter = new VehiclePainter(vehicles);
 
-        MapOverlay overlay = new MapOverlay(stopPainter, clusterPainter, shapePainter);
+        MapOverlay overlay = new MapOverlay(stopPainter, clusterPainter, shapePainter, vehiclePainter);
         mapViewer.setOverlayPainter(overlay);
 
         mapViewer.repaint();

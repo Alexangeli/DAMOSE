@@ -114,6 +114,8 @@ public class LineSearchController {
 
         mapController.highlightRouteFitLine(routeId, directionId);
 
+        mapController.showVehiclesForRoute(routeId, option.getDirectionId());
+
         System.out.println("---LineSearchController--- linea selezionata: "
                 + option.getRouteShortName()
                 + " | dir=" + option.getDirectionId()
