@@ -2,8 +2,8 @@ package TestGTFS_RT;
 
 import Model.Net.ConnectionManager;
 import Model.Net.ConnectionState;
-import Service.GTFS_RT.Vehicle.VehiclePositionsFetcher;
-import Service.GTFS_RT.Vehicle.VehiclePositionsService;
+import Service.GTFS_RT.Fetcher.Vehicle.VehiclePositionsFetcher;
+import Service.GTFS_RT.Fetcher.Vehicle.VehiclePositionsService;
 import org.jetbrains.annotations.NotNull;
 import org.jxmapviewer.viewer.GeoPosition;
 import org.junit.After;

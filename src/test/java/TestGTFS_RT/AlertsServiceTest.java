@@ -1,10 +1,10 @@
 package TestGTFS_RT;
 
+import Model.GTFS_RT.AlertInfo;
 import Model.Net.ConnectionManager;
 import Model.Net.ConnectionState;
-import Service.GTFS_RT.Alerts.AlertInfo;
-import Service.GTFS_RT.Alerts.AlertsFetcher;
-import Service.GTFS_RT.Alerts.AlertsService;
+import Service.GTFS_RT.Fetcher.Alerts.AlertsFetcher;
+import Service.GTFS_RT.Fetcher.Alerts.AlertsService;
 import org.junit.After;
 import org.junit.Test;
 

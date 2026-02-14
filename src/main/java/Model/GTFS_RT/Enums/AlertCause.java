@@ -1,0 +1,17 @@
+package Model.GTFS_RT.Enums;
+
+public enum AlertCause {
+    UNKNOWN_CAUSE,
+    OTHER_CAUSE,
+    TECHNICAL_PROBLEM,
+    STRIKE,
+    DEMONSTRATION,
+    ACCIDENT,
+    HOLIDAY,
+    WEATHER,
+    MAINTENANCE,
+    CONSTRUCTION,
+    POLICE_ACTIVITY,
+    MEDICAL_EMERGENCY,
+    UNKNOWN
+}

@@ -1,23 +1,28 @@
-package Service.GTFS_RT.Alerts;
+package Service.GTFS_RT.Fetcher.TripUpdates;
 
+import Model.GTFS_RT.TripUpdateInfo;
 import Model.Net.ConnectionListener;
 import Model.Net.ConnectionManager;
 import Model.Net.ConnectionState;
+import Service.GTFS_RT.Client.HttpGtfsRtFeedClient;
 
 import java.net.URI;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 
-public class AlertsService {
+public class TripUpdatesService {
 
-    private final AlertsFetcher fetcher;
+    private final TripUpdatesFetcher fetcher;
     private final ConnectionManager connectionManager;
 
-    private volatile List<AlertInfo> lastAlerts = Collections.emptyList();
+    private volatile List<TripUpdateInfo> lastTripUpdates = Collections.emptyList();
 
     // PRODUZIONE
-    public AlertsService(String gtfsRtUrl) {
-        this.fetcher = new GtfsRtAlertsFetcher(gtfsRtUrl);
+    public TripUpdatesService(String gtfsRtUrl) {
+        var client = new HttpGtfsRtFeedClient(Duration.ofSeconds(8));
+        this.fetcher = new GtfsRtTripUpdatesFetcher(gtfsRtUrl, client);
+
         this.connectionManager = new ConnectionManager(
                 URI.create(gtfsRtUrl),
                 () -> {
@@ -27,8 +32,8 @@ public class AlertsService {
         );
     }
 
-    // TEST
-    public AlertsService(AlertsFetcher fetcher, ConnectionManager connectionManager) {
+    // TEST (dependency injection)
+    public TripUpdatesService(TripUpdatesFetcher fetcher, ConnectionManager connectionManager) {
         this.fetcher = fetcher;
         this.connectionManager = connectionManager;
     }
@@ -39,9 +44,9 @@ public class AlertsService {
     public ConnectionState getConnectionState() { return connectionManager.getState(); }
     public void addConnectionListener(ConnectionListener l) { connectionManager.addListener(l); }
 
-    public List<AlertInfo> getAlerts() { return lastAlerts; }
+    public List<TripUpdateInfo> getTripUpdates() { return lastTripUpdates; }
 
     public void refreshOnce() throws Exception {
-        lastAlerts = fetcher.fetchAlerts();
+        lastTripUpdates = fetcher.fetchTripUpdates();
     }
 }

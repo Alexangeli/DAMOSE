@@ -3,11 +3,16 @@ import config.AppConfig;
 import javax.swing.*;
 
 import Controller.DashboardController;
+import Controller.GTFS_RT.RealTimeController;
+
 import Model.User.Session;
 
-import Model.Net.ConnectionState;
 import Model.Net.ConnectionStatusProvider;
 import Service.GTFS_RT.Status.ConnectionStatusService;
+
+import Service.GTFS_RT.Fetcher.Vehicle.VehiclePositionsService;
+import Service.GTFS_RT.Fetcher.TripUpdates.TripUpdatesService;
+import Service.GTFS_RT.Fetcher.Alerts.AlertsService;
 
 import View.User.Account.AppShellView;
 import View.DashboardView;
@@ -27,6 +32,16 @@ public class Main {
     // GTFS-RT endpoint usato come "health check" per capire ONLINE/OFFLINE
     private static final String GTFS_RT_HEALTH_URL =
             "https://romamobilita.it/sites/default/files/rome_rtgtfs_vehicle_positions_feed.pb";
+
+    // === GTFS-RT REALTIME FEEDS ===
+    private static final String GTFS_RT_VEHICLE_URL =
+            "https://romamobilita.it/sites/default/files/rome_rtgtfs_vehicle_positions_feed.pb";
+
+    private static final String GTFS_RT_TRIP_URL =
+            "https://romamobilita.it/sites/default/files/rome_rtgtfs_trip_updates_feed.pb";
+
+    private static final String GTFS_RT_ALERTS_URL =
+            "https://romamobilita.it/sites/default/files/rome_rtgtfs_alerts_feed.pb";
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(Main::startApp);
@@ -58,11 +73,47 @@ public class Main {
 
         statusProvider.addListener(state -> {
             System.out.println("Stato connessione: " + state);
-            // Se serve aggiornare Swing, usare EDT.
+            // Se vuoi aggiornare UI/Controller:
             // SwingUtilities.invokeLater(() -> controller.onConnectionStateChanged(state));
         });
 
         statusService.start();
+
+        // === GTFS-RT REALTIME (Services + Controller) ===
+        VehiclePositionsService vehicleSvc = new VehiclePositionsService(GTFS_RT_VEHICLE_URL);
+        TripUpdatesService tripSvc = new TripUpdatesService(GTFS_RT_TRIP_URL);
+        AlertsService alertsSvc = new AlertsService(GTFS_RT_ALERTS_URL);
+
+        RealTimeController rtController = new RealTimeController(vehicleSvc, tripSvc, alertsSvc);
+
+        // Hook: qui decidi cosa aggiornare nella UI.
+        // Se non hai ancora i metodi, lascia solo i log per test.
+        rtController.setOnVehicles(vehicles -> {
+            // Esempio minimo: log quantità
+            System.out.println("[RT] vehicles=" + vehicles.size());
+
+            // TODO: aggiorna mappa/pannello (me lo dici e ti scrivo il codice preciso)
+            // controller.onRealtimeVehicles(vehicles);
+        });
+
+        rtController.setOnTripUpdates(trips -> {
+            System.out.println("[RT] tripUpdates=" + trips.size());
+            // controller.onRealtimeTripUpdates(trips);
+        });
+
+        rtController.setOnAlerts(alerts -> {
+            System.out.println("[RT] alerts=" + alerts.size());
+            // controller.onRealtimeAlerts(alerts);
+        });
+
+        rtController.setOnConnectionState(state -> {
+            // Questo arriva dai ConnectionManager interni ai 3 service
+            // Se vuoi tenere UNA sola fonte di verità, commenta questo e usa statusProvider.
+            System.out.println("[RT] connection=" + state);
+        });
+
+        rtController.start();
+        // === /GTFS-RT REALTIME ===
 
         // Stop pulito dei thread alla chiusura
         myFrame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
@@ -70,6 +121,8 @@ public class Main {
             @Override
             public void windowClosing(WindowEvent e) {
                 try {
+                    // stop servizi
+                    rtController.stop();
                     statusService.stop();
                 } finally {
                     myFrame.dispose();
@@ -97,7 +150,6 @@ public class Main {
         };
 
         // Se DashboardView supporta callback diretto per auth, aggancialo.
-        // (non è obbligatorio: se il metodo non esiste, commenta questa riga)
         try {
             dashboardView.getClass().getMethod("setOnRequireAuth", Runnable.class)
                     .invoke(dashboardView, openAuthDialog);
@@ -203,7 +255,6 @@ public class Main {
     private static void updateDropdownPosition(JFrame frame, DashboardView dashboardView, AppShellView shell, AccountDropdown dd) {
         if (frame == null || dashboardView == null || shell == null || dd == null) return;
 
-        // UI scale basata sulla dimensione finestra
         int minSide = Math.min(frame.getWidth(), frame.getHeight());
         double scaleFactor = minSide / 900.0;
         scaleFactor = Math.max(0.75, Math.min(1.15, scaleFactor));

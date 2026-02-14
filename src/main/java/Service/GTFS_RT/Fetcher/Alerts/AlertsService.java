@@ -1,23 +1,28 @@
-package Service.GTFS_RT.TripUpdates;
+package Service.GTFS_RT.Fetcher.Alerts;
 
+import Model.GTFS_RT.AlertInfo;
 import Model.Net.ConnectionListener;
 import Model.Net.ConnectionManager;
 import Model.Net.ConnectionState;
+import Service.GTFS_RT.Client.HttpGtfsRtFeedClient;
 
 import java.net.URI;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 
-public class TripUpdatesService {
+public class AlertsService {
 
-    private final TripUpdatesFetcher fetcher;
+    private final AlertsFetcher fetcher;
     private final ConnectionManager connectionManager;
 
-    private volatile List<TripUpdateInfo> lastTripUpdates = Collections.emptyList();
+    private volatile List<AlertInfo> lastAlerts = Collections.emptyList();
 
     // PRODUZIONE
-    public TripUpdatesService(String gtfsRtUrl) {
-        this.fetcher = new GtfsRtTripUpdatesFetcher(gtfsRtUrl);
+    public AlertsService(String gtfsRtUrl) {
+        var client = new HttpGtfsRtFeedClient(Duration.ofSeconds(8));
+        this.fetcher = new GtfsRtAlertsFetcher(gtfsRtUrl, client);
+
         this.connectionManager = new ConnectionManager(
                 URI.create(gtfsRtUrl),
                 () -> {
@@ -27,8 +32,8 @@ public class TripUpdatesService {
         );
     }
 
-    // TEST
-    public TripUpdatesService(TripUpdatesFetcher fetcher, ConnectionManager connectionManager) {
+    // TEST (dependency injection)
+    public AlertsService(AlertsFetcher fetcher, ConnectionManager connectionManager) {
         this.fetcher = fetcher;
         this.connectionManager = connectionManager;
     }
@@ -39,9 +44,9 @@ public class TripUpdatesService {
     public ConnectionState getConnectionState() { return connectionManager.getState(); }
     public void addConnectionListener(ConnectionListener l) { connectionManager.addListener(l); }
 
-    public List<TripUpdateInfo> getTripUpdates() { return lastTripUpdates; }
+    public List<AlertInfo> getAlerts() { return lastAlerts; }
 
     public void refreshOnce() throws Exception {
-        lastTripUpdates = fetcher.fetchTripUpdates();
+        lastAlerts = fetcher.fetchAlerts();
     }
 }

@@ -1,10 +1,10 @@
 package TestGTFS_RT;
 
+import Model.GTFS_RT.TripUpdateInfo;
 import Model.Net.ConnectionManager;
 import Model.Net.ConnectionState;
-import Service.GTFS_RT.TripUpdates.TripUpdateInfo;
-import Service.GTFS_RT.TripUpdates.TripUpdatesFetcher;
-import Service.GTFS_RT.TripUpdates.TripUpdatesService;
+import Service.GTFS_RT.Fetcher.TripUpdates.TripUpdatesFetcher;
+import Service.GTFS_RT.Fetcher.TripUpdates.TripUpdatesService;
 import org.junit.After;
 import org.junit.Test;
 
