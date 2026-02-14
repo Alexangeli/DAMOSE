@@ -912,8 +912,11 @@ public class SearchBarView extends JPanel {
 
         Dimension pref = suggestions.getPanel().getPreferredSize();
 
-        // più stretta: copre quasi tutta la searchbar ma lascia margine a destra/sinistra
-        int w = Math.max(260, Math.min(700, SearchBarView.this.getWidth() - 120));
+        // ✅ LARGHEZZA: uguale alla searchbar (RoundedSearchPanel) per arrivare fino alla fine
+        int w = (popupAnchor != null ? popupAnchor.getWidth() : 0);
+        if (w <= 0) w = SearchBarView.this.getWidth();
+        // safety clamp solo per evitare casi estremi (ma resta "full width")
+        w = Math.max(260, Math.min(900, w));
 
         // ALTEZZA: come prima (clamp)
         int h = Math.max(180, Math.min(420, (pref.height > 0 ? pref.height : 260)));
