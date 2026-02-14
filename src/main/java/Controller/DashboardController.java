@@ -10,6 +10,7 @@ import Controller.User.Fav.FavoritesController;
 import Model.Points.StopModel;
 import Model.Map.MapModel;
 import Model.Map.RouteDirectionOption;
+import Service.GTFS_RT.Fetcher.Vehicle.VehiclePositionsService;
 import View.DashboardView;
 import View.Map.LineStopsView;
 import View.Map.MapView;
@@ -38,6 +39,7 @@ public class DashboardController {
     private final DashboardView dashboardView;
     private final MapModel mapModel;
 
+
     // ====== CONTROLLER INTERNI ======
     private final MapController mapController;
     private final StopSearchController stopSearchController;
@@ -45,6 +47,7 @@ public class DashboardController {
     private final LineStopsController lineStopsController;   // linea → fermate
     private final StopLinesController stopLinesController;   // fermata → linee
     private final FavoritesController favoritesController;   // preferiti
+
 
     // ====== PATH FILE GTFS ======
     private final String stopsCsvPath;
@@ -74,8 +77,17 @@ public class DashboardController {
         // ====== MODELLO DELLA MAPPA ======
         this.mapModel = new MapModel();
 
+        // ====== REALTIME: VEHICLE POSITIONS SERVICE ======
+        String vehiclePositionsUrl =
+                "https://romamobilita.it/sites/default/files/rome_rtgtfs_vehicle_positions_feed.pb";
+
+        VehiclePositionsService vehiclePositionsService =
+                new VehiclePositionsService(vehiclePositionsUrl);
+
+        vehiclePositionsService.start();
+
         // ====== CONTROLLER Mappa ======
-        this.mapController = new MapController(mapModel, mapView, stopsCsvPath);
+        this.mapController = new MapController(mapModel, mapView, stopsCsvPath, vehiclePositionsService);
 
         // ====== CONTROLLER Ricerche ======
         this.stopSearchController =
@@ -135,6 +147,7 @@ public class DashboardController {
             if (mode == SearchMode.STOP) {
                 mapController.showAllStops();
                 mapController.clearRouteHighlight(); // opzionale ma consigliato: toglie il disegno linea
+                mapController.clearVehicles();
             }
         });
 
@@ -173,6 +186,7 @@ public class DashboardController {
             if (option == null) return;
 
             lineSearchController.onRouteDirectionSelected(option);
+            mapController.showVehiclesForRoute(option.getRouteId(), option.getDirectionId());
             lineStopsController.showStopsFor(option);
         });
     }

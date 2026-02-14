@@ -26,6 +26,9 @@ import java.util.Set;
 
 import static Service.Points.StopService.getAllStops;
 
+import Service.GTFS_RT.Fetcher.Vehicle.VehiclePositionsService;
+import Model.GTFS_RT.VehicleInfo;
+
 /**
  * Controller della mappa.
  *
@@ -58,15 +61,29 @@ public class MapController {
     // 👉 nuova: posizione della fermata evidenziata (marker speciale)
     private GeoPosition highlightedPosition = null;
 
-    public MapController(MapModel model, MapView view, String stopsCsvPath) {
+    private final VehiclePositionsService vehiclePositionsService;
+    private List<VehicleInfo> visibleVehicles = List.of();
+    private volatile String selectedRouteId = null;
+    private volatile Integer selectedDirectionId = null;
+    private final Timer vehiclesRefreshTimer;
+
+
+    public MapController(MapModel model, MapView view, String stopsCsvPath, VehiclePositionsService vehiclePositionsService) {
         this.model = model;
         this.view = view;
         this.stopsCsvPath = stopsCsvPath;
+        this.vehiclePositionsService = vehiclePositionsService;
         this.shapePainter = new ShapePainter(routesPath, tripsPath);
         this.targetZoom = model.getZoom();
 
         zoomTimer = new Timer(10, e -> smoothZoomStep());
         zoomTimer.start();
+
+        vehiclesRefreshTimer = new Timer(30_000, e -> {
+            refreshVehiclesLayerIfNeeded();
+        });
+        vehiclesRefreshTimer.start();
+
 
         loadStops(stopsCsvPath);
         setupInteractions();
@@ -353,7 +370,8 @@ public class MapController {
                 stopsToDisplay,
                 clustersToDisplay,
                 shapePainter,
-                highlightedPosition   // 👉 passa la fermata evidenziata alla view
+                highlightedPosition,
+                visibleVehicles
         );
     }
 
@@ -613,6 +631,42 @@ public class MapController {
         shapePainter.setHighlightedShapes(shapesToDraw);
 
         // ✅ NON zoommare
+        refreshView();
+    }
+
+    private void updateVisibleVehiclesForSelectedRoute() {
+        String routeId = selectedRouteId;
+        Integer dir = selectedDirectionId;
+
+        if (routeId == null || routeId.isBlank()) {
+            visibleVehicles = List.of();
+            return;
+        }
+
+        visibleVehicles = vehiclePositionsService.getVehicles().stream()
+                .filter(v -> v.routeId != null && routeId.equals(v.routeId))
+                .filter(v -> v.lat != null && v.lon != null)
+                .filter(v -> dir == null || (v.directionId != null && v.directionId.equals(dir)))
+                .toList();
+    }
+
+    public void showVehiclesForRoute(String routeId, int directionId) {
+        this.selectedRouteId = routeId;
+        this.selectedDirectionId = directionId;
+        refreshVehiclesLayerIfNeeded();
+    }
+
+
+    public void clearVehicles() {
+        selectedRouteId = null;
+        selectedDirectionId = null;
+        visibleVehicles = List.of();
+        refreshView();
+    }
+
+    public void refreshVehiclesLayerIfNeeded() {
+        if (selectedRouteId == null) return;
+        updateVisibleVehiclesForSelectedRoute();
         refreshView();
     }
 }
