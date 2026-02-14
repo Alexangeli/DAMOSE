@@ -97,19 +97,23 @@ public class Main {
         AtomicReference<FavoritesDialogView> favoritesViewRef = new AtomicReference<>();
         AtomicBoolean pendingOpenFavoritesAfterLogin = new AtomicBoolean(false);
 
+        // ---- forward reference safe ----
+        Runnable[] openFavoritesDialogHolder = new Runnable[1];
+
         // ---- funzione comoda: apri login/register ----
-        Runnable[] openFavoritesDialogHolder = new Runnable[1]; // workaround for forward reference
         Runnable openAuthDialog = () -> {
             AuthDialog dlg = new AuthDialog(myFrame, () -> {
                 AppShellView shell = shellRef.get();
                 if (shell != null) shell.refreshAuthButton();
-                // NON disabilitare il bottone preferiti: gestiamo logica dentro al bottone
-                if (dashboardView.getFavoritesButton() != null) {
-                    dashboardView.getFavoritesButton().setEnabled(true);
-                }
-                // Se l'utente aveva cliccato ★ da guest, apriamo i preferiti subito dopo il login
+
+                // NON disabilitare il bottone preferiti: logica nel bottone
+                JButton favBtn = dashboardView.getFavoritesButton();
+                if (favBtn != null) favBtn.setEnabled(true);
+
+                // Se l'utente aveva cliccato ★ da guest, apriamo i preferiti dopo login
                 if (pendingOpenFavoritesAfterLogin.getAndSet(false)) {
-                    SwingUtilities.invokeLater(() -> openFavoritesDialogHolder[0].run());
+                    Runnable r = openFavoritesDialogHolder[0];
+                    if (r != null) SwingUtilities.invokeLater(r);
                 }
             });
             dlg.setVisible(true);
@@ -121,12 +125,26 @@ public class Main {
         // ---- dropdown account (Profilo / Log-out) ----
         AccountDropdown dropdown = new AccountDropdown(
                 myFrame,
-                () -> JOptionPane.showMessageDialog(
-                        myFrame,
-                        "Profilo utente: " + Session.getCurrentUser().getUsername(),
-                        "Profilo",
-                        JOptionPane.INFORMATION_MESSAGE
-                ),
+                () -> {
+                    // evita NPE se per qualche motivo currentUser è null
+                    Object u = Session.getCurrentUser();
+                    String username = "(guest)";
+                    try {
+                        if (u != null) {
+                            // User ha getUsername(): usiamo reflection per non dipendere dal tipo concreto
+                            var m = u.getClass().getMethod("getUsername");
+                            Object out = m.invoke(u);
+                            if (out != null) username = String.valueOf(out);
+                        }
+                    } catch (Exception ignored) {}
+
+                    JOptionPane.showMessageDialog(
+                            myFrame,
+                            "Profilo utente: " + username,
+                            "Profilo",
+                            JOptionPane.INFORMATION_MESSAGE
+                    );
+                },
                 () -> {
                     Session.logout();
 
@@ -145,9 +163,8 @@ public class Main {
                     if (dd != null) dd.hide();
 
                     // NON disabilitare il bottone preferiti
-                    if (dashboardView.getFavoritesButton() != null) {
-                        dashboardView.getFavoritesButton().setEnabled(true);
-                    }
+                    JButton favBtn = dashboardView.getFavoritesButton();
+                    if (favBtn != null) favBtn.setEnabled(true);
                 }
         );
         dropdownRef.set(dropdown);
@@ -182,42 +199,40 @@ public class Main {
                 return;
             }
 
-            // Siamo già su EDT quando arriva dal click, ma ci assicuriamo comunque.
-            // NOTA: non possiamo referenziare `openFavoritesDialog` dentro la sua stessa lambda.
+            // rientra su EDT se necessario
             if (!SwingUtilities.isEventDispatchThread()) {
                 Runnable r = openFavoritesDialogHolder[0];
                 if (r != null) SwingUtilities.invokeLater(r);
                 return;
             }
 
-            FavoritesDialogView favView = favoritesViewRef.get();
+            FavoritesDialogView favPanel = favoritesViewRef.get();
             JDialog favDialog = favoritesDialogRef.get();
 
-            if (favDialog == null || favView == null) {
-                favDialog = new JDialog(myFrame, "Preferiti", true);
-                favDialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
+            if (favDialog == null || favPanel == null) {
+                JDialog newDialog = new JDialog(myFrame, "Preferiti", true);
+                newDialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
 
-                favView = new FavoritesDialogView();
+                FavoritesDialogView newPanel = new FavoritesDialogView();
 
-                // Rimuovi (bottone) + Delete (già in FavoritesView)
-                FavoritesDialogView finalFavView = favView;
-                favView.setOnFavoriteRemove(item -> {
+                // ⚠️ FavoritesDialogView NON ha setOnFavoriteRemove / setFavorites direttamente.
+                // Dobbiamo passare tramite la FavoritesView interna:
+                newPanel.getFavoritesView().setOnFavoriteRemove(item -> {
                     boolean removed = removeFavoriteFromSessionUser(item);
                     if (removed) {
-                        finalFavView.setFavorites(loadFavoritesFromSessionUser());
+                        newPanel.getFavoritesView().setFavorites(loadFavoritesFromSessionUser());
                     }
                 });
 
-                favDialog.setContentPane(favView);
+                newDialog.setContentPane(newPanel);
 
-                // Dimensione “giusta” subito (come la tua terza foto)
-                favDialog.setMinimumSize(new Dimension(900, 650));
-                favDialog.setSize(1000, 720);
-                favDialog.setLocationRelativeTo(myFrame);
+                newDialog.setMinimumSize(new Dimension(900, 650));
+                newDialog.setSize(1000, 720);
+                newDialog.setLocationRelativeTo(myFrame);
 
                 // Quando chiudi, azzera i riferimenti
-                JDialog finalFavDialog = favDialog;
-                favDialog.addWindowListener(new WindowAdapter() {
+                JDialog finalFavDialog = newDialog;
+                newDialog.addWindowListener(new WindowAdapter() {
                     @Override
                     public void windowClosed(WindowEvent e) {
                         if (favoritesDialogRef.get() == finalFavDialog) {
@@ -227,14 +242,18 @@ public class Main {
                     }
                 });
 
-                favoritesDialogRef.set(favDialog);
-                favoritesViewRef.set(favView);
+                favoritesDialogRef.set(newDialog);
+                favoritesViewRef.set(newPanel);
+
+                // riallinea le variabili locali per il resto della lambda
+                favDialog = newDialog;
+                favPanel = newPanel;
             }
 
             // Refresh dati SEMPRE ad ogni apertura
-            favView.setFavorites(loadFavoritesFromSessionUser());
+            favPanel.getFavoritesView().setFavorites(loadFavoritesFromSessionUser());
 
-            // Mostra (se già visibile, porta davanti)
+            // Mostra
             favDialog.setLocationRelativeTo(myFrame);
             if (!favDialog.isVisible()) {
                 favDialog.setVisible(true);
@@ -248,9 +267,8 @@ public class Main {
         openFavoritesDialogHolder[0] = openFavoritesDialog;
 
         // NON disabilitare mai il bottone preferiti
-        if (dashboardView.getFavoritesButton() != null) {
-            dashboardView.getFavoritesButton().setEnabled(true);
-        }
+        JButton favBtn = dashboardView.getFavoritesButton();
+        if (favBtn != null) favBtn.setEnabled(true);
 
         // ---- reattività dropdown: move/resize + timer ----
         myFrame.addComponentListener(new ComponentAdapter() {
@@ -314,8 +332,15 @@ public class Main {
         int gapX = (int) Math.round(Math.max(16, 14 * scaleFactor));
         int margin = (int) Math.round(Math.max(10, 10 * scaleFactor));
 
-        Rectangle b = shell.getAuthButtonBoundsOnLayer();
-        JComponent anchor = shell.getRootLayerForPopups();
+        Rectangle b;
+        JComponent anchor;
+        try {
+            b = shell.getAuthButtonBoundsOnLayer();
+            anchor = shell.getRootLayerForPopups();
+            if (b == null || anchor == null) return;
+        } catch (Exception ex) {
+            return;
+        }
 
         Point pInRoot = SwingUtilities.convertPoint(anchor, b.x, b.y, frame.getRootPane());
         Point frameOnScreen;
@@ -333,12 +358,19 @@ public class Main {
 
         int leftLimitScreenX;
         try {
-            Component leftPanel = dashboardView.getSearchBarView().getParent();
-            Point leftOnScreen = leftPanel.getLocationOnScreen();
-            leftLimitScreenX = leftOnScreen.x + leftPanel.getWidth() + margin;
+            Component searchBar = dashboardView.getSearchBarView();
+            Component leftPanel = (searchBar != null) ? searchBar.getParent() : null;
+
+            if (leftPanel != null) {
+                Point leftOnScreen = leftPanel.getLocationOnScreen();
+                leftLimitScreenX = leftOnScreen.x + leftPanel.getWidth() + margin;
+            } else {
+                leftLimitScreenX = frameOnScreen.x + 360 + margin;
+            }
         } catch (Exception ex) {
             leftLimitScreenX = frameOnScreen.x + 360 + margin;
         }
+
         if (screenX < leftLimitScreenX) screenX = leftLimitScreenX;
 
         int maxX = frameOnScreen.x + frame.getWidth() - popupW - margin;
