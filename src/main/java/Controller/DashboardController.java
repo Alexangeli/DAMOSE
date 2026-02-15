@@ -109,7 +109,6 @@ public class DashboardController {
 
         favoritesButton.addActionListener(e -> {
             favoritesController.refreshView();
-            showFavoritesDialog(favoritesView);
         });
 
         // =====================================================
