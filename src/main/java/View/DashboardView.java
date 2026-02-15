@@ -1251,21 +1251,57 @@ public class DashboardView extends JPanel {
                                                       boolean isSelected, boolean cellHasFocus) {
             this.selected = isSelected;
 
+            // 1) Se un domani passi direttamente ArrivalRow (meglio), lo gestiamo qui.
+            if (value instanceof Model.ArrivalRow r) {
+
+                String title = (r.line != null ? r.line.trim() : "");
+                if (r.headsign != null && !r.headsign.isBlank()) {
+                    title += " → " + r.headsign.trim();
+                }
+
+                String subtitle;
+                if (r.realtime && r.minutes != null) {
+                    subtitle = "Prossimo: tra " + r.minutes + " min";
+                } else if (!r.realtime && r.time != null) {
+                    // static: HH:mm
+                    String hhmm = r.time.toString();
+                    if (hhmm.length() >= 5) hhmm = hhmm.substring(0, 5);
+                    subtitle = "Prossimo: " + hhmm;
+                } else {
+                    subtitle = "Non più corse per oggi";
+                }
+
+                main.setText(title.isBlank() ? "—" : title);
+                sub.setText(subtitle);
+                return this;
+            }
+
+            // 2) Caso attuale: value è una String con "\n"
             String s = (value == null) ? "" : value.toString();
 
-            String title = s;
-            String subtitle = "Prossimo: tra —";
-            int p = s.lastIndexOf('(');
-            if (p > 0 && s.endsWith(")")) {
-                title = s.substring(0, p).trim();
-                subtitle = s.substring(p).trim();
+            String title = s.trim();
+            String subtitle = "Prossimo: —";
+
+            int nl = s.indexOf('\n');
+            if (nl >= 0) {
+                title = s.substring(0, nl).trim();
+                subtitle = s.substring(nl + 1).trim();
             }
+
+            // 3) Se la riga non ha orario (tu metti "Prossimo: —"), mostriamo "Non più corse per oggi"
+            if (subtitle.equalsIgnoreCase("Prossimo: —") || subtitle.equalsIgnoreCase("Prossimo: -")) {
+                subtitle = "Non più corse per oggi";
+            }
+
+            if (title.isBlank()) title = "—";
 
             main.setText(title);
             sub.setText(subtitle);
 
             return this;
         }
+
+
 
         @Override
         protected void paintComponent(Graphics g) {
