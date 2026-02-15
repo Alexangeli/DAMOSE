@@ -141,7 +141,8 @@ public class DashboardController {
                         tripsCsvPath,
                         stopTimesPath,
                         stopsCsvPath,
-                        mapController
+                        mapController,
+                        arrivalPredictionService
                 );
 
         // ✅ QUI il parametro in più: arrivalPredictionService

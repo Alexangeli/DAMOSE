@@ -1,13 +1,18 @@
 package Controller.StopLines;
 
+import Model.ArrivalRow;
 import Model.Map.RouteDirectionOption;
 import Model.Points.StopModel;
 import Service.Parsing.TripStopsService;
 import View.Map.LineStopsView;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import Controller.Map.MapController;
+
+import Service.GTFS_RT.ArrivalPredictionService;
+import java.time.format.DateTimeFormatter;
 
 /**
  * Controller per il pannello sotto in modalità LINEA:
@@ -17,6 +22,7 @@ import Controller.Map.MapController;
  */
 public class LineStopsController {
 
+
     private final LineStopsView view;
     private final String tripsCsvPath;
     private final String stopTimesPath;
@@ -25,17 +31,21 @@ public class LineStopsController {
     // per nascondere le fermate inutili sulla mappa
     private final MapController mapController;
 
+    private final ArrivalPredictionService arrivalPredictionService;
+    private static final DateTimeFormatter HHMM = DateTimeFormatter.ofPattern("HH:mm");
     public LineStopsController(LineStopsView view,
                                String tripsCsvPath,
                                String stopTimesPath,
                                String stopsCsvPath,
-                               MapController mapController) {
+                               MapController mapController,
+                               ArrivalPredictionService arrivalPredictionService) {
         this.view = view;
         this.tripsCsvPath = tripsCsvPath;
         this.stopTimesPath = stopTimesPath;
         this.stopsCsvPath = stopsCsvPath;
         this.mapController = mapController;
-        // ⚠️ NIENTE più setOnStopClicked: lo zoom è gestito dentro LineStopsView
+        this.arrivalPredictionService = arrivalPredictionService;
+
     }
 
     /**
@@ -59,12 +69,36 @@ public class LineStopsController {
                 stopsCsvPath
         );
 
-        // riempi la casella con le fermate e passa il MapController
-        view.showLineStops(label, stops, mapController);
+        // ✅ NUOVO: sottotitolo per ogni fermata = prossimo passaggio di QUESTA linea
+        List<String> subtitles = new ArrayList<>();
+        if (stops != null) {
+            for (StopModel s : stops) {
+                ArrivalRow next = (arrivalPredictionService != null)
+                        ? arrivalPredictionService.getNextForStopOnRoute(
+                        s.getId(),
+                        option.getRouteId(),
+                        option.getDirectionId()
+                )
+                        : null;
 
-        // sulla mappa mostra SOLO le fermate di questa linea (se vuoi tenerlo)
+                String sub;
+                if (next == null || (next.minutes == null && next.time == null)) {
+                    sub = "Corse terminate per oggi";
+                } else if (next.minutes != null) {
+                    sub = "Prossimo: tra " + next.minutes + " min";
+                } else {
+                    sub = "Prossimo: " + HHMM.format(next.time);
+                }
+                subtitles.add(sub);
+            }
+        }
+
+        // ✅ invece di showLineStops() usa la versione con subtitle
+        view.showLineStopsWithSubtitles(label, stops, subtitles, mapController);
+
         if (stops != null && !stops.isEmpty()) {
             mapController.hideUselessStops(stops);
         }
     }
+
 }
