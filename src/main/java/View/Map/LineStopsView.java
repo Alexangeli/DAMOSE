@@ -264,4 +264,47 @@ public class LineStopsView extends JPanel {
     public int getItemCount() { return listModel.getSize(); }
 
     private static String safe(String s) { return s == null ? "" : s.trim(); }
+
+    public void showLineStopsWithSubtitles(String label,
+                                           List<StopModel> stops,
+                                           List<String> subtitles,
+                                           MapController mapController) {
+        this.panelMode = PanelMode.LINE_STOPS;
+
+        this.mapController = mapController;
+        this.currentStops = (stops != null) ? stops : Collections.emptyList();
+
+        // reset stop-mode
+        this.currentRoutes = Collections.emptyList();
+        this.currentRouteDirections = Collections.emptyList();
+        this.currentArrivals = Collections.emptyList();
+
+        titleLabel.setText(label != null ? label : "Fermate della linea");
+        listModel.clear();
+
+        int i = 1;
+        for (int idx = 0; idx < currentStops.size(); idx++) {
+            StopModel s = currentStops.get(idx);
+
+            String top = s.getName();
+            if (s.getCode() != null && !s.getCode().isBlank()) {
+                top += " (" + s.getCode() + ")";
+            }
+
+            String sub = (subtitles != null && idx < subtitles.size() && subtitles.get(idx) != null)
+                    ? subtitles.get(idx)
+                    : "Prossimo: —";
+
+            listModel.addElement(i + ". " + top + "\n" + sub);
+            i++;
+        }
+
+        if (mapController != null && !currentStops.isEmpty()) {
+            mapController.hideUselessStops(currentStops);
+        }
+
+        revalidate();
+        repaint();
+    }
+
 }
