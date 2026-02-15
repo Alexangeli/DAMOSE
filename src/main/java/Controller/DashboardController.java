@@ -24,7 +24,6 @@ import View.SearchBar.SearchBarView;
 import View.User.Fav.FavoritesView;
 
 import javax.swing.*;
-import java.awt.*;
 
 /**
  * Controller principale della dashboard.
@@ -168,8 +167,9 @@ public class DashboardController {
         );
 
         favoritesButton.addActionListener(e -> {
+            // Il dialog dei preferiti viene gestito da FavoritesView/FavoritesDialogView.
+            // Qui ci limitiamo a ricaricare i dati.
             favoritesController.refreshView();
-            showFavoritesDialog(favoritesView);
         });
 
         // ==============================
@@ -253,21 +253,6 @@ public class DashboardController {
             mapController.clearVehicles();
             mapController.clearHighlightedStop();
         });
-    }
-
-    private void showFavoritesDialog(FavoritesView favoritesView) {
-        Window parent = SwingUtilities.getWindowAncestor(dashboardView);
-        JDialog dialog = new JDialog(parent, "Preferiti", Dialog.ModalityType.APPLICATION_MODAL);
-
-        dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
-        dialog.setContentPane(favoritesView);
-
-        dialog.setSize(600, 500);
-        dialog.setMinimumSize(new Dimension(600, 500));
-        dialog.setResizable(true);
-
-        dialog.setLocationRelativeTo(parent);
-        dialog.setVisible(true);
     }
 
     public DashboardView getView() {
