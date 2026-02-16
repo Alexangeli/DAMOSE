@@ -10,42 +10,46 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
-// Creatore: Alessandro Angeli
+// Creatore: Alessandro Angeli (cache fix by path)
 
 /**
- * Classe di servizio che gestisce la lettura dei dati delle linee di trasporto (Routes)
- * dal file CSV del dataset GTFS.
+ * Lettura e filtro delle routes GTFS (routes.csv).
  *
- * Ogni riga del file rappresenta una singola linea o percorso (route),
- * contenente informazioni come ID, agenzia, nome corto/lungo, tipo di mezzo,
- * URL e colori di rappresentazione.
- *
- * Il metodo readFromCSV() legge il file specificato e restituisce una lista di oggetti RoutesModel,
- * ciascuno corrispondente a una riga del CSV.
+ * ✅ FIX: cache PER PATH (prima era globale e rompeva i test / cambi dataset).
  */
 public class RoutesService {
 
-    // ====== CACHE DEI DATI ======
-    private static List<RoutesModel> cachedRoutes = null;
+    // ====== CACHE DEI DATI (PER PATH) ======
+    private static final Map<String, List<RoutesModel>> cachedRoutesByPath = new ConcurrentHashMap<>();
 
     // ====== DATA ACCESS ======
 
     /**
-     * Restituisce tutte le route dal CSV (usando cache se disponibile).
+     * Restituisce tutte le route dal CSV (usando cache per quello specifico path).
      */
     public static List<RoutesModel> getAllRoutes(String filePath) {
-        if (cachedRoutes == null) {
-            cachedRoutes = readFromCSV(filePath);
-        }
-        return cachedRoutes;
+        if (filePath == null || filePath.isBlank()) return List.of();
+
+        // computeIfAbsent è thread-safe con ConcurrentHashMap
+        return cachedRoutesByPath.computeIfAbsent(filePath, RoutesService::readFromCSV);
     }
 
     /**
-     * Forza il ricaricamento della cache dal file.
+     * Forza il ricaricamento della cache SOLO per quel file.
      */
     public static void reloadRoutes(String filePath) {
-        cachedRoutes = readFromCSV(filePath);
+        if (filePath == null || filePath.isBlank()) return;
+        cachedRoutesByPath.put(filePath, readFromCSV(filePath));
+    }
+
+    /**
+     * ✅ Utile per i test: pulisce tutta la cache.
+     */
+    public static void clearCache() {
+        cachedRoutesByPath.clear();
     }
 
     /**
@@ -53,73 +57,72 @@ public class RoutesService {
      */
     private static List<RoutesModel> readFromCSV(String filePath) {
         List<RoutesModel> routesList = new ArrayList<>();
-        try (CSVReader reader = new CSVReader(new InputStreamReader(new FileInputStream(filePath), StandardCharsets.UTF_8))) {
+
+        try (CSVReader reader = new CSVReader(
+                new InputStreamReader(new FileInputStream(filePath), StandardCharsets.UTF_8)
+        )) {
             String[] nextLine;
             reader.readNext(); // Salta intestazione
+
             while ((nextLine = reader.readNext()) != null) {
                 if (nextLine.length < 8) continue; // skip riga malformata
+
                 RoutesModel route = new RoutesModel();
-                route.setRoute_id(nextLine[0].trim());
-                route.setAgency_id(nextLine[1].trim());
-                route.setRoute_short_name(nextLine[2].trim());
-                route.setRoute_long_name(nextLine[3].trim());
-                route.setRoute_type(nextLine[4].trim());
-                route.setRoute_url(nextLine[5].trim());
-                route.setRoute_color(nextLine[6].trim());
-                route.setRoute_text_color(nextLine[7].trim());
+                route.setRoute_id(safe(nextLine[0]));
+                route.setAgency_id(safe(nextLine[1]));
+                route.setRoute_short_name(safe(nextLine[2]));
+                route.setRoute_long_name(safe(nextLine[3]));
+                route.setRoute_type(safe(nextLine[4]));
+                route.setRoute_url(safe(nextLine[5]));
+                route.setRoute_color(safe(nextLine[6]));
+                route.setRoute_text_color(safe(nextLine[7]));
+
                 routesList.add(route);
             }
         } catch (IOException | CsvValidationException e) {
             System.err.println("Errore nella lettura/CSV routes: " + e.getMessage());
         }
+
         return routesList;
     }
 
+    private static String safe(String s) {
+        return (s == null) ? "" : s.trim();
+    }
 
     //===========FILTRI==============
 
-    // metodo per filtrare tutte le fermate in base al route_type nel route.csv
-
     public static List<RoutesModel> getRoutesByType(int routeType, String filePath) {
-        return getAllRoutes(filePath).stream().filter(route -> isValidRouteType(route, routeType))
-                .toList();}
+        return getAllRoutes(filePath).stream()
+                .filter(route -> isValidRouteType(route, routeType))
+                .toList();
+    }
 
     private static boolean isValidRouteType(RoutesModel route, int expectedRouteType) {
         return parseRouteType(route.getRoute_type()) == expectedRouteType;
     }
 
     static int parseRouteType(String routeTypeString) {
-        try{
+        try {
             return Integer.parseInt(routeTypeString);
-        }
-        catch (NumberFormatException e) {
+        } catch (NumberFormatException e) {
             return -1;
         }
     }
-
-
-    // filtro sulle route BUS
 
     public static List<RoutesModel> getBusRoutes(String filePath) {
         return getRoutesByType(3, filePath);
     }
 
-    // filtro sulle route METRO
-
     public static List<RoutesModel> getMetroRoutes(String filePath) {
         return getRoutesByType(1, filePath);
     }
-
-    // filtro sulle route TRAM
 
     public static List<RoutesModel> getTramRoutes(String filePath) {
         return getRoutesByType(0, filePath);
     }
 
-    // filtro sulle route TRENO
-
     public static List<RoutesModel> getTrainRoutes(String filePath) {
         return getRoutesByType(2, filePath);
     }
-
 }
