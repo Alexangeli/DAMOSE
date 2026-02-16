@@ -26,6 +26,7 @@ import View.User.Account.AccountDropdown;
 import View.User.Account.AuthDialog;
 
 import java.awt.*;
+import javax.swing.ImageIcon;
 import java.awt.event.*;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
@@ -331,6 +332,24 @@ public class Main {
         myFrame.setMinimumSize(new Dimension(800, 650));
         myFrame.setSize(AppConfig.DEFAULT_WIDTH, AppConfig.DEFAULT_HEIGHT);
         myFrame.getContentPane().setBackground(AppConfig.BACKGROUND_COLOR);
+        // Set application/window icon
+        try {
+            java.net.URL iconUrl = Main.class.getResource("/icons/logo.png");
+            if (iconUrl != null) {
+                Image icon = new ImageIcon(iconUrl).getImage();
+                myFrame.setIconImage(icon);
+                // Optional: set taskbar/dock icon where supported (Java 9+)
+                try {
+                    Taskbar.getTaskbar().setIconImage(icon);
+                } catch (Exception ignored) {
+                    // Taskbar not supported on this OS/VM
+                }
+            } else {
+                System.err.println("[Main] Icon not found: /icons/logo.png");
+            }
+        } catch (Exception ex) {
+            System.err.println("[Main] Failed to set app icon: " + ex.getMessage());
+        }
         return myFrame;
     }
 
