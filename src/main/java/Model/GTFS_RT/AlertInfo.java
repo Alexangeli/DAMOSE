@@ -4,6 +4,7 @@ import Model.GTFS_RT.Enums.AlertCause;
 import Model.GTFS_RT.Enums.AlertEffect;
 import Model.GTFS_RT.Enums.AlertSeverityLevel;
 
+import java.time.Instant;
 import java.util.List;
 
 public class AlertInfo {
@@ -13,8 +14,8 @@ public class AlertInfo {
     public final AlertEffect effect;
     public final AlertSeverityLevel severityLevel;
 
-    public final Long start;
-    public final Long end;
+    public final Long start; // epoch seconds (nullable)
+    public final Long end;   // epoch seconds (nullable)
 
     public final List<String> headers;
     public final List<String> descriptions;
@@ -38,8 +39,22 @@ public class AlertInfo {
         this.severityLevel = severityLevel;
         this.start = start;
         this.end = end;
-        this.headers = headers;
-        this.descriptions = descriptions;
-        this.informedEntities = informedEntities;
+
+        this.headers = (headers == null) ? List.of() : List.copyOf(headers);
+        this.descriptions = (descriptions == null) ? List.of() : List.copyOf(descriptions);
+        this.informedEntities = (informedEntities == null) ? List.of() : List.copyOf(informedEntities);
+    }
+
+    public boolean isActiveNow() {
+        long now = Instant.now().getEpochSecond();
+        return isActiveAt(now);
+    }
+
+    public boolean isActiveAt(long epochSeconds) {
+        // Se non hai periodi -> trattalo come “attivo” ma poco informativo
+        if (start == null && end == null) return true;
+        if (start != null && epochSeconds < start) return false;
+        if (end != null && epochSeconds > end) return false;
+        return true;
     }
 }

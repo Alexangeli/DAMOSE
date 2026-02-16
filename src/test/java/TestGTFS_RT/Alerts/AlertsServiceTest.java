@@ -1,4 +1,4 @@
-package TestGTFS_RT;
+package TestGTFS_RT.Alerts;
 
 import Model.GTFS_RT.AlertInfo;
 import Model.GTFS_RT.InformedEntityInfo;

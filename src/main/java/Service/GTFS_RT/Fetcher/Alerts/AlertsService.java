@@ -5,15 +5,16 @@ import Model.Net.ConnectionManager;
 import Service.GTFS_RT.Client.HttpGtfsRtFeedClient;
 
 import java.time.Duration;
-import java.util.Collections;
 import java.util.List;
 
 public class AlertsService {
 
+    public record AlertsSnapshot(List<AlertInfo> alerts, long fetchedAtEpochSec) {}
+
     private final AlertsFetcher fetcher;
     private final ConnectionManager connectionManager;
 
-    private volatile List<AlertInfo> lastAlerts = Collections.emptyList();
+    private volatile AlertsSnapshot snapshot = new AlertsSnapshot(List.of(), 0L);
 
     // PRODUZIONE (fetch-only)
     public AlertsService(String gtfsRtUrl) {
@@ -35,9 +36,14 @@ public class AlertsService {
     public void start() { connectionManager.start(); }
     public void stop() { connectionManager.stop(); }
 
-    public List<AlertInfo> getAlerts() { return lastAlerts; }
+    /** Compatibilità */
+    public List<AlertInfo> getAlerts() { return snapshot.alerts(); }
+
+    public AlertsSnapshot getSnapshot() { return snapshot; }
 
     public void refreshOnce() throws Exception {
-        lastAlerts = fetcher.fetchAlerts();
+        List<AlertInfo> list = fetcher.fetchAlerts();
+        long now = java.time.Instant.now().getEpochSecond();
+        snapshot = new AlertsSnapshot(List.copyOf(list), now);
     }
 }
