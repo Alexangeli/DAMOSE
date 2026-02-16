@@ -46,40 +46,36 @@ public class ShapeColorService {
     }
 
     private static Color getColorByRouteType(int routeType) {
-
         return switch (routeType) {
-            case 1 -> Color.RED;     // Metro
-            case 0 -> new Color(0,100,0);  // Tram
-            case 3 -> Color.BLUE;    // Bus
+            case 1 -> Color.RED;                 // Metro
+            case 0 -> new Color(255, 190, 0); // Tram (giallo più acceso)   // Tram (giallo ocra)
+            case 3 -> Color.BLUE;                // Bus
             default -> Color.GRAY;
         };
     }
 
     /**
      * Identifica shape circolari controllando:
-     * 1. Distanza start_point ↔ end_point < 30m OPPURE
-     * 2. Stessa parent_station (se disponibile)
+     * 1. Distanza start_point ↔ end_point < 30m
      */
     public static boolean isCircularShape(List<ShapesModel> shapePoints) {
-        if (shapePoints.size() < 2) return false;
+        if (shapePoints == null || shapePoints.size() < 2) return false;
 
         ShapesModel firstPoint = shapePoints.get(0);
         ShapesModel lastPoint = shapePoints.get(shapePoints.size() - 1);
 
-        // 1. CONTROLLO DISTANZA COORDINATE (< 30m = circolare)
+        // CONTROLLO DISTANZA COORDINATE (< 30m = circolare)
         double lat1 = Double.parseDouble(firstPoint.getShape_pt_lat());
         double lon1 = Double.parseDouble(firstPoint.getShape_pt_lon());
         double lat2 = Double.parseDouble(lastPoint.getShape_pt_lat());
         double lon2 = Double.parseDouble(lastPoint.getShape_pt_lon());
 
-        double distance = haversineDistance(lat1, lon1, lat2, lon2);
-        if (distance < 0.03) return true; // 30m in gradi
-
-        return false;
+        double distanceKm = haversineDistanceKm(lat1, lon1, lat2, lon2);
+        return distanceKm < 0.03; // 30m = 0.03 km
     }
 
-    private static double haversineDistance(double lat1, double lon1, double lat2, double lon2) {
-        final int R = 6371000; // Raggio Terra in metri
+    private static double haversineDistanceKm(double lat1, double lon1, double lat2, double lon2) {
+        final int R = 6371000; // raggio Terra in metri
 
         double dLat = Math.toRadians(lat2 - lat1);
         double dLon = Math.toRadians(lon2 - lon1);
@@ -88,8 +84,7 @@ public class ShapeColorService {
                         Math.sin(dLon / 2) * Math.sin(dLon / 2);
         double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
-        return R * c / 1000; // metri → km, ma usiamo < 0.03 gradi
+        double distanceMeters = R * c;
+        return distanceMeters / 1000.0; // km
     }
-
 }
-

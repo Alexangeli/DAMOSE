@@ -49,9 +49,12 @@ public class ShapePainter extends WaypointPainter<Waypoint> {
 
             Color color = shapeColors.getOrDefault(shapeId, Color.GRAY);
 
-            // ← CONTROLLO CIRCOLARE
+            // ← CONTROLLO CIRCOLARE: verde scuro per circolari (ma non tram)
             if (ShapeColorService.isCircularShape(points)) {
-                color = Color.GREEN;  // Verde per CIRCOLARI
+                Color tramOcra = new Color(204, 119, 34);
+                if (!color.equals(tramOcra)) {
+                    color = new Color(0, 100, 0); // Verde scuro
+                }
             }
 
             drawShape(g, map, points, color);
