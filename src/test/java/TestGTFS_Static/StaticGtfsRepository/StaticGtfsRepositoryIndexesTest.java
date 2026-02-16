@@ -1,4 +1,4 @@
-package TestGTFS_Static;
+package TestGTFS_Static.StaticGtfsRepository;
 
 import Model.Parsing.Static.StopTimesModel;
 import Model.Parsing.Static.TripsModel;

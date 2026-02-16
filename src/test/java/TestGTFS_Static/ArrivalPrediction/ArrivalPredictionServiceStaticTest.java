@@ -1,4 +1,4 @@
-package TestGTFS_Static;
+package TestGTFS_Static.ArrivalPrediction;
 
 import Model.ArrivalRow;
 import Model.GTFS_RT.TripUpdateInfo;

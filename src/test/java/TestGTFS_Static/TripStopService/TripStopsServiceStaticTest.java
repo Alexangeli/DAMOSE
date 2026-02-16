@@ -1,4 +1,4 @@
-package TestGTFS_Static;
+package TestGTFS_Static.TripStopService;
 
 import Model.Parsing.Static.RoutesModel;
 import Model.Parsing.Static.StopTimesModel;
@@ -6,41 +6,42 @@ import Model.Parsing.Static.TripsModel;
 import Model.Points.StopModel;
 import Service.Parsing.Static.StaticGtfsRepository;
 import Service.Parsing.Static.StaticGtfsRepositoryBuilder;
+import Service.Parsing.TripStopsService;
 import org.junit.Test;
 
 import java.util.List;
 
 import static org.junit.Assert.*;
 
-public class StaticGtfsRepositoryCoreTest {
+public class TripStopsServiceStaticTest {
 
     @Test
-    public void getById_mapsWork() {
-        StopModel s = stop("S1", "905", "Termini");
-        RoutesModel r = route("R1", "64");
-        TripsModel t = trip("T1", "R1", 0, "Termini");
+    public void getStopsForRouteDirection_returnsStopsInOrder() {
+        StopModel s1 = stop("S1", "1", "A");
+        StopModel s2 = stop("S2", "2", "B");
 
-        StopTimesModel st = stopTime("T1", "S1", "10:00:00", "1");
+        RoutesModel r = route("R1", "64");
+        TripsModel t = trip("T1", "R1", 0, "HS");
+
+        StopTimesModel st1 = stopTime("T1", "S1", "10:00:00", "1");
+        StopTimesModel st2 = stopTime("T1", "S2", "10:01:00", "2");
 
         StaticGtfsRepository repo = new StaticGtfsRepositoryBuilder()
-                .withStops(List.of(s))
+                .withStops(List.of(s1, s2))
                 .withRoutes(List.of(r))
                 .withTrips(List.of(t))
-                .withStopTimes(List.of(st))
+                .withStopTimes(List.of(st2, st1)) // volutamente invertiti
+                .indexTripStopTimes(true)
                 .build();
 
-        assertNotNull(repo.getStopById("S1"));
-        assertEquals("Termini", repo.getStopById("S1").getName());
+        List<StopModel> out = TripStopsService.getStopsForRouteDirection("R1", 0, repo);
 
-        assertNotNull(repo.getRouteById("R1"));
-        assertEquals("64", repo.getRouteById("R1").getRoute_short_name());
-
-        assertNotNull(repo.getTripById("T1"));
-        assertEquals("R1", repo.getTripById("T1").getRoute_id());
+        assertEquals(2, out.size());
+        assertEquals("S1", out.get(0).getId());
+        assertEquals("S2", out.get(1).getId());
     }
 
     // ===== helpers =====
-
     private static StopModel stop(String id, String code, String name) {
         StopModel s = new StopModel();
         s.setId(id);
