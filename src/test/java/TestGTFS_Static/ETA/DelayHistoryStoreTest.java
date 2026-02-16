@@ -1,6 +1,6 @@
 package TestGTFS_Static.ETA;
 
-import Service.GTFS_RT.ETA.DelayHistoryStore;
+import Service.GTFS_RT.Index.DelayHistoryStore;
 import org.junit.Test;
 
 import static org.junit.Assert.*;

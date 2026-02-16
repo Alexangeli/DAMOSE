@@ -1,4 +1,4 @@
-package TestGTFS_Static;
+package TestGTFS_Static.ArrivalPrediction;
 
 import Model.ArrivalRow;
 import Model.GTFS_RT.TripUpdateInfo;
@@ -10,7 +10,7 @@ import Model.Parsing.Static.StopTimesModel;
 import Model.Parsing.Static.TripsModel;
 import Model.Points.StopModel;
 import Service.GTFS_RT.ArrivalPredictionService;
-import Service.GTFS_RT.ETA.DelayHistoryStore;
+import Service.GTFS_RT.Index.DelayHistoryStore;
 import Service.GTFS_RT.Fetcher.TripUpdates.TripUpdatesService;
 import Service.GTFS_RT.Index.TripUpdatesRtIndex;
 import Service.Parsing.Static.StaticGtfsRepository;

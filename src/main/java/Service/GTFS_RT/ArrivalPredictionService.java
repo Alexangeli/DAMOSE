@@ -1,12 +1,13 @@
 package Service.GTFS_RT;
 
 import Model.ArrivalRow;
+import Model.GTFS_RT.StopTimeUpdateInfo;
 import Model.GTFS_RT.TripUpdateInfo;
 import Model.Net.ConnectionState;
 import Model.Net.ConnectionStatusProvider;
 import Model.Parsing.Static.RoutesModel;
 import Model.Parsing.Static.StopTimesModel;
-import Service.GTFS_RT.ETA.DelayHistoryStore;
+import Service.GTFS_RT.Index.DelayHistoryStore;
 import Service.GTFS_RT.Fetcher.TripUpdates.TripUpdatesService;
 import Service.GTFS_RT.Index.BestEta;
 import Service.GTFS_RT.Index.TripUpdatesRtIndex;
@@ -229,34 +230,58 @@ public class ArrivalPredictionService {
     // ========================= RT INDEX REBUILD + HISTORY =========================
 
     private void maybeRebuildRtIndex() {
+        // rebuild solo se ONLINE (se offline non ci serve)
         if (statusProvider.getState() != ConnectionState.ONLINE) return;
 
         List<TripUpdateInfo> updates = tripUpdatesService.getTripUpdates();
-        Object ref = updates;
+        Object ref = updates; // identity
 
-        if (ref == lastUpdatesRef) return;
+        if (ref == lastUpdatesRef) return; // nessun refresh
         lastUpdatesRef = ref;
 
         long now = Instant.now().getEpochSecond();
         rtIndex.rebuild(updates, now);
 
+        // aggiorna storico delay (stop-level + route-level) con PROPAGAZIONE
         if (updates != null) {
             for (TripUpdateInfo tu : updates) {
-                if (tu == null) continue;
-                if (tu.stopTimeUpdates == null) continue;
+                if (tu == null || tu.stopTimeUpdates == null) continue;
 
                 String routeId = safe(tu.routeId);
                 Integer dir = tu.directionId;
                 if (routeId.isEmpty() || dir == null) continue;
 
-                tu.stopTimeUpdates.forEach(stu -> {
-                    if (stu == null) return;
-                    Integer d =
+                // 1) ordina per stopSequence (per propagare correttamente)
+                ArrayList<StopTimeUpdateInfo> stus = new ArrayList<>(tu.stopTimeUpdates);
+                stus.sort((a, b) -> {
+                    int sa = (a == null || a.stopSequence == null) ? Integer.MAX_VALUE : a.stopSequence;
+                    int sb = (b == null || b.stopSequence == null) ? Integer.MAX_VALUE : b.stopSequence;
+                    return Integer.compare(sa, sb);
+                });
+
+                Integer lastKnownDelay = null;
+
+                for (StopTimeUpdateInfo stu : stus) {
+                    if (stu == null) continue;
+                    String stopId = stu.stopId;
+                    if (stopId == null || stopId.isBlank()) continue;
+
+                    // 2) delay osservato (preferisci arrivalDelay/departureDelay, fallback tu.delay)
+                    Integer observed =
                             (stu.arrivalDelay != null) ? stu.arrivalDelay :
                                     (stu.departureDelay != null) ? stu.departureDelay :
                                             tu.delay;
-                    delayHistory.observe(routeId, dir, stu.stopId, d, now);
-                });
+
+                    // 3) aggiorna lastKnownDelay se abbiamo un valore vero
+                    if (observed != null) lastKnownDelay = observed;
+
+                    // 4) se manca observed, propaga lastKnownDelay
+                    Integer toStore = (observed != null) ? observed : lastKnownDelay;
+
+                    if (toStore != null) {
+                        delayHistory.observe(routeId, dir, stopId, toStore, now);
+                    }
+                }
             }
         }
     }
@@ -282,4 +307,6 @@ public class ArrivalPredictionService {
             return -1;
         }
     }
+
+
 }
