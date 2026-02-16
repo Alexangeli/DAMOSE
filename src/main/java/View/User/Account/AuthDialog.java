@@ -10,45 +10,87 @@ public class AuthDialog extends JDialog {
     private final CardLayout cards = new CardLayout();
     private final JPanel content = new JPanel(cards);
 
+    private LoginView loginView;
+    private RegisterView registerView;
+
     public AuthDialog(Window parent, Runnable onAuthChanged) {
         super(parent, "Account", ModalityType.APPLICATION_MODAL);
 
-        final LoginView[] loginRef = new LoginView[1];
-        final RegisterView[] registerRef = new RegisterView[1];
-
-        LoginView loginView = new LoginView(new LoginView.Navigation() {
+        loginView = new LoginView(new LoginView.Navigation() {
             @Override public void goToRegister() {
-                registerRef[0].resetForm();
+                registerView.resetForm();
                 cards.show(content, "register");
+                resizeToCurrentCard();
             }
 
             @Override public void onLoginSuccess(User user) {
-                // Session.login(user) NON serve qui: lo fa già LoginController
                 onAuthChanged.run();
                 dispose();
             }
         });
 
-        RegisterView registerView = new RegisterView(new RegisterView.Navigation() {
+        registerView = new RegisterView(new RegisterView.Navigation() {
             @Override public void goToLogin() {
-                loginRef[0].resetForm();
+                loginView.resetForm();
                 cards.show(content, "login");
+                resizeToCurrentCard();
             }
         });
 
-        loginRef[0] = loginView;
-        registerRef[0] = registerView;
-
+        content.setOpaque(true);
+        content.setBackground(Color.WHITE);
         content.add(loginView, "login");
         content.add(registerView, "register");
 
         setContentPane(content);
-        cards.show(content, "login");
+        // Evita qualsiasi bordo/grigio del root pane
+        getRootPane().setBorder(null);
 
-        setSize(430, 360);
-        setMinimumSize(new Dimension(430, 360));
-        setMaximumSize(new Dimension(430, 360));
+        setBackground(Color.WHITE);
+        getContentPane().setBackground(Color.WHITE);
+        content.setBackground(Color.WHITE);
+        content.setOpaque(true);
+        getRootPane().setOpaque(true);
+        getRootPane().setBackground(Color.WHITE);
+
         setResizable(false);
+        setDefaultCloseOperation(DISPOSE_ON_CLOSE);
+
+        cards.show(content, "login");
+        resizeToCurrentCard();
         setLocationRelativeTo(parent);
+    }
+
+    private void resizeToCurrentCard() {
+        SwingUtilities.invokeLater(() -> {
+            Component card = getVisibleCard();
+            if (card != null) {
+                Dimension pd = card.getPreferredSize();
+                if (pd != null) {
+                    // Riduciamo la larghezza per eliminare i bordi laterali (aumenta/diminuisci se serve)
+                    int reducedWidth = pd.width - 80;
+
+                    // Evita valori troppo piccoli su schermi/font diversi
+                    int minW = 380;
+                    if (reducedWidth < minW) reducedWidth = minW;
+
+                    Dimension adjusted = new Dimension(reducedWidth, pd.height);
+
+                    setSize(adjusted);
+                    content.setPreferredSize(adjusted);
+                }
+            }
+
+            // Nessun pack(): evitiamo che Swing aggiunga spazio extra
+            setLocationRelativeTo(getOwner());
+        });
+    }
+
+    /** Ritorna la card attualmente visibile dentro il CardLayout. */
+    private Component getVisibleCard() {
+        for (Component c : content.getComponents()) {
+            if (c != null && c.isVisible()) return c;
+        }
+        return loginView;
     }
 }
