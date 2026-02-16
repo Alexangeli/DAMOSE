@@ -10,7 +10,9 @@ import Model.Parsing.Static.StopTimesModel;
 import Model.Parsing.Static.TripsModel;
 import Model.Points.StopModel;
 import Service.GTFS_RT.ArrivalPredictionService;
+import Service.GTFS_RT.ETA.DelayHistoryStore;
 import Service.GTFS_RT.Fetcher.TripUpdates.TripUpdatesService;
+import Service.GTFS_RT.Index.TripUpdatesRtIndex;
 import Service.Parsing.Static.StaticGtfsRepository;
 import Service.Parsing.Static.StaticGtfsRepositoryBuilder;
 import org.junit.Test;
@@ -21,45 +23,73 @@ import java.util.List;
 
 import static org.junit.Assert.*;
 
-public class ArrivalPredictionServiceSmartStaticTest {
+public class ArrivalPredictionServiceEstimatedDelayTest {
 
     @Test
-    public void staticFallback_appliesEstimatedDelayWhenAvailable() {
-        // setup static: prossima corsa tra 10 minuti (clock time)
+    public void getArrivalsForStop_offline_appliesEstimatedDelayToStaticTime_dir0() {
+        // ===== static dataset =====
         StopModel stop = stop("S1", "905", "Termini");
         RoutesModel route = route("R1", "64");
-        TripsModel trip = trip("T1", "R1", 0, "Termini");
 
-        String t10m = gtfsTimeFromNowSeconds(10 * 60);
+        // 2 trips (dir0 e dir1) con headsign diversi => NON merged
+        TripsModel trip0 = trip("T0", "R1", 0, "TERMlNl");   // qualsiasi testo, basta non vuoto
+        TripsModel trip1 = trip("T1", "R1", 1, "CORNELIA");
+
+        int baseDelta = 10 * 60;
+        String t10m = gtfsTimeFromNowSeconds(baseDelta);
+
+        // stop_times per entrambi i trips sullo stesso stop
+        StopTimesModel st0 = stopTime("T0", "S1", t10m, "1");
         StopTimesModel st1 = stopTime("T1", "S1", t10m, "1");
 
         StaticGtfsRepository repo = new StaticGtfsRepositoryBuilder()
                 .withStops(List.of(stop))
                 .withRoutes(List.of(route))
-                .withTrips(List.of(trip))
-                .withStopTimes(List.of(st1))
+                .withTrips(List.of(trip0, trip1))
+                .withStopTimes(List.of(st0, st1))
                 .indexStopToRoutes(true)
                 .indexTripStopTimes(true)
                 .indexStopStopTimes(true)
                 .build();
 
-        // fake TU: ONLINE ma nessun stop_time_update -> niente ETA, però possiamo “simulare” delay storico
+        // ===== DI: delay store =====
+        DelayHistoryStore delayStore = new DelayHistoryStore(0.5);
+        long nowEpoch = System.currentTimeMillis() / 1000;
+
+        // stima: +120s su route R1 dir0 stop S1
+        delayStore.observe("R1", 0, "S1", 120, nowEpoch);
+
+        // ===== fakes =====
         TripUpdatesService fakeTu = new FakeTripUpdatesService();
-        ConnectionStatusProvider online = new AlwaysOnlineStatusProvider();
+        ConnectionStatusProvider offline = new AlwaysOfflineStatusProvider();
+        TripUpdatesRtIndex rtIndex = new TripUpdatesRtIndex();
 
-        ArrivalPredictionService svc = new ArrivalPredictionService(fakeTu, online, repo);
+        ArrivalPredictionService svc = new ArrivalPredictionService(
+                fakeTu, offline, repo, rtIndex, delayStore
+        );
 
-        // 1) prima chiamata: costruisce indice vuoto (nessun delay) -> static “puro”
-        ArrivalRow first = svc.getArrivalsForStop("S1").get(0);
-        assertNotNull(first.time);
+        List<ArrivalRow> rows = svc.getArrivalsForStop("S1");
+        assertEquals("attese 2 righe (dir0 e dir1)", 2, rows.size());
 
-        // NB: qui non possiamo “iniettare” direttamente delayHistory senza esporlo.
-        // Questo test verifica solo che il fallback statico esiste e funziona.
-        // Se vuoi testare “delay applicato”, ti faccio una micro-refactor:
-        // esponiamo DelayHistoryStore via costruttore (DI) SOLO nei test.
+        // prendo la riga dir=0
+        ArrivalRow row0 = rows.stream()
+                .filter(r -> r != null && r.directionId != null && r.directionId == 0)
+                .findFirst()
+                .orElseThrow();
+
+        assertNull(row0.minutes);      // offline => niente realtime
+        assertNotNull(row0.time);
+        assertFalse(row0.realtime);
+
+        // expected: now + 10min + 2min (delay)
+        LocalTime expected = LocalTime.now().plusSeconds(baseDelta + 120);
+
+        // tolleranza 2s
+        int diff = Math.abs(expected.toSecondOfDay() - row0.time.toSecondOfDay());
+        assertTrue("expected ~" + expected + " got " + row0.time + " diffSec=" + diff, diff <= 2);
     }
 
-    // ===== Fakes =====
+    // ===== fakes =====
     private static final class FakeTripUpdatesService extends TripUpdatesService {
         public FakeTripUpdatesService() { super("http://invalid"); }
         @Override public List<TripUpdateInfo> getTripUpdates() { return Collections.emptyList(); }
@@ -67,8 +97,8 @@ public class ArrivalPredictionServiceSmartStaticTest {
         @Override public void stop() {}
     }
 
-    private static final class AlwaysOnlineStatusProvider implements ConnectionStatusProvider {
-        @Override public ConnectionState getState() { return ConnectionState.ONLINE; }
+    private static final class AlwaysOfflineStatusProvider implements ConnectionStatusProvider {
+        @Override public ConnectionState getState() { return ConnectionState.OFFLINE; }
         @Override public void addListener(ConnectionListener listener) {}
         @Override public void removeListener(ConnectionListener listener) {}
     }

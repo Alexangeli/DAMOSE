@@ -1,4 +1,4 @@
-package TestGTFS_Static;
+package TestGTFS_Static.ETA;
 
 import Model.GTFS_RT.StopTimeUpdateInfo;
 import Model.GTFS_RT.TripUpdateInfo;

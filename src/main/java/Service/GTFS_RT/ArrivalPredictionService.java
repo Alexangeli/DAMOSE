@@ -17,6 +17,7 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 public class ArrivalPredictionService {
 
@@ -24,19 +25,34 @@ public class ArrivalPredictionService {
     private final ConnectionStatusProvider statusProvider;
     private final StaticGtfsRepository repo;
 
-    private final TripUpdatesRtIndex rtIndex = new TripUpdatesRtIndex();
-    private final DelayHistoryStore delayHistory = new DelayHistoryStore(0.25); // alpha
+    // ✅ ora sono iniettati (nei test) oppure creati di default
+    private final TripUpdatesRtIndex rtIndex;
+    private final DelayHistoryStore delayHistory;
 
     private volatile Object lastUpdatesRef = null;
 
+    // ✅ PRODUZIONE (default)
     public ArrivalPredictionService(
             TripUpdatesService tripUpdatesService,
             ConnectionStatusProvider statusProvider,
             StaticGtfsRepository repo
     ) {
-        this.tripUpdatesService = tripUpdatesService;
-        this.statusProvider = statusProvider;
-        this.repo = repo;
+        this(tripUpdatesService, statusProvider, repo, new TripUpdatesRtIndex(), new DelayHistoryStore(0.25));
+    }
+
+    // ✅ TEST / DI
+    public ArrivalPredictionService(
+            TripUpdatesService tripUpdatesService,
+            ConnectionStatusProvider statusProvider,
+            StaticGtfsRepository repo,
+            TripUpdatesRtIndex rtIndex,
+            DelayHistoryStore delayHistory
+    ) {
+        this.tripUpdatesService = Objects.requireNonNull(tripUpdatesService, "tripUpdatesService null");
+        this.statusProvider = Objects.requireNonNull(statusProvider, "statusProvider null");
+        this.repo = Objects.requireNonNull(repo, "repo null");
+        this.rtIndex = Objects.requireNonNull(rtIndex, "rtIndex null");
+        this.delayHistory = Objects.requireNonNull(delayHistory, "delayHistory null");
     }
 
     // ========================= STOP MODE =========================
@@ -74,7 +90,6 @@ public class ArrivalPredictionService {
             }
         }
 
-        // ordinamento: RT (minutes) prima, poi static (time)
         rows.sort((a, b) -> {
             int am = (a.minutes != null) ? a.minutes : Integer.MAX_VALUE;
             int bm = (b.minutes != null) ? b.minutes : Integer.MAX_VALUE;
@@ -99,13 +114,11 @@ public class ArrivalPredictionService {
     private ArrivalRow buildRow(String stopId, String routeId, int directionId, String line, String headsign) {
         boolean online = statusProvider.getState() == ConnectionState.ONLINE;
 
-        // 1) prova realtime (solo se online)
         if (online) {
             ArrivalRow rt = tryRealtime(stopId, routeId, directionId, line, headsign);
             if (rt != null) return rt;
         }
 
-        // 2) static intelligente (static + delay stimato)
         return staticWithEstimatedDelay(stopId, routeId, directionId, line, headsign);
     }
 
@@ -135,7 +148,6 @@ public class ArrivalPredictionService {
     private ArrivalRow tryRealtime(String stopId, String routeId, int directionId, String line, String headsign) {
         long now = Instant.now().getEpochSecond();
 
-        // directionId == -1 = merged: scegli il migliore tra dir 0 e dir 1 (se presenti)
         if (directionId == -1) {
             BestEta b0 = rtIndex.findBestEta(routeId, 0, stopId);
             BestEta b1 = rtIndex.findBestEta(routeId, 1, stopId);
@@ -173,12 +185,11 @@ public class ArrivalPredictionService {
             return new ArrivalRow(routeId, directionId, line, headsign, null, null, false);
         }
 
-        // Applica delay stimato (se c'è)
         Integer delaySec = null;
         if (directionId != -1) {
             delaySec = delayHistory.estimateDelaySec(routeId, directionId, stopId);
         }
-        // se merged e non vuoi “sparare”, lascia senza delay (o potresti provare dir0/dir1 e prendere la media)
+
         if (delaySec != null) {
             bestSec = bestSec + delaySec;
         }
@@ -218,19 +229,17 @@ public class ArrivalPredictionService {
     // ========================= RT INDEX REBUILD + HISTORY =========================
 
     private void maybeRebuildRtIndex() {
-        // rebuild solo se ONLINE (se offline non ci serve)
         if (statusProvider.getState() != ConnectionState.ONLINE) return;
 
         List<TripUpdateInfo> updates = tripUpdatesService.getTripUpdates();
-        Object ref = updates; // identity
+        Object ref = updates;
 
-        if (ref == lastUpdatesRef) return; // nessun refresh
+        if (ref == lastUpdatesRef) return;
         lastUpdatesRef = ref;
 
         long now = Instant.now().getEpochSecond();
         rtIndex.rebuild(updates, now);
 
-        // aggiorna storico delay (stop-level + route-level)
         if (updates != null) {
             for (TripUpdateInfo tu : updates) {
                 if (tu == null) continue;
@@ -240,7 +249,6 @@ public class ArrivalPredictionService {
                 Integer dir = tu.directionId;
                 if (routeId.isEmpty() || dir == null) continue;
 
-                // delay per stop: preferisci arrivalDelay/departureDelay, fallback tu.delay
                 tu.stopTimeUpdates.forEach(stu -> {
                     if (stu == null) return;
                     Integer d =
