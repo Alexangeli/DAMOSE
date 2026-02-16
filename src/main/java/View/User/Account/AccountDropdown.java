@@ -70,14 +70,27 @@ public class AccountDropdown {
         card.setBackground(Color.WHITE);
         card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
 
-        // ===== TOP ROW: Stato in alto a destra =====
+
+        // ===== TOP ROW: Stato (stessa posizione ORIGINALE rispetto al blocco bianco) =====
         JPanel topRow = new JPanel();
         topRow.setOpaque(false);
         topRow.setLayout(new BoxLayout(topRow, BoxLayout.X_AXIS));
 
+        // ORIGINALE: centrato orizzontalmente dentro la riga
         topRow.add(Box.createHorizontalGlue());
         topRow.add(statusRight);
         topRow.add(Box.createHorizontalGlue());
+
+        // Header con altezza fissa: qui centriamo VERTICALMENTE lo status
+        JPanel header = new JPanel();
+        header.setOpaque(false);
+        header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
+        header.setPreferredSize(new Dimension(0, scale(56)));
+        header.setMaximumSize(new Dimension(Integer.MAX_VALUE, scale(56)));
+
+        header.add(Box.createVerticalGlue());
+        header.add(wrapHorizontal(scale(18), topRow));
+        header.add(Box.createVerticalGlue());
 
         // ===== CENTER COLUMN: tutto centrato nel riquadro bianco =====
         JPanel centerCol = new JPanel();
@@ -107,18 +120,19 @@ public class AccountDropdown {
             if (this.onLogout != null) this.onLogout.run();
         });
 
-        // Spaziatura (ben distanziato)
+        // Spaziatura più omogenea
         centerCol.add(avatar);
-        centerCol.add(Box.createVerticalStrut(scale(24)));
-        centerCol.add(helloLabel);
-        centerCol.add(Box.createVerticalStrut(scale(28)));
-        centerCol.add(manageBtn);
         centerCol.add(Box.createVerticalStrut(scale(18)));
+        centerCol.add(helloLabel);
+        centerCol.add(Box.createVerticalStrut(scale(22)));
+        centerCol.add(manageBtn);
+        centerCol.add(Box.createVerticalStrut(scale(14)));
         centerCol.add(logoutBtn);
+        // ✅ spazio sotto Logout
+        centerCol.add(Box.createVerticalStrut(scale(18)));
 
-        // ===== COMPOSE: Stato in alto a destra + contenuto centrato =====
-        card.add(Box.createVerticalStrut(scale(6)));
-        card.add(wrapHorizontal(scale(18), topRow));
+        // ===== COMPOSE: Header (stato) + contenuto centrato =====
+        card.add(header);
 
         // spazio elastico per centrare il contenuto (sotto lo stato)
         card.add(Box.createVerticalGlue());
@@ -128,7 +142,7 @@ public class AccountDropdown {
         // spazio elastico sotto
         card.add(Box.createVerticalGlue());
 
-        card.add(Box.createVerticalStrut(scale(16)));
+        card.add(Box.createVerticalStrut(scale(12)));
 
         window.setContentPane(card);
 
@@ -297,10 +311,27 @@ public class AccountDropdown {
     private void applyScaleToAll() {
         // Frame più piccolo e compatto
         card.setPreferredSize(new Dimension(scale(300), scale(360)));
+        // padding interno uniforme (ora simmetrico per status a destra)
+        card.setBorder(BorderFactory.createEmptyBorder(scale(12), scale(14), scale(16), scale(14)));
+
+        // header height (centra verticalmente lo status)
+        // (il componente header ha altezza fissa: la aggiorniamo quando cambia la scala)
+        // NB: header è creato nel costruttore, quindi qui aggiorniamo la preferred size del primo child (header)
+        if (card.getComponentCount() > 0) {
+            Component c0 = card.getComponent(0);
+            if (c0 instanceof JComponent jc) {
+                jc.setPreferredSize(new Dimension(0, scale(56)));
+                jc.setMaximumSize(new Dimension(Integer.MAX_VALUE, scale(56)));
+            }
+        }
 
         // Stato in alto a destra
         statusRight.applyScale(uiScale);
         statusRight.setOnline(online);
+        // assicura una riga "header" consistente per il centraggio verticale dello status
+        statusRight.setPreferredSize(new Dimension(scale(120), scale(36)));
+        statusRight.setMinimumSize(new Dimension(scale(120), scale(36)));
+        statusRight.setMaximumSize(new Dimension(scale(120), scale(36)));
 
         // Contenuto leggermente ridimensionato per stare nel frame più piccolo
         double contentScale = uiScale * 0.90;
