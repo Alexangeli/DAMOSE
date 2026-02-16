@@ -1,6 +1,7 @@
 package Service.Points;
 
 import Model.Parsing.Static.RoutesModel;
+import Model.Parsing.Static.StopTimesModel;
 import Model.Points.StopModel;
 
 import Service.Index.StopSearchIndexV2;
@@ -19,6 +20,13 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
+import Model.Parsing.Static.TripsModel;
+import Service.Parsing.TripsService;
+
+import java.util.Set;
+
 
 /**
  * Service per la gestione delle fermate (stops.csv).
@@ -174,14 +182,58 @@ public class StopService {
 
     public static List<StopModel> findStopsByRoutes(
             List<RoutesModel> routes,
+            String tripsPath,
             String stopTimesPath,
             String stopsPath
     ) {
-        List<String> stopIds = StopTimesService.findStopIdsByRoutes(routes, stopTimesPath);
+        if (routes == null || routes.isEmpty()) return List.of();
+
+        // route_id set
+        Set<String> routeIds = routes.stream()
+                .filter(Objects::nonNull)
+                .map(RoutesModel::getRoute_id)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .collect(Collectors.toSet());
+
+        if (routeIds.isEmpty()) return List.of();
+
+        // 1) route_id -> trip_id (da trips.csv)
+        Set<String> tripIds = TripsService.getAllTrips(tripsPath).stream()
+                .filter(Objects::nonNull)
+                .filter(t -> routeIds.contains(safe(t.getRoute_id())))
+                .map(TripsModel::getTrip_id)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .collect(Collectors.toSet());
+
+        if (tripIds.isEmpty()) return List.of();
+
+        // 2) trip_id -> stop_id (da stop_times.csv)
+        Set<String> stopIds = StopTimesService.getAllStopTimes(stopTimesPath).stream()
+                .filter(Objects::nonNull)
+                .filter(st -> tripIds.contains(safe(st.getTrip_id())))
+                .map(StopTimesModel::getStop_id)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .collect(Collectors.toSet());
+
+        if (stopIds.isEmpty()) return List.of();
+
+        // 3) stop_id -> StopModel (da stops.csv)
         return getAllStops(stopsPath).stream()
-                .filter(stop -> stopIds.contains(stop.getId()))
+                .filter(Objects::nonNull)
+                .filter(stop -> stop.getId() != null && stopIds.contains(stop.getId().trim()))
                 .toList();
     }
+
+    private static String safe(String s) {
+        return (s == null) ? "" : s.trim();
+    }
+
 
     public static boolean isWithinRadius(GeoPosition coords, StopModel stop, double radiusKm) {
         try {

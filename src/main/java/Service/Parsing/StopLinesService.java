@@ -2,13 +2,11 @@ package Service.Parsing;
 
 import Model.Parsing.Static.RoutesModel;
 import Model.Parsing.Static.StopTimesModel;
-import com.opencsv.CSVReader;
-import com.opencsv.exceptions.CsvValidationException;
+import Model.Parsing.Static.TripsModel;
+import Model.Points.StopModel;
 
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
+import Service.Points.StopService;
+
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -16,94 +14,122 @@ import java.util.stream.Collectors;
  * Service che, dato uno stop_id GTFS, trova tutte le linee (Routes)
  * che fermano a quella fermata.
  *
- * Usa:
- *  - stop_times.txt/csv  -> trip_id per quello stop_id
- *  - trips.csv           -> route_id per trip_id
- *  - routes.csv          -> dettagli della route (short_name, long_name, ...)
- *
- * Creatore: Simone Bonuso
+ * ✅ Robust:
+ * - trim su tutti gli id
+ * - support parent_station (include i child stop)
+ * - usa TripsService (no parsing manuale del CSV)
+ * - fallback: se stopId è in realtà uno stop_code, prova a risolverlo
  */
 public class StopLinesService {
 
     /**
      * Restituisce tutte le Routes che passano per una fermata.
      *
-     * @param stopId        stop_id GTFS
-     * @param stopTimesPath path di stop_times.txt/csv
-     * @param tripsCsvPath  path di trips.csv
-     * @param routesCsvPath path di routes.csv
+     * @param stopId        stop_id GTFS (oppure, per robustezza, stop_code)
+     * @param stopTimesPath path stop_times.csv
+     * @param tripsCsvPath  path trips.csv
+     * @param routesCsvPath path routes.csv
+     * @param stopsCsvPath  path stops.csv (serve per parent_station + fallback stop_code)
      */
     public static List<RoutesModel> getRoutesForStop(
             String stopId,
             String stopTimesPath,
             String tripsCsvPath,
-            String routesCsvPath
+            String routesCsvPath,
+            String stopsCsvPath
     ) {
-        System.out.println("---StopLinesService--- getRoutesForStop | stopId=" + stopId);
+        String in = safe(stopId);
+        System.out.println("---StopLinesService--- getRoutesForStop | stopId=" + in);
 
-        // 1) Tutte le StopTimes
+        if (in.isBlank()) return List.of();
+
+        // 0) costruisci l'insieme di stop_id da considerare (stop selezionato + eventuali child)
+        Set<String> stopIdsToMatch = buildStopIdsToMatch(in, stopsCsvPath);
+
+        // 1) stop_times -> trip_id
         List<StopTimesModel> allStopTimes = StopTimesService.getAllStopTimes(stopTimesPath);
 
-        // 2) Trip che fermano in questa fermata
         Set<String> tripIdsAtStop = allStopTimes.stream()
-                .filter(st -> stopId.equals(st.getStop_id()))
-                .map(StopTimesModel::getTrip_id)
+                .filter(Objects::nonNull)
+                .filter(st -> stopIdsToMatch.contains(safe(st.getStop_id())))
+                .map(st -> safe(st.getTrip_id()))
+                .filter(s -> !s.isBlank())
                 .collect(Collectors.toSet());
 
         System.out.println("---StopLinesService--- tripIdsAtStop size=" + tripIdsAtStop.size());
 
-        if (tripIdsAtStop.isEmpty()) {
-            return List.of();
-        }
+        if (tripIdsAtStop.isEmpty()) return List.of();
 
-        // 3) Mappiamo trip_id -> route_id leggendo trips.csv
-        Set<String> routeIds = readRouteIdsForTrips(tripIdsAtStop, tripsCsvPath);
+        // 2) trips -> route_id (usando TripsService, non parsing manuale)
+        List<TripsModel> allTrips = TripsService.getAllTrips(tripsCsvPath);
+
+        Set<String> routeIds = allTrips.stream()
+                .filter(Objects::nonNull)
+                .filter(t -> tripIdsAtStop.contains(safe(t.getTrip_id())))
+                .map(t -> safe(t.getRoute_id()))
+                .filter(s -> !s.isBlank())
+                .collect(Collectors.toSet());
 
         System.out.println("---StopLinesService--- routeIds size=" + routeIds.size());
 
-        if (routeIds.isEmpty()) {
-            return List.of();
-        }
+        if (routeIds.isEmpty()) return List.of();
 
-        // 4) Recuperiamo tutte le Routes e filtriamo per route_id
+        // 3) routes -> filtra
         List<RoutesModel> allRoutes = RoutesService.getAllRoutes(routesCsvPath);
 
-        return allRoutes.stream()
-                .filter(r -> routeIds.contains(r.getRoute_id()))
-                // eliminiamo eventuali duplicati sulla stessa route_id
-                .collect(Collectors.collectingAndThen(
-                        Collectors.toMap(RoutesModel::getRoute_id, r -> r, (a, b) -> a),
-                        m -> new ArrayList<>(m.values())
-                ));
+        // dedup per route_id
+        Map<String, RoutesModel> unique = new LinkedHashMap<>();
+        for (RoutesModel r : allRoutes) {
+            if (r == null) continue;
+            String rid = safe(r.getRoute_id());
+            if (rid.isBlank()) continue;
+            if (routeIds.contains(rid)) unique.putIfAbsent(rid, r);
+        }
+
+        return new ArrayList<>(unique.values());
     }
 
     /**
-     * Ritorna tutti i route_id utilizzati dai tripId passati.
+     * Costruisce gli stop_id da matchare:
+     * - sempre lo stopId passato (se è un vero stop_id)
+     * - se è parent_station, include anche i figli
+     * - se sembra essere stop_code, prova a risolvere in stop_id reali
      */
-    private static Set<String> readRouteIdsForTrips(Set<String> tripIds, String tripsCsvPath) {
-        Set<String> routeIds = new HashSet<>();
+    private static Set<String> buildStopIdsToMatch(String stopIdOrCode, String stopsCsvPath) {
+        Set<String> out = new LinkedHashSet<>();
+        out.add(stopIdOrCode);
 
-        try (CSVReader reader = new CSVReader(
-                new InputStreamReader(new FileInputStream(tripsCsvPath), StandardCharsets.UTF_8))) {
+        if (stopsCsvPath == null || stopsCsvPath.isBlank()) return out;
 
-            String[] next;
-            reader.readNext(); // header
+        List<StopModel> allStops = StopService.getAllStops(stopsCsvPath);
 
-            while ((next = reader.readNext()) != null) {
-                if (next.length < 3) continue;
-
-                String csvRouteId = next[0].trim(); // route_id
-                String csvTripId  = next[2].trim(); // trip_id
-
-                if (tripIds.contains(csvTripId)) {
-                    routeIds.add(csvRouteId);
-                }
+        // A) parent_station -> aggiungi i child
+        for (StopModel s : allStops) {
+            if (s == null) continue;
+            String parent = safe(s.getParent_station());
+            if (!parent.isBlank() && parent.equals(stopIdOrCode)) {
+                String childId = safe(s.getId());
+                if (!childId.isBlank()) out.add(childId);
             }
-
-        } catch (IOException | CsvValidationException e) {
-            System.err.println("Errore lettura trips.csv in StopLinesService: " + e.getMessage());
         }
 
-        return routeIds;
+        // B) fallback: se qualcuno ti passa lo stop_code (es "904"),
+        // aggiungi tutti gli stop_id che hanno quel code
+        boolean looksLikeCode = stopIdOrCode.length() <= 6; // euristica semplice
+        if (looksLikeCode) {
+            for (StopModel s : allStops) {
+                if (s == null) continue;
+                if (safe(s.getCode()).equals(stopIdOrCode)) {
+                    String id = safe(s.getId());
+                    if (!id.isBlank()) out.add(id);
+                }
+            }
+        }
+
+        return out;
+    }
+
+    private static String safe(String s) {
+        return (s == null) ? "" : s.trim();
     }
 }

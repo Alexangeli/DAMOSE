@@ -115,7 +115,8 @@ public class DashboardController {
                 tripUpdatesStatusService,
                 stopTimesPath,
                 tripsCsvPath,
-                routesCsvPath
+                routesCsvPath,
+                stopsCsvPath
         );
 
         // ==============================
