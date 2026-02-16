@@ -1,4 +1,5 @@
 package View;
+import java.util.Locale;
 
 import Model.User.Session;
 import config.AppConfig;
@@ -1220,6 +1221,9 @@ public class DashboardView extends JPanel {
         private final JLabel sub;
         private boolean selected = false;
 
+        // true = realtime ("tra X min"), false = static ("HH:mm"), null = unknown
+        private Boolean realtimeDot = null;
+
         ModernListCellRenderer() {
             setOpaque(false);
             setLayout(new BorderLayout());
@@ -1262,13 +1266,16 @@ public class DashboardView extends JPanel {
                 String subtitle;
                 if (r.realtime && r.minutes != null) {
                     subtitle = "Prossimo: tra " + r.minutes + " min";
+                    realtimeDot = true;
                 } else if (!r.realtime && r.time != null) {
                     // static: HH:mm
                     String hhmm = r.time.toString();
                     if (hhmm.length() >= 5) hhmm = hhmm.substring(0, 5);
                     subtitle = "Prossimo: " + hhmm;
+                    realtimeDot = false;
                 } else {
                     subtitle = "Non più corse per oggi";
+                    realtimeDot = null;
                 }
 
                 main.setText(title.isBlank() ? "—" : title);
@@ -1293,6 +1300,18 @@ public class DashboardView extends JPanel {
                 subtitle = "Non più corse per oggi";
             }
 
+            // Dot color inference:
+            // - realtime: "Prossimo: tra X min"
+            // - static:   "Prossimo: HH:mm"
+            String subLow = subtitle.toLowerCase(Locale.ROOT);
+            if (subLow.contains("prossimo") && subLow.contains("tra") && subLow.contains("min")) {
+                realtimeDot = true;
+            } else if (subLow.startsWith("prossimo:") && subtitle.matches("(?i)^\\s*Prossimo:\\s*\\d{1,2}:\\d{2}\\s*$")) {
+                realtimeDot = false;
+            } else {
+                realtimeDot = null;
+            }
+
             if (title.isBlank()) title = "—";
 
             main.setText(title);
@@ -1300,8 +1319,6 @@ public class DashboardView extends JPanel {
 
             return this;
         }
-
-
 
         @Override
         protected void paintComponent(Graphics g) {
@@ -1325,7 +1342,17 @@ public class DashboardView extends JPanel {
             int ascent = tfm.getAscent();
             int topPad = 12;
             int dy = topPad + Math.max(0, (ascent - dot) / 2);
-            g2.setColor(new Color(0xFF, 0x7A, 0x00));
+            // realtime = green, static = orange (default), unknown = gray
+            Color dotColor;
+            if (Boolean.TRUE.equals(realtimeDot)) {
+                dotColor = new Color(0, 140, 0);
+            } else if (Boolean.FALSE.equals(realtimeDot)) {
+                dotColor = new Color(0xFF, 0x7A, 0x00);
+            } else {
+                dotColor = new Color(140, 140, 140);
+            }
+
+            g2.setColor(dotColor);
             g2.fillOval(dx, dy, dot, dot);
 
             g2.dispose();
