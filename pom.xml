@@ -78,7 +78,7 @@
 
     </dependencies>
 
-    <!-- ✅ Aggiunto: build per creare JAR eseguibile (fat jar) -->
+    <!-- ✅ build per creare JAR eseguibile (fat jar) -->
     <build>
         <plugins>
 
@@ -94,6 +94,20 @@
                 </configuration>
             </plugin>
 
+            <!-- ✅ (UNICA AGGIUNTA) Scrive Main-Class nel MANIFEST -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.3.0</version>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <mainClass>Main</mainClass>
+                        </manifest>
+                    </archive>
+                </configuration>
+            </plugin>
+
             <!-- Fat JAR eseguibile con tutte le dipendenze incluse -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -106,10 +120,8 @@
                             <goal>shade</goal>
                         </goals>
                         <configuration>
-                            <!-- evita che Maven generi un pom “ridotto” che a volte crea casini -->
                             <createDependencyReducedPom>false</createDependencyReducedPom>
 
-                            <!-- imposta la Main-Class nel manifest -->
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>Main</mainClass>
