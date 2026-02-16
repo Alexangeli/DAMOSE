@@ -1,4 +1,4 @@
-package TestGTFS_Static;
+package TestGTFS_Static.DelayHistoryStore;
 
 import Service.GTFS_RT.Index.DelayHistoryStore;
 import org.junit.Test;

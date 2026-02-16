@@ -7,9 +7,10 @@ import Model.Net.ConnectionState;
 import Model.Net.ConnectionStatusProvider;
 import Model.Parsing.Static.RoutesModel;
 import Model.Parsing.Static.StopTimesModel;
-import Service.GTFS_RT.Index.DelayHistoryStore;
 import Service.GTFS_RT.Fetcher.TripUpdates.TripUpdatesService;
 import Service.GTFS_RT.Index.BestEta;
+import Service.GTFS_RT.Index.DelayEstimate;
+import Service.GTFS_RT.Index.DelayHistoryStore;
 import Service.GTFS_RT.Index.TripUpdatesRtIndex;
 import Service.Parsing.Static.StaticGtfsRepository;
 
@@ -26,11 +27,19 @@ public class ArrivalPredictionService {
     private final ConnectionStatusProvider statusProvider;
     private final StaticGtfsRepository repo;
 
-    // ✅ ora sono iniettati (nei test) oppure creati di default
+    // ✅ iniettati (test) o default (prod)
     private final TripUpdatesRtIndex rtIndex;
     private final DelayHistoryStore delayHistory;
 
     private volatile Object lastUpdatesRef = null;
+
+    /**
+     * ✅ Soglia consigliata:
+     * - 0.0 = applica sempre
+     * - 0.5 = solo quando è abbastanza “buono”
+     * Io metto 0.45 (buon compromesso).
+     */
+    private static final double MIN_CONFIDENCE_TO_APPLY_DELAY = 0.45;
 
     // ✅ PRODUZIONE (default)
     public ArrivalPredictionService(
@@ -176,7 +185,7 @@ public class ArrivalPredictionService {
         return (b.etaEpoch < a.etaEpoch) ? b : a;
     }
 
-    // ========================= STATIC + DELAY STIMATO =========================
+    // ========================= STATIC + DELAY STIMATO (con confidence) =========================
 
     private ArrivalRow staticWithEstimatedDelay(String stopId, String routeId, int directionId, String line, String headsign) {
         int nowSec = LocalTime.now().toSecondOfDay();
@@ -186,13 +195,14 @@ public class ArrivalPredictionService {
             return new ArrivalRow(routeId, directionId, line, headsign, null, null, false);
         }
 
-        Integer delaySec = null;
+        // ✅ delay stimato solo se directionId != -1 (merged non ha senso stimare)
         if (directionId != -1) {
-            delaySec = delayHistory.estimateDelaySec(routeId, directionId, stopId);
-        }
+            DelayEstimate est = delayHistory.estimate(routeId, directionId, stopId);
 
-        if (delaySec != null) {
-            bestSec = bestSec + delaySec;
+            // Applica solo sopra soglia (evita “spari”)
+            if (est.delaySec != null && est.confidence >= MIN_CONFIDENCE_TO_APPLY_DELAY) {
+                bestSec = bestSec + est.delaySec;
+            }
         }
 
         LocalTime bestTime = LocalTime.ofSecondOfDay(Math.floorMod(bestSec, 86400));
@@ -230,19 +240,18 @@ public class ArrivalPredictionService {
     // ========================= RT INDEX REBUILD + HISTORY =========================
 
     private void maybeRebuildRtIndex() {
-        // rebuild solo se ONLINE (se offline non ci serve)
         if (statusProvider.getState() != ConnectionState.ONLINE) return;
 
         List<TripUpdateInfo> updates = tripUpdatesService.getTripUpdates();
-        Object ref = updates; // identity
+        Object ref = updates;
 
-        if (ref == lastUpdatesRef) return; // nessun refresh
+        if (ref == lastUpdatesRef) return;
         lastUpdatesRef = ref;
 
         long now = Instant.now().getEpochSecond();
         rtIndex.rebuild(updates, now);
 
-        // aggiorna storico delay (stop-level + route-level) con PROPAGAZIONE
+        // aggiorna delayHistory con propagazione
         if (updates != null) {
             for (TripUpdateInfo tu : updates) {
                 if (tu == null || tu.stopTimeUpdates == null) continue;
@@ -251,7 +260,6 @@ public class ArrivalPredictionService {
                 Integer dir = tu.directionId;
                 if (routeId.isEmpty() || dir == null) continue;
 
-                // 1) ordina per stopSequence (per propagare correttamente)
                 ArrayList<StopTimeUpdateInfo> stus = new ArrayList<>(tu.stopTimeUpdates);
                 stus.sort((a, b) -> {
                     int sa = (a == null || a.stopSequence == null) ? Integer.MAX_VALUE : a.stopSequence;
@@ -266,18 +274,14 @@ public class ArrivalPredictionService {
                     String stopId = stu.stopId;
                     if (stopId == null || stopId.isBlank()) continue;
 
-                    // 2) delay osservato (preferisci arrivalDelay/departureDelay, fallback tu.delay)
                     Integer observed =
                             (stu.arrivalDelay != null) ? stu.arrivalDelay :
                                     (stu.departureDelay != null) ? stu.departureDelay :
                                             tu.delay;
 
-                    // 3) aggiorna lastKnownDelay se abbiamo un valore vero
                     if (observed != null) lastKnownDelay = observed;
 
-                    // 4) se manca observed, propaga lastKnownDelay
                     Integer toStore = (observed != null) ? observed : lastKnownDelay;
-
                     if (toStore != null) {
                         delayHistory.observe(routeId, dir, stopId, toStore, now);
                     }
@@ -307,6 +311,4 @@ public class ArrivalPredictionService {
             return -1;
         }
     }
-
-
 }
