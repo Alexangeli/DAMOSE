@@ -7,39 +7,47 @@ import com.opencsv.exceptions.CsvValidationException;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
-// Creatore: Alessandro Angeli
+// Creatore: Alessandro Angeli (cache fix by path)
 
 /**
  * Classe di servizio per la gestione dei dati relativi ai viaggi (Trips).
- * Si occupa della lettura dei dati dal file CSV GTFS e della conversione
- * in oggetti {@link TripsModel}.
+ *
+ * ✅ FIX: cache PER PATH (prima era globale e rompeva test / cambi dataset).
  */
 public class TripsService {
 
-    // ====== CACHE DEI DATI ======
-    private static List<TripsModel> cachedTrips = null;
+    // ====== CACHE DEI DATI (PER PATH) ======
+    private static final Map<String, List<TripsModel>> cachedTripsByPath = new ConcurrentHashMap<>();
 
     // ====== DATA ACCESS ======
 
     /**
-     * Restituisce tutti i viaggi (Trips) usando la cache.
-     * Se non presenti in cache, li carica dal file.
+     * Restituisce tutti i viaggi (Trips) usando la cache per quello specifico path.
      */
     public static List<TripsModel> getAllTrips(String filePath) {
-        if (cachedTrips == null) {
-            cachedTrips = readFromCSV(filePath);
-        }
-        return cachedTrips;
+        if (filePath == null || filePath.isBlank()) return List.of();
+        return cachedTripsByPath.computeIfAbsent(filePath, TripsService::readFromCSV);
     }
 
     /**
-     * Forza il ricaricamento della cache dal file.
+     * Forza il ricaricamento della cache SOLO per quel file.
      */
     public static void reloadTrips(String filePath) {
-        cachedTrips = readFromCSV(filePath);
+        if (filePath == null || filePath.isBlank()) return;
+        cachedTripsByPath.put(filePath, readFromCSV(filePath));
+    }
+
+    /**
+     * ✅ Utile per i test: pulisce tutta la cache.
+     */
+    public static void clearCache() {
+        cachedTripsByPath.clear();
     }
 
     /**
@@ -48,28 +56,38 @@ public class TripsService {
     private static List<TripsModel> readFromCSV(String filePath) {
         List<TripsModel> tripsList = new ArrayList<>();
 
-        try (CSVReader reader = new CSVReader(new InputStreamReader(new FileInputStream(filePath), "UTF-8"))) {
+        try (CSVReader reader = new CSVReader(
+                new InputStreamReader(new FileInputStream(filePath), StandardCharsets.UTF_8)
+        )) {
             String[] nextLine;
             reader.readNext(); // Salta intestazione
+
             while ((nextLine = reader.readNext()) != null) {
-                if (nextLine.length < 10) continue; // evitiamo IndexOutOfBounds su righe errate
+                // nel tuo parser originale usi 10 colonne, teniamolo uguale
+                if (nextLine.length < 10) continue;
+
                 TripsModel trip = new TripsModel();
-                trip.setRoute_id(nextLine[0].trim());
-                trip.setService_id(nextLine[1].trim());
-                trip.setTrip_id(nextLine[2].trim());
-                trip.setTrip_headsign(nextLine[3].trim());
-                trip.setTrip_short_name(nextLine[4].trim());
-                trip.setDirection_id(nextLine[5].trim());
-                trip.setBlock_id(nextLine[6].trim());
-                trip.setShape_id(nextLine[7].trim());
-                trip.setWheelchair_accessible(nextLine[8].trim());
-                trip.setExceptional(nextLine[9].trim());
+                trip.setRoute_id(safe(nextLine[0]));
+                trip.setService_id(safe(nextLine[1]));
+                trip.setTrip_id(safe(nextLine[2]));
+                trip.setTrip_headsign(safe(nextLine[3]));
+                trip.setTrip_short_name(safe(nextLine[4]));
+                trip.setDirection_id(safe(nextLine[5]));
+                trip.setBlock_id(safe(nextLine[6]));
+                trip.setShape_id(safe(nextLine[7]));
+                trip.setWheelchair_accessible(safe(nextLine[8]));
+                trip.setExceptional(safe(nextLine[9]));
+
                 tripsList.add(trip);
             }
         } catch (IOException | CsvValidationException e) {
             System.err.println("Errore nella lettura/CSV trips: " + e.getMessage());
         }
+
         return tripsList;
     }
-}
 
+    private static String safe(String s) {
+        return (s == null) ? "" : s.trim();
+    }
+}

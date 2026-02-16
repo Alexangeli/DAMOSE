@@ -47,7 +47,7 @@ public class StopLinesController {
         refreshTimer = new Timer(30_000, e -> refreshIfStopSelected());
         refreshTimer.setRepeats(true);
 
-        // click su riga arrival
+        // ✅ click su riga arrival
         this.view.setOnArrivalSelected(row -> {
             if (row == null) return;
 
@@ -57,6 +57,7 @@ public class StopLinesController {
             mapController.clearRouteHighlight();
 
             if (dir == -1) {
+                // merged: evidenzia entrambe le direzioni
                 mapController.highlightRouteAllDirectionsKeepStopView(routeId);
                 mapController.showVehiclesForRoute(routeId, -1);
 
@@ -90,8 +91,11 @@ public class StopLinesController {
         currentStopName = stop.getName();
 
         // ✅ mostra subito
-        List<ArrivalRow> rows = arrivalPredictionService.getArrivalsForStop(currentStopId);
-        view.showArrivalsAtStop(currentStopName, rows);
+        String stopId = currentStopId;
+        String stopName = (currentStopName != null) ? currentStopName : "";
+
+        List<ArrivalRow> rows = arrivalPredictionService.getArrivalsForStop(stopId);
+        view.showArrivalsAtStop(stopId, stopName, rows);
 
         // ✅ avvia refresh
         if (!refreshTimer.isRunning()) refreshTimer.start();
@@ -108,7 +112,7 @@ public class StopLinesController {
         if (stopId == null || stopId.isBlank()) return;
 
         List<ArrivalRow> rows = arrivalPredictionService.getArrivalsForStop(stopId);
-        view.showArrivalsAtStop(stopName != null ? stopName : "", rows);
+        view.showArrivalsAtStop(stopId, stopName != null ? stopName : "", rows);
 
         System.out.println("[StopLinesController] refresh arrivals stopId=" + stopId);
     }

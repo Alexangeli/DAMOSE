@@ -93,6 +93,8 @@ public class DashboardController {
         this.vehiclePositionsService = new VehiclePositionsService(vehiclePositionsUrl);
         this.vehiclePositionsService.start();
 
+        lineStopsView.setVehiclePositionsService(vehiclePositionsService);
+
         // ==============================
         // REALTIME: TRIP UPDATES (ARRIVI)
         // ==============================
