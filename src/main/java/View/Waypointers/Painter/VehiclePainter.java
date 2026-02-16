@@ -8,13 +8,18 @@ import org.jxmapviewer.viewer.GeoPosition;
 import java.awt.*;
 import java.awt.geom.Point2D;
 import java.util.List;
+import javax.swing.*;
 
 public class VehiclePainter implements Painter<JXMapViewer> {
 
     private final List<VehicleInfo> vehicles;
+    private final Image busIcon;
 
     public VehiclePainter(List<VehicleInfo> vehicles) {
         this.vehicles = (vehicles == null) ? List.of() : vehicles;
+        this.busIcon = new ImageIcon(
+                getClass().getResource("/icons/bus marker.png")
+        ).getImage();
     }
 
     @Override
@@ -37,11 +42,10 @@ public class VehiclePainter implements Painter<JXMapViewer> {
                 int x = (int) (pt.getX() - viewportBounds.getX());
                 int y = (int) (pt.getY() - viewportBounds.getY());
 
-                int r = 6;
-                g2.setColor(Color.RED);
-                g2.fillOval(x - r, y - r, r * 2, r * 2);
-                g2.setColor(Color.BLACK);
-                g2.drawOval(x - r, y - r, r * 2, r * 2);
+                int size = 28; // dimensione icona
+                if (busIcon != null) {
+                    g2.drawImage(busIcon, x - size / 2, y - size / 2, size, size, null);
+                }
             }
         } finally {
             g2.dispose();
