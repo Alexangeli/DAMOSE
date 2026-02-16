@@ -25,57 +25,6 @@ import java.util.stream.Collectors;
  */
 public class StopLinesService {
 
-    /**
-     * Restituisce tutte le Routes che passano per una fermata.
-     *
-     * @param stopId        stop_id GTFS
-     * @param stopTimesPath path di stop_times.txt/csv
-     * @param tripsCsvPath  path di trips.csv
-     * @param routesCsvPath path di routes.csv
-     */
-    public static List<RoutesModel> getRoutesForStop(
-            String stopId,
-            String stopTimesPath,
-            String tripsCsvPath,
-            String routesCsvPath
-    ) {
-        System.out.println("---StopLinesService--- getRoutesForStop | stopId=" + stopId);
-
-        // 1) Tutte le StopTimes
-        List<StopTimesModel> allStopTimes = StopTimesService.getAllStopTimes(stopTimesPath);
-
-        // 2) Trip che fermano in questa fermata
-        Set<String> tripIdsAtStop = allStopTimes.stream()
-                .filter(st -> stopId.equals(st.getStop_id()))
-                .map(StopTimesModel::getTrip_id)
-                .collect(Collectors.toSet());
-
-        System.out.println("---StopLinesService--- tripIdsAtStop size=" + tripIdsAtStop.size());
-
-        if (tripIdsAtStop.isEmpty()) {
-            return List.of();
-        }
-
-        // 3) Mappiamo trip_id -> route_id leggendo trips.csv
-        Set<String> routeIds = readRouteIdsForTrips(tripIdsAtStop, tripsCsvPath);
-
-        System.out.println("---StopLinesService--- routeIds size=" + routeIds.size());
-
-        if (routeIds.isEmpty()) {
-            return List.of();
-        }
-
-        // 4) Recuperiamo tutte le Routes e filtriamo per route_id
-        List<RoutesModel> allRoutes = RoutesService.getAllRoutes(routesCsvPath);
-
-        return allRoutes.stream()
-                .filter(r -> routeIds.contains(r.getRoute_id()))
-                // eliminiamo eventuali duplicati sulla stessa route_id
-                .collect(Collectors.collectingAndThen(
-                        Collectors.toMap(RoutesModel::getRoute_id, r -> r, (a, b) -> a),
-                        m -> new ArrayList<>(m.values())
-                ));
-    }
 
     /**
      * Ritorna tutti i route_id utilizzati dai tripId passati.

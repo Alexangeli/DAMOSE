@@ -16,6 +16,10 @@ import Service.GTFS_RT.ArrivalPredictionService;
 import Service.GTFS_RT.Fetcher.TripUpdates.TripUpdatesService;
 import Service.GTFS_RT.Fetcher.Vehicle.VehiclePositionsService;
 import Service.GTFS_RT.Status.ConnectionStatusService;
+import Service.Parsing.Static.StaticGtfsRepository;
+import Service.Parsing.Static.StaticGtfsRepositoryBuilder;
+import Service.Parsing.Static.StaticGtfsRepository;
+import Service.Parsing.Static.StaticGtfsRepositoryBuilder;
 
 import View.DashboardView;
 import View.Map.LineStopsView;
@@ -107,13 +111,26 @@ public class DashboardController {
         this.tripUpdatesStatusService = new ConnectionStatusService(tripUpdatesUrl);
         this.tripUpdatesStatusService.start();
 
+        // ==============================
+        // STATIC GTFS REPO (in-memory + indici)
+        // ==============================
+        StaticGtfsRepository repo = new StaticGtfsRepositoryBuilder()
+                .withStopsPath(stopsCsvPath)
+                .withRoutesPath(routesCsvPath)
+                .withTripsPath(tripsCsvPath)
+                .withStopTimesPath(stopTimesPath)
+                // consigliato: in produzione ON
+                .indexStopToRoutes(true)
+                .indexTripStopTimes(true)
+                .indexStopStopTimes(true)
+                .build();
+
+
         // Prediction service (RT se ONLINE e disponibili, altrimenti statico)
         this.arrivalPredictionService = new ArrivalPredictionService(
                 tripUpdatesService,
-                tripUpdatesStatusService,
-                stopTimesPath,
-                tripsCsvPath,
-                routesCsvPath
+                tripUpdatesStatusService,  // deve implementare ConnectionStatusProvider (nel tuo progetto già lo fa)
+                repo
         );
 
         // ==============================
@@ -138,21 +155,14 @@ public class DashboardController {
         this.lineStopsController =
                 new LineStopsController(
                         lineStopsView,
-                        tripsCsvPath,
-                        stopTimesPath,
-                        stopsCsvPath,
+                        repo,
                         mapController,
                         arrivalPredictionService
                 );
-
-        // ✅ QUI il parametro in più: arrivalPredictionService
         this.stopLinesController =
                 new StopLinesController(
                         lineStopsView,
-                        stopTimesPath,
-                        tripsCsvPath,
-                        routesCsvPath,
-                        stopsCsvPath,
+                        repo,
                         mapController,
                         arrivalPredictionService
                 );
