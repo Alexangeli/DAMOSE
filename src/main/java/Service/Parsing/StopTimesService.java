@@ -2,6 +2,7 @@ package Service.Parsing;
 
 import Model.Parsing.Static.RoutesModel;
 import Model.Parsing.Static.StopTimesModel;
+import Model.Parsing.Static.TripsModel;
 import com.opencsv.CSVReader;
 import com.opencsv.exceptions.CsvValidationException;
 
@@ -9,10 +10,9 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 // Creatore: Alessandro Angeli (cache fix by path)
 
@@ -98,18 +98,44 @@ public class StopTimesService {
      * Questo metodo nel codice originale confronta routeIds con trip_id (routeId != tripId).
      * Lo lascio invariato per non rompere le chiamate esistenti, ma NON è un join corretto GTFS.
      */
-    public static List<String> findStopIdsByRoutes(List<RoutesModel> routes, String stopTimesPath) {
-        List<String> routeIds = (routes == null) ? List.of() : routes.stream()
-                .filter(r -> r != null && r.getRoute_id() != null)
-                .map(RoutesModel::getRoute_id)
-                .toList();
+    public static List<RoutesModel> getRoutesForStop(
+            String stopId,
+            String stopTimesPath,
+            String tripsPath,
+            String routesPath
+    ) {
+        if (stopId == null || stopId.isBlank()) return List.of();
 
-        return getAllStopTimes(stopTimesPath).stream()
-                .filter(st -> st != null && routeIds.contains(st.getTrip_id())) // ⚠️ logicamente sbagliato, tenuto com'è
-                .map(StopTimesModel::getStop_id)
+        // 1) stop_times: prendo tutti i trip_id che passano per quello stop
+        List<String> tripIdsAtStop = StopTimesService.getAllStopTimes(stopTimesPath).stream()
+                .filter(st -> st != null && stopId.equals(st.getStop_id()))
+                .map(StopTimesModel::getTrip_id)
+                .filter(Objects::nonNull)
                 .distinct()
                 .toList();
+
+        // 2) trips: dai trip_id ricavo i route_id
+        Set<String> routeIds = TripsService.getAllTrips(tripsPath).stream()
+                .filter(t -> t != null && tripIdsAtStop.contains(t.getTrip_id()))
+                .map(TripsModel::getRoute_id)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .collect(Collectors.toCollection(LinkedHashSet::new)); // mantiene ordine
+
+        // 3) routes: prendo i RoutesModel per quei route_id
+        List<RoutesModel> allRoutes = RoutesService.getAllRoutes(routesPath);
+
+        List<RoutesModel> out = new ArrayList<>();
+        for (RoutesModel r : allRoutes) {
+            if (r == null) continue;
+            String rid = r.getRoute_id();
+            if (rid != null && routeIds.contains(rid.trim())) out.add(r);
+        }
+
+        return out;
     }
+
 
     /**
      * ✅ VERSIONE CORRETTA (opzionale):

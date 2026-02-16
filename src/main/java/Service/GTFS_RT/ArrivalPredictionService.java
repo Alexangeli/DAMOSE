@@ -32,6 +32,8 @@ public class ArrivalPredictionService {
     private final String stopTimesPath;
     private final String tripsPath;
     private final String routesPath;
+    private final String stopsPath;
+
 
     private final Map<String, TripsModel> tripById;
     private final Map<String, RoutesModel> routeById;
@@ -41,7 +43,8 @@ public class ArrivalPredictionService {
             ConnectionStatusProvider statusProvider,
             String stopTimesPath,
             String tripsPath,
-            String routesPath
+            String routesPath,
+            String stopsPath
     ) {
         this.tripUpdatesService = tripUpdatesService;
         this.statusProvider = statusProvider;
@@ -49,6 +52,7 @@ public class ArrivalPredictionService {
         this.stopTimesPath = stopTimesPath;
         this.tripsPath = tripsPath;
         this.routesPath = routesPath;
+        this.stopsPath = stopsPath;
 
         this.allStopTimes = StopTimesService.getAllStopTimes(stopTimesPath);
         this.allTrips = TripsService.getAllTrips(tripsPath);
@@ -65,7 +69,7 @@ public class ArrivalPredictionService {
         if (stopId == null || stopId.isBlank()) return List.of();
 
         List<RoutesModel> routesAtStop = StopLinesService.getRoutesForStop(
-                stopId, stopTimesPath, tripsPath, routesPath
+                stopId, stopTimesPath, tripsPath, routesPath, stopsPath
         );
 
         List<ArrivalRow> baseRows = new ArrayList<>();
@@ -138,7 +142,10 @@ public class ArrivalPredictionService {
         Long bestEpoch = null;
         String bestTripId = null;
 
-        for (TripUpdateInfo tu : tripUpdatesService.getTripUpdates()) {
+        List<TripUpdateInfo> updates = tripUpdatesService.getTripUpdates();
+        if (updates == null || updates.isEmpty()) return null;
+
+        for (TripUpdateInfo tu : updates) {
             if (tu == null || tu.stopTimeUpdates == null) continue;
             if (!wantedRouteId.equals(safe(tu.routeId))) continue;
 
@@ -147,7 +154,7 @@ public class ArrivalPredictionService {
 
             for (StopTimeUpdateInfo stu : tu.stopTimeUpdates) {
                 if (stu == null) continue;
-                if (!stopId.equals(stu.stopId)) continue;
+                if (!safe(stopId).equals(safe(stu.stopId))) continue;
                 if (stu.arrivalTime == null) continue;
 
                 long diff = stu.arrivalTime - now;
@@ -192,22 +199,17 @@ public class ArrivalPredictionService {
 
         for (StopTimesModel st : allStopTimes) {
             if (st == null) continue;
-            if (!stopId.equals(st.getStop_id())) continue;
+            if (!safe(stopId).equals(safe(st.getStop_id()))) continue;
 
-            TripsModel trip = tripById.get(st.getTrip_id());
+            TripsModel trip = tripById.get(safe(st.getTrip_id()));
             if (trip == null) continue;
             if (!wantedRouteId.equals(safe(trip.getRoute_id()))) continue;
 
-            int tripDir = -1;
-            try {
-                if (trip.getDirection_id() != null) tripDir = Integer.parseInt(trip.getDirection_id());
-            } catch (Exception ignored) {}
-
+            int tripDir = parseIntSafe(trip.getDirection_id(), -1);
             if (wantedDir != -1 && tripDir != wantedDir) continue;
 
             int arrSec = parseGtfsSeconds(st.getArrival_time());
             if (arrSec < 0) continue;
-
             if (arrSec < nowSec) continue;
 
             if (bestSec == null || arrSec < bestSec) {
@@ -216,12 +218,13 @@ public class ArrivalPredictionService {
             }
         }
 
+        // fallback: se direction richiesto ma non trovi, riprova senza filtro direction
         if (bestSec == null && wantedDir != -1) {
             for (StopTimesModel st : allStopTimes) {
                 if (st == null) continue;
-                if (!stopId.equals(st.getStop_id())) continue;
+                if (!safe(stopId).equals(safe(st.getStop_id()))) continue;
 
-                TripsModel trip = tripById.get(st.getTrip_id());
+                TripsModel trip = tripById.get(safe(st.getTrip_id()));
                 if (trip == null) continue;
                 if (!wantedRouteId.equals(safe(trip.getRoute_id()))) continue;
 
@@ -246,15 +249,19 @@ public class ArrivalPredictionService {
         String outHeadsign = base.headsign;
 
         if (bestTrip != null) {
-            String hs = bestTrip.getTrip_headsign();
-            if (hs != null && !hs.isBlank()) outHeadsign = hs.trim();
+            String hs = safe(bestTrip.getTrip_headsign());
+            if (!hs.isBlank()) outHeadsign = hs;
 
-            try {
-                if (bestTrip.getDirection_id() != null) outDir = Integer.parseInt(bestTrip.getDirection_id());
-            } catch (Exception ignored) {}
+            int d = parseIntSafe(bestTrip.getDirection_id(), outDir != null ? outDir : -1);
+            outDir = d;
         }
 
         return new ArrivalRow(null, base.routeId, outDir, base.line, outHeadsign, null, bestTime, false);
+    }
+
+    private static int parseIntSafe(String s, int def) {
+        try { return (s == null) ? def : Integer.parseInt(s.trim()); }
+        catch (Exception e) { return def; }
     }
 
     // ========================= HEADSIGN =========================
@@ -322,7 +329,10 @@ public class ArrivalPredictionService {
         Long bestEpoch = null;
         String bestTripId = null;
 
-        for (TripUpdateInfo tu : tripUpdatesService.getTripUpdates()) {
+        List<TripUpdateInfo> updates = tripUpdatesService.getTripUpdates();
+        if (updates == null || updates.isEmpty()) return null;
+
+        for (TripUpdateInfo tu : updates) {
             if (tu == null || tu.stopTimeUpdates == null) continue;
             if (!safe(routeId).equals(safe(tu.routeId))) continue;
 
@@ -331,7 +341,7 @@ public class ArrivalPredictionService {
 
             for (StopTimeUpdateInfo stu : tu.stopTimeUpdates) {
                 if (stu == null) continue;
-                if (!stopId.equals(stu.stopId)) continue;
+                if (!safe(stopId).equals(safe(stu.stopId))) continue;
                 if (stu.arrivalTime == null) continue;
 
                 long diff = stu.arrivalTime - now;
@@ -352,9 +362,9 @@ public class ArrivalPredictionService {
                 .toLocalTime();
 
         RoutesModel route = routeById.get(routeId);
-        String line = (route != null && route.getRoute_short_name() != null && !route.getRoute_short_name().isBlank())
-                ? route.getRoute_short_name().trim()
-                : routeId;
+        String line = (route != null && !safe(route.getRoute_short_name()).isBlank())
+                ? safe(route.getRoute_short_name())
+                : safe(routeId);
 
         return new ArrivalRow(bestTripId, routeId, directionId, line, "", minutes, time, true);
     }
@@ -365,17 +375,13 @@ public class ArrivalPredictionService {
 
         for (StopTimesModel st : allStopTimes) {
             if (st == null) continue;
-            if (!stopId.equals(st.getStop_id())) continue;
+            if (!safe(stopId).equals(safe(st.getStop_id()))) continue;
 
-            TripsModel trip = tripById.get(st.getTrip_id());
+            TripsModel trip = tripById.get(safe(st.getTrip_id()));
             if (trip == null) continue;
             if (!safe(routeId).equals(safe(trip.getRoute_id()))) continue;
 
-            int tripDir = -1;
-            try {
-                if (trip.getDirection_id() != null) tripDir = Integer.parseInt(trip.getDirection_id());
-            } catch (Exception ignored) {}
-
+            int tripDir = parseIntSafe(trip.getDirection_id(), -1);
             if (directionId != -1 && tripDir != directionId) continue;
 
             int arrSec = parseGtfsSeconds(st.getArrival_time());
@@ -386,9 +392,9 @@ public class ArrivalPredictionService {
         }
 
         RoutesModel route = routeById.get(routeId);
-        String line = (route != null && route.getRoute_short_name() != null && !route.getRoute_short_name().isBlank())
-                ? route.getRoute_short_name().trim()
-                : routeId;
+        String line = (route != null && !safe(route.getRoute_short_name()).isBlank())
+                ? safe(route.getRoute_short_name())
+                : safe(routeId);
 
         if (bestSec == null) {
             return new ArrivalRow(null, routeId, directionId, line, "", null, null, false);
@@ -397,4 +403,5 @@ public class ArrivalPredictionService {
         LocalTime bestTime = LocalTime.ofSecondOfDay(bestSec % 86400);
         return new ArrivalRow(null, routeId, directionId, line, "", null, bestTime, false);
     }
+
 }

@@ -6,13 +6,10 @@ import Model.GTFS_RT.StopTimeUpdateInfo;
 import Model.GTFS_RT.TripUpdateInfo;
 import Model.Net.ConnectionState;
 import Model.Net.ConnectionStatusProvider;
-import Model.Parsing.Static.RoutesModel;
 import Service.GTFS_RT.ArrivalPredictionService;
 import Service.GTFS_RT.Fetcher.TripUpdates.TripUpdatesService;
-import Service.Parsing.RoutesService;
-import Service.Parsing.StopTimesService;
-import Service.Parsing.TripsService;
 
+import org.junit.After;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -31,73 +28,42 @@ public class ArrivalPredictionServiceTest {
     @Rule
     public TemporaryFolder tmp = new TemporaryFolder();
 
-    /**
-     * ArrivalPredictionService "testabile":
-     * - evita StopLinesService (che può avere cache e dipendenze forti)
-     * - usa routesAtStop forzate dal test
-     */
-    static class TestableArrivalPredictionService extends ArrivalPredictionService {
-        private final List<RoutesModel> forcedRoutesAtStop;
-
-        public TestableArrivalPredictionService(
-                TripUpdatesService tripUpdatesService,
-                ConnectionStatusProvider statusProvider,
-                String stopTimesPath,
-                String tripsPath,
-                String routesPath,
-                List<RoutesModel> forcedRoutesAtStop
-        ) {
-            super(tripUpdatesService, statusProvider, stopTimesPath, tripsPath, routesPath);
-            this.forcedRoutesAtStop = forcedRoutesAtStop;
-        }
-
-        @Override
-        public List<ArrivalRow> getArrivalsForStop(String stopId) {
-            // Copia del tuo metodo, ma rimpiazzo la riga StopLinesService.getRoutesForStop(...)
-            if (stopId == null || stopId.isBlank()) return List.of();
-
-            // 1) Route forzate dal test
-            List<RoutesModel> routesAtStop = forcedRoutesAtStop;
-
-            // 2) Ri-uso la tua logica originale invocando super via "helper"?
-            // Non puoi chiamare pezzi privati, quindi facciamo il trucco:
-            // creiamo un mini-service reale usando i file e poi filtriamo solo le route forzate.
-            // => soluzione: richiamiamo super.getArrivalsForStop ma prima "sporchiamo" StopLinesService? NO.
-            // Quindi qui la cosa più pulita è: NON override intero metodo nel tuo progetto.
-            // Invece: nei test non verifichiamo l’intera lista, ma testiamo direttamente getNextForStopOnRoute() (vedi sotto).
-            //
-            // ---> Per evitare refactor nel main, nei test useremo getNextForStopOnRoute().
-            return List.of();
-        }
+    @After
+    public void cleanupCaches() {
+        // IMPORTANTISSIMO: se hai applicato il fix cache-per-path, aggiungi qui:
+        // RoutesService.clearCache();
+        // TripsService.clearCache();
+        // StopTimesService.clearCache();
+        //
+        // Se ancora non li hai, non serve.
     }
-
-    // =======================================================
-    // ✅ TEST SERI: usa getNextForStopOnRoute (no StopLinesService)
-    // =======================================================
 
     @Test
     public void getNextForStopOnRoute_prefersRealtimeWhenAvailable() throws Exception {
         File routes = tmp.newFile("routes.csv");
         File trips = tmp.newFile("trips.csv");
         File stopTimes = tmp.newFile("stop_times.csv");
+        File stops = tmp.newFile("stops.csv");
 
-        // routes: GTFS standard
         write(routes,
                 "route_id,agency_id,route_short_name,route_long_name,route_type,route_url,route_color,route_text_color\n" +
                         "R1,,146,Linea 146,3,,,,\n"
         );
 
-        // trips: mettiamo un header “ampio” simile al tuo reale (anche se TripsService legge per posizione)
-        // IMPORTANTISSIMO: qui devi rispecchiare l'ordine colonne del TUO parser.
-        // Dal tuo screenshot: route_id,service_id,trip_id,trip_headsign,trip_short_name,direction_id,...
+        // TripsService nel tuo progetto legge 10 colonne (route_id...exceptional)
         write(trips,
-                "route_id,service_id,trip_id,trip_headsign,trip_short_name,direction_id,block_id,shape_id,wheelchair_accessible,bikes_allowed\n" +
+                "route_id,service_id,trip_id,trip_headsign,trip_short_name,direction_id,block_id,shape_id,wheelchair_accessible,exceptional\n" +
                         "R1,SVC,T1,CAPOLINEA,123,0,,,0,0\n"
         );
 
         write(stopTimes,
                 "trip_id,arrival_time,departure_time,stop_id,stop_sequence,stop_headsign,pickup_type,drop_off_type,shape_dist_traveled,timepoint\n" +
                         "T1,25:10:00,25:10:00,S1,1,,,,0,1\n"
+        );
+
+        write(stops,
+                "stop_id,stop_code,stop_name,stop_desc,stop_lat,stop_lon,stop_url,wheelchair_boarding,stop_timezone,location_type,parent_station\n" +
+                        "S1,905,TEST STOP,,41.0,12.0,,,,,\n"
         );
 
         long now = Instant.now().getEpochSecond();
@@ -133,7 +99,8 @@ public class ArrivalPredictionServiceTest {
                 online,
                 stopTimes.getAbsolutePath(),
                 trips.getAbsolutePath(),
-                routes.getAbsolutePath()
+                routes.getAbsolutePath(),
+                stops.getAbsolutePath()
         );
 
         ArrivalRow r = svc.getNextForStopOnRoute("S1", "R1", 0);
@@ -142,6 +109,8 @@ public class ArrivalPredictionServiceTest {
         assertTrue(r.realtime);
         assertEquals("R1", r.routeId);
         assertEquals(Integer.valueOf(0), r.directionId);
+        assertEquals("146", r.line);
+        assertEquals("T1", r.tripId); // realtime deve portarsi dietro tripId
         assertNotNull(r.minutes);
         assertTrue(r.minutes >= 0);
     }
@@ -151,6 +120,7 @@ public class ArrivalPredictionServiceTest {
         File routes = tmp.newFile("routes.csv");
         File trips = tmp.newFile("trips.csv");
         File stopTimes = tmp.newFile("stop_times.csv");
+        File stops = tmp.newFile("stops.csv");
 
         write(routes,
                 "route_id,agency_id,route_short_name,route_long_name,route_type,route_url,route_color,route_text_color\n" +
@@ -158,14 +128,19 @@ public class ArrivalPredictionServiceTest {
         );
 
         write(trips,
-                "route_id,service_id,trip_id,trip_headsign,trip_short_name,direction_id,block_id,shape_id,wheelchair_accessible,bikes_allowed\n" +
+                "route_id,service_id,trip_id,trip_headsign,trip_short_name,direction_id,block_id,shape_id,wheelchair_accessible,exceptional\n" +
                         "R1,SVC,T1,CORNELIA,123,0,,,0,0\n"
         );
 
-        // Notturno futuro
+        // orario notturno futuro (supporto 24..47)
         write(stopTimes,
                 "trip_id,arrival_time,departure_time,stop_id,stop_sequence,stop_headsign,pickup_type,drop_off_type,shape_dist_traveled,timepoint\n" +
                         "T1,25:10:00,25:10:00,S1,1,,,,0,1\n"
+        );
+
+        write(stops,
+                "stop_id,stop_code,stop_name,stop_desc,stop_lat,stop_lon,stop_url,wheelchair_boarding,stop_timezone,location_type,parent_station\n" +
+                        "S1,905,TEST STOP,,41.0,12.0,,,,,\n"
         );
 
         TripUpdatesService fakeTripUpdates = mock(TripUpdatesService.class);
@@ -179,7 +154,8 @@ public class ArrivalPredictionServiceTest {
                 online,
                 stopTimes.getAbsolutePath(),
                 trips.getAbsolutePath(),
-                routes.getAbsolutePath()
+                routes.getAbsolutePath(),
+                stops.getAbsolutePath()
         );
 
         ArrivalRow r = svc.getNextForStopOnRoute("S1", "R1", 0);
@@ -202,6 +178,7 @@ public class ArrivalPredictionServiceTest {
         File routes = tmp.newFile("routes.csv");
         File trips = tmp.newFile("trips.csv");
         File stopTimes = tmp.newFile("stop_times.csv");
+        File stops = tmp.newFile("stops.csv");
 
         write(routes,
                 "route_id,agency_id,route_short_name,route_long_name,route_type,route_url,route_color,route_text_color\n" +
@@ -209,13 +186,18 @@ public class ArrivalPredictionServiceTest {
         );
 
         write(trips,
-                "route_id,service_id,trip_id,trip_headsign,trip_short_name,direction_id,block_id,shape_id,wheelchair_accessible,bikes_allowed\n" +
+                "route_id,service_id,trip_id,trip_headsign,trip_short_name,direction_id,block_id,shape_id,wheelchair_accessible,exceptional\n" +
                         "R1,SVC,T1,DEI CAPASSO,123,0,,,0,0\n"
         );
 
         write(stopTimes,
                 "trip_id,arrival_time,departure_time,stop_id,stop_sequence,stop_headsign,pickup_type,drop_off_type,shape_dist_traveled,timepoint\n" +
                         "T1,24:30:00,24:30:00,S1,1,,,,0,1\n"
+        );
+
+        write(stops,
+                "stop_id,stop_code,stop_name,stop_desc,stop_lat,stop_lon,stop_url,wheelchair_boarding,stop_timezone,location_type,parent_station\n" +
+                        "S1,905,TEST STOP,,41.0,12.0,,,,,\n"
         );
 
         TripUpdatesService fakeTripUpdates = mock(TripUpdatesService.class);
@@ -229,7 +211,8 @@ public class ArrivalPredictionServiceTest {
                 offline,
                 stopTimes.getAbsolutePath(),
                 trips.getAbsolutePath(),
-                routes.getAbsolutePath()
+                routes.getAbsolutePath(),
+                stops.getAbsolutePath()
         );
 
         ArrivalRow r = svc.getNextForStopOnRoute("S1", "R1", 0);
@@ -239,7 +222,7 @@ public class ArrivalPredictionServiceTest {
         assertEquals("R1", r.routeId);
         assertEquals("N8", r.line);
 
-        // se questo fallisce ancora => StopTimesService/StopTimesModel sta scartando 24:xx
+        // se fallisce => StopTimesService sta scartando 24:xx oppure parseGtfsSeconds torna -1
         assertNotNull(r.time);
     }
 
