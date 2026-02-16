@@ -1,5 +1,6 @@
 package Service.GTFS_RT.Fetcher.Vehicle;
 
+import Model.GTFS_RT.Enums.OccupancyStatus;
 import Model.GTFS_RT.VehicleInfo;
 import Model.Net.ConnectionListener;
 import Model.Net.ConnectionManager;
@@ -8,7 +9,6 @@ import Service.GTFS_RT.Client.HttpGtfsRtFeedClient;
 
 import org.jxmapviewer.viewer.GeoPosition;
 
-import java.net.URI;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
@@ -67,5 +67,76 @@ public class VehiclePositionsService {
     /** Fa UN refresh e aggiorna la cache. */
     public void refreshOnce() throws Exception {
         lastVehicles = fetcher.fetchVehiclePositions();
+    }
+
+    /**
+     * Occupancy label per una riga "arrival".
+     * - Se non ci sono dati o non disponibili -> "Posti: non disponibile"
+     * - Altrimenti -> "Posti: <umano>"
+     */
+    public String getOccupancyLabelForArrival(Model.ArrivalRow r, String stopId) {
+        if (r == null) return "Posti: non disponibile";
+
+        VehicleInfo v = findBestVehicleForArrival(r.tripId, r.routeId, r.directionId, stopId);
+        if (v == null || v.occupancyStatus == null) return "Posti: non disponibile";
+
+        OccupancyStatus occ = v.occupancyStatus;
+
+        switch (occ) {
+            case UNKNOWN, NO_DATA_AVAILABLE, NOT_BOARDABLE -> {
+                return "Posti: non disponibile";
+            }
+            case NOT_ACCEPTING_PASSENGERS -> {
+                return "Posti: non accetta passeggeri";
+            }
+            default -> {
+                String human = occ.toHumanIt(); // assumo tu lo abbia già
+                if (human == null || human.isBlank()) return "Posti: non disponibile";
+                return "Posti: " + human;
+            }
+        }
+    }
+
+    /**
+     * Ritorna il veicolo "migliore" per quell'arrivo:
+     * 1) match perfetto per tripId (se disponibile)
+     * 2) fallback "soluzione C": routeId + directionId scegliendo il più recente (timestamp max)
+     */
+    private VehicleInfo findBestVehicleForArrival(String tripId, String routeId, Integer directionId, String stopId) {
+
+        // 1) ✅ match perfetto: TRIP ID
+        if (tripId != null && !tripId.isBlank()) {
+            for (VehicleInfo v : lastVehicles) {
+                if (v == null) continue;
+                if (tripId.equals(v.tripId)) return v;
+            }
+        }
+
+        // 2) fallback: routeId + directionId (+ stopId non bloccante)
+        String rid = (routeId == null) ? "" : routeId.trim();
+        int dir = (directionId == null) ? -1 : directionId;
+
+        VehicleInfo best = null;
+
+        for (VehicleInfo v : lastVehicles) {
+            if (v == null) continue;
+            if (v.routeId == null || !rid.equals(v.routeId.trim())) continue;
+
+            int vdir = (v.directionId == null) ? -1 : v.directionId;
+            if (dir != -1 && vdir != dir) continue;
+
+            // stopId: per ora non blocchiamo (potresti raffinare dopo)
+            // if (stopId != null && !stopId.isBlank() && v.stopId != null && !v.stopId.isBlank()) { ... }
+
+            if (best == null || newer(v, best)) best = v;
+        }
+
+        return best;
+    }
+
+    private boolean newer(VehicleInfo a, VehicleInfo b) {
+        long ta = (a.timestamp != null) ? a.timestamp : 0L;
+        long tb = (b.timestamp != null) ? b.timestamp : 0L;
+        return ta > tb;
     }
 }

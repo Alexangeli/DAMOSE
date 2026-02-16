@@ -36,6 +36,7 @@ public class LineStopsView extends JPanel {
     private List<ArrivalRow> currentArrivals = Collections.emptyList();
     private Consumer<ArrivalRow> onArrivalSelected;
 
+    private Service.GTFS_RT.Fetcher.Vehicle.VehiclePositionsService vehiclePositionsService;
     private enum PanelMode { NONE, LINE_STOPS, STOP_ROUTES, STOP_ROUTE_DIRECTIONS, STOP_ARRIVALS }
     private PanelMode panelMode = PanelMode.NONE;
 
@@ -200,17 +201,15 @@ public class LineStopsView extends JPanel {
     }
 
     // ✅ NUOVO: mostra linee + "Prossimo: ..."
-    public void showArrivalsAtStop(String stopName, List<ArrivalRow> rows) {
+    public void showArrivalsAtStop(String stopId, String stopName, List<ArrivalRow> rows) {
         this.panelMode = PanelMode.STOP_ARRIVALS;
 
         titleLabel.setText("Fermata: " + stopName);
         listModel.clear();
 
-        // reset line-mode
         this.currentStops = Collections.emptyList();
         this.mapController = null;
 
-        // reset altri stop-mode
         this.currentRoutes = Collections.emptyList();
         this.currentRouteDirections = Collections.emptyList();
 
@@ -232,8 +231,13 @@ public class LineStopsView extends JPanel {
                     bottom = "Corse terminate per oggi";
                 }
 
-                // JList è monoline: usiamo un separatore visivo semplice
-                // (se vuoi 2 righe vere: si fa con cell renderer, lo facciamo dopo)
+                // ✅ occupazione SOLO se RT + service presente
+                if (vehiclePositionsService != null && r.realtime) {
+                    String occLabel = vehiclePositionsService.getOccupancyLabelForArrival(r, stopId);
+                    if (occLabel == null || occLabel.isBlank()) occLabel = "Posti: non disponibile";
+                    bottom += "  •  " + occLabel;
+                }
+
                 listModel.addElement(top + "\n" + bottom);
             }
         }
@@ -305,6 +309,10 @@ public class LineStopsView extends JPanel {
 
         revalidate();
         repaint();
+    }
+
+    public void setVehiclePositionsService(Service.GTFS_RT.Fetcher.Vehicle.VehiclePositionsService s) {
+        this.vehiclePositionsService = s;
     }
 
 }
