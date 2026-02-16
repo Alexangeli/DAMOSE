@@ -1,20 +1,21 @@
 package Service.GTFS_RT;
 
 import Model.ArrivalRow;
-import Model.GTFS_RT.StopTimeUpdateInfo;
 import Model.GTFS_RT.TripUpdateInfo;
 import Model.Net.ConnectionState;
 import Model.Net.ConnectionStatusProvider;
 import Model.Parsing.Static.RoutesModel;
 import Model.Parsing.Static.StopTimesModel;
+import Service.GTFS_RT.ETA.DelayHistoryStore;
 import Service.GTFS_RT.Fetcher.TripUpdates.TripUpdatesService;
+import Service.GTFS_RT.Index.BestEta;
+import Service.GTFS_RT.Index.TripUpdatesRtIndex;
 import Service.Parsing.Static.StaticGtfsRepository;
 
 import java.time.Instant;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 
 public class ArrivalPredictionService {
@@ -22,6 +23,11 @@ public class ArrivalPredictionService {
     private final TripUpdatesService tripUpdatesService;
     private final ConnectionStatusProvider statusProvider;
     private final StaticGtfsRepository repo;
+
+    private final TripUpdatesRtIndex rtIndex = new TripUpdatesRtIndex();
+    private final DelayHistoryStore delayHistory = new DelayHistoryStore(0.25); // alpha
+
+    private volatile Object lastUpdatesRef = null;
 
     public ArrivalPredictionService(
             TripUpdatesService tripUpdatesService,
@@ -33,18 +39,17 @@ public class ArrivalPredictionService {
         this.repo = repo;
     }
 
-    /**
-     * STOP MODE:
-     * - base: tutte le routes che passano per la fermata
-     * - per ognuna: realtime se ONLINE e presente, altrimenti static
-     */
+    // ========================= STOP MODE =========================
+
     public List<ArrivalRow> getArrivalsForStop(String stopId) {
         if (stopId == null || stopId.isBlank()) return List.of();
 
         List<RoutesModel> routesAtStop = repo.getRoutesForStop(stopId);
         if (routesAtStop == null || routesAtStop.isEmpty()) return List.of();
 
-        List<ArrivalRow> rows = new ArrayList<>();
+        maybeRebuildRtIndex();
+
+        ArrayList<ArrivalRow> rows = new ArrayList<>();
 
         for (RoutesModel r : routesAtStop) {
             if (r == null) continue;
@@ -59,32 +64,17 @@ public class ArrivalPredictionService {
             String h1 = safe(repo.pickHeadsign(routeId, 1));
 
             if (h0.isEmpty() && h1.isEmpty()) {
-                rows.add(new ArrivalRow(routeId, -1, line, "", null, null, false));
+                rows.add(buildRow(stopId, routeId, -1, line, ""));
             } else if (!h0.isEmpty() && !h1.isEmpty() && !h0.equalsIgnoreCase(h1)) {
-                rows.add(new ArrivalRow(routeId, 0, line, h0, null, null, false));
-                rows.add(new ArrivalRow(routeId, 1, line, h1, null, null, false));
+                rows.add(buildRow(stopId, routeId, 0, line, h0));
+                rows.add(buildRow(stopId, routeId, 1, line, h1));
             } else {
                 String hh = !h0.isEmpty() ? h0 : h1;
-                rows.add(new ArrivalRow(routeId, -1, line, hh, null, null, false));
+                rows.add(buildRow(stopId, routeId, -1, line, hh));
             }
         }
 
-        boolean online = statusProvider.getState() == ConnectionState.ONLINE;
-
-        for (int i = 0; i < rows.size(); i++) {
-            ArrivalRow base = rows.get(i);
-
-            ArrivalRow rt = online ? enrichWithRealtime(stopId, base) : null;
-            if (rt != null) {
-                rows.set(i, rt);
-                continue;
-            }
-
-            ArrivalRow st = enrichWithStatic(stopId, base);
-            rows.set(i, st);
-        }
-
-        // RT first (min minutes), poi static per orario
+        // ordinamento: RT (minutes) prima, poi static (time)
         rows.sort((a, b) -> {
             int am = (a.minutes != null) ? a.minutes : Integer.MAX_VALUE;
             int bm = (b.minutes != null) ? b.minutes : Integer.MAX_VALUE;
@@ -106,151 +96,106 @@ public class ArrivalPredictionService {
         return rows;
     }
 
+    private ArrivalRow buildRow(String stopId, String routeId, int directionId, String line, String headsign) {
+        boolean online = statusProvider.getState() == ConnectionState.ONLINE;
+
+        // 1) prova realtime (solo se online)
+        if (online) {
+            ArrivalRow rt = tryRealtime(stopId, routeId, directionId, line, headsign);
+            if (rt != null) return rt;
+        }
+
+        // 2) static intelligente (static + delay stimato)
+        return staticWithEstimatedDelay(stopId, routeId, directionId, line, headsign);
+    }
+
     // ========================= LINE MODE =========================
 
     public ArrivalRow getNextForStopOnRoute(String stopId, String routeId, int directionId) {
         if (stopId == null || stopId.isBlank()) return null;
         if (routeId == null || routeId.isBlank()) return null;
 
+        maybeRebuildRtIndex();
+
         boolean online = statusProvider.getState() == ConnectionState.ONLINE;
+        RoutesModel route = repo.getRouteById(routeId);
+        String line = (route != null && !safe(route.getRoute_short_name()).isEmpty())
+                ? safe(route.getRoute_short_name()) : safe(routeId);
 
         if (online) {
-            ArrivalRow rt = nextRealtimeForStopRoute(stopId, routeId, directionId);
+            ArrivalRow rt = tryRealtime(stopId, routeId, directionId, line, "");
             if (rt != null) return rt;
         }
-        return nextStaticForStopRoute(stopId, routeId, directionId);
+
+        return staticWithEstimatedDelay(stopId, routeId, directionId, line, "");
     }
 
     // ========================= REALTIME =========================
 
-    private ArrivalRow enrichWithRealtime(String stopId, ArrivalRow base) {
+    private ArrivalRow tryRealtime(String stopId, String routeId, int directionId, String line, String headsign) {
         long now = Instant.now().getEpochSecond();
 
-        String wantedRouteId = safe(base.routeId);
-        int wantedDir = (base.directionId != null) ? base.directionId : -1;
+        // directionId == -1 = merged: scegli il migliore tra dir 0 e dir 1 (se presenti)
+        if (directionId == -1) {
+            BestEta b0 = rtIndex.findBestEta(routeId, 0, stopId);
+            BestEta b1 = rtIndex.findBestEta(routeId, 1, stopId);
+            BestEta best = pickBest(b0, b1);
+            if (best == null || best.etaEpoch == null) return null;
 
-        Long bestEpoch = null;
-
-        List<TripUpdateInfo> updates = tripUpdatesService.getTripUpdates();
-        if (updates == null || updates.isEmpty()) return null;
-
-        for (TripUpdateInfo tu : updates) {
-            if (tu == null || tu.stopTimeUpdates == null) continue;
-            if (!wantedRouteId.equals(safe(tu.routeId))) continue;
-
-            int tuDir = (tu.directionId != null) ? tu.directionId : -1;
-            if (wantedDir != -1 && tuDir != wantedDir) continue;
-
-            for (StopTimeUpdateInfo stu : tu.stopTimeUpdates) {
-                if (stu == null) continue;
-                if (!stopId.equals(stu.stopId)) continue;
-                if (stu.arrivalTime == null) continue;
-
-                long diff = stu.arrivalTime - now;
-                if (diff < 0) continue;
-
-                if (bestEpoch == null || stu.arrivalTime < bestEpoch) bestEpoch = stu.arrivalTime;
-            }
+            int minutes = (int) ((best.etaEpoch - now) / 60);
+            LocalTime time = Instant.ofEpochSecond(best.etaEpoch).atZone(ZoneId.systemDefault()).toLocalTime();
+            return new ArrivalRow(routeId, -1, line, headsign, minutes, time, true);
         }
 
-        if (bestEpoch == null) return null;
+        BestEta best = rtIndex.findBestEta(routeId, directionId, stopId);
+        if (best == null || best.etaEpoch == null) return null;
 
-        int minutes = (int) ((bestEpoch - now) / 60);
-        LocalTime time = Instant.ofEpochSecond(bestEpoch)
-                .atZone(ZoneId.systemDefault())
-                .toLocalTime();
-
-        return new ArrivalRow(base.routeId, base.directionId, base.line, base.headsign, minutes, time, true);
+        int minutes = (int) ((best.etaEpoch - now) / 60);
+        LocalTime time = Instant.ofEpochSecond(best.etaEpoch).atZone(ZoneId.systemDefault()).toLocalTime();
+        return new ArrivalRow(routeId, directionId, line, headsign, minutes, time, true);
     }
 
-    private ArrivalRow nextRealtimeForStopRoute(String stopId, String routeId, int directionId) {
-        long now = Instant.now().getEpochSecond();
-        Long bestEpoch = null;
-
-        List<TripUpdateInfo> updates = tripUpdatesService.getTripUpdates();
-        if (updates == null || updates.isEmpty()) return null;
-
-        for (TripUpdateInfo tu : updates) {
-            if (tu == null || tu.stopTimeUpdates == null) continue;
-            if (!safe(routeId).equals(safe(tu.routeId))) continue;
-
-            int tuDir = (tu.directionId != null) ? tu.directionId : -1;
-            if (directionId != -1 && tuDir != directionId) continue;
-
-            for (StopTimeUpdateInfo stu : tu.stopTimeUpdates) {
-                if (stu == null) continue;
-                if (!stopId.equals(stu.stopId)) continue;
-                if (stu.arrivalTime == null) continue;
-
-                long diff = stu.arrivalTime - now;
-                if (diff < 0) continue;
-
-                if (bestEpoch == null || stu.arrivalTime < bestEpoch) bestEpoch = stu.arrivalTime;
-            }
-        }
-
-        if (bestEpoch == null) return null;
-
-        int minutes = (int) ((bestEpoch - now) / 60);
-        LocalTime time = Instant.ofEpochSecond(bestEpoch)
-                .atZone(ZoneId.systemDefault())
-                .toLocalTime();
-
-        RoutesModel route = repo.getRouteById(routeId);
-        String line = (route != null && !safe(route.getRoute_short_name()).isEmpty())
-                ? safe(route.getRoute_short_name())
-                : safe(routeId);
-
-        return new ArrivalRow(routeId, directionId, line, "", minutes, time, true);
+    private static BestEta pickBest(BestEta a, BestEta b) {
+        if (a == null) return b;
+        if (b == null) return a;
+        if (a.etaEpoch == null) return b;
+        if (b.etaEpoch == null) return a;
+        return (b.etaEpoch < a.etaEpoch) ? b : a;
     }
 
-    // ========================= STATIC =========================
+    // ========================= STATIC + DELAY STIMATO =========================
 
-    private ArrivalRow enrichWithStatic(String stopId, ArrivalRow base) {
+    private ArrivalRow staticWithEstimatedDelay(String stopId, String routeId, int directionId, String line, String headsign) {
         int nowSec = LocalTime.now().toSecondOfDay();
 
-        String routeId = safe(base.routeId);
-        int wantedDir = (base.directionId != null) ? base.directionId : -1;
-
-        Integer bestSec = null;
-
-        // qui usiamo i metodi che mancavano: ora li hai nella repo
-        List<String> tripIds = (wantedDir == -1)
-                ? repo.getTripIdsForRoute(routeId)
-                : repo.getTripIdsForRouteDirection(routeId, wantedDir);
-
-        for (String tripId : tripIds) {
-            List<StopTimesModel> sts = repo.getStopTimesForTrip(tripId);
-            if (sts == null || sts.isEmpty()) continue;
-
-            for (StopTimesModel st : sts) {
-                if (st == null) continue;
-                if (!stopId.equals(st.getStop_id())) continue;
-
-                int arrSec = parseGtfsSeconds(st.getArrival_time());
-                if (arrSec < 0) continue;
-                if (arrSec < nowSec) continue;
-
-                if (bestSec == null || arrSec < bestSec) bestSec = arrSec;
-            }
-        }
-
+        Integer bestSec = findBestStaticArrivalSec(stopId, routeId, directionId, nowSec);
         if (bestSec == null) {
-            return new ArrivalRow(base.routeId, base.directionId, base.line, base.headsign, null, null, false);
+            return new ArrivalRow(routeId, directionId, line, headsign, null, null, false);
         }
 
-        LocalTime bestTime = LocalTime.ofSecondOfDay(bestSec % 86400);
-        return new ArrivalRow(base.routeId, base.directionId, base.line, base.headsign, null, bestTime, false);
+        // Applica delay stimato (se c'è)
+        Integer delaySec = null;
+        if (directionId != -1) {
+            delaySec = delayHistory.estimateDelaySec(routeId, directionId, stopId);
+        }
+        // se merged e non vuoi “sparare”, lascia senza delay (o potresti provare dir0/dir1 e prendere la media)
+        if (delaySec != null) {
+            bestSec = bestSec + delaySec;
+        }
+
+        LocalTime bestTime = LocalTime.ofSecondOfDay(Math.floorMod(bestSec, 86400));
+        return new ArrivalRow(routeId, directionId, line, headsign, null, bestTime, false);
     }
 
-    private ArrivalRow nextStaticForStopRoute(String stopId, String routeId, int directionId) {
-        int nowSec = LocalTime.now().toSecondOfDay();
-        Integer bestSec = null;
-
+    private Integer findBestStaticArrivalSec(String stopId, String routeId, int directionId, int nowSec) {
         List<String> tripIds = (directionId == -1)
                 ? repo.getTripIdsForRoute(routeId)
                 : repo.getTripIdsForRouteDirection(routeId, directionId);
 
+        if (tripIds == null || tripIds.isEmpty()) return null;
+
+        Integer bestSec = null;
+
         for (String tripId : tripIds) {
             List<StopTimesModel> sts = repo.getStopTimesForTrip(tripId);
             if (sts == null || sts.isEmpty()) continue;
@@ -267,24 +212,50 @@ public class ArrivalPredictionService {
             }
         }
 
-        RoutesModel route = repo.getRouteById(routeId);
-        String line = (route != null && !safe(route.getRoute_short_name()).isEmpty())
-                ? safe(route.getRoute_short_name())
-                : safe(routeId);
+        return bestSec;
+    }
 
-        if (bestSec == null) {
-            return new ArrivalRow(routeId, directionId, line, "", null, null, false);
+    // ========================= RT INDEX REBUILD + HISTORY =========================
+
+    private void maybeRebuildRtIndex() {
+        // rebuild solo se ONLINE (se offline non ci serve)
+        if (statusProvider.getState() != ConnectionState.ONLINE) return;
+
+        List<TripUpdateInfo> updates = tripUpdatesService.getTripUpdates();
+        Object ref = updates; // identity
+
+        if (ref == lastUpdatesRef) return; // nessun refresh
+        lastUpdatesRef = ref;
+
+        long now = Instant.now().getEpochSecond();
+        rtIndex.rebuild(updates, now);
+
+        // aggiorna storico delay (stop-level + route-level)
+        if (updates != null) {
+            for (TripUpdateInfo tu : updates) {
+                if (tu == null) continue;
+                if (tu.stopTimeUpdates == null) continue;
+
+                String routeId = safe(tu.routeId);
+                Integer dir = tu.directionId;
+                if (routeId.isEmpty() || dir == null) continue;
+
+                // delay per stop: preferisci arrivalDelay/departureDelay, fallback tu.delay
+                tu.stopTimeUpdates.forEach(stu -> {
+                    if (stu == null) return;
+                    Integer d =
+                            (stu.arrivalDelay != null) ? stu.arrivalDelay :
+                                    (stu.departureDelay != null) ? stu.departureDelay :
+                                            tu.delay;
+                    delayHistory.observe(routeId, dir, stu.stopId, d, now);
+                });
+            }
         }
-
-        LocalTime bestTime = LocalTime.ofSecondOfDay(bestSec % 86400);
-        return new ArrivalRow(routeId, directionId, line, "", null, bestTime, false);
     }
 
     // ========================= UTILS =========================
 
-    private static String safe(String s) {
-        return (s == null) ? "" : s.trim();
-    }
+    private static String safe(String s) { return (s == null) ? "" : s.trim(); }
 
     private int parseGtfsSeconds(String hhmmss) {
         if (hhmmss == null) return -1;
