@@ -8,6 +8,7 @@ import java.awt.event.*;
 import java.awt.geom.RoundRectangle2D;
 import java.util.Objects;
 import java.util.function.Consumer;
+import java.lang.reflect.*;
 
 /**
  * Dialog "Preferiti" - UI identica allo screenshot richiesto:
@@ -36,6 +37,12 @@ public class FavoritesDialogView extends JPanel {
     // ====== UI ======
     private final FavoritesView favoritesView = new FavoritesView();
 
+    // top container (needs theme refresh)
+    private final JPanel topPanel;
+
+    // separator under command bar
+    private JSeparator commandSeparator;
+
     // Header
     private final JLabel titleLabel = new JLabel("Preferiti");
     private final JLabel subtitleLabel = new JLabel("Fermate salvate");
@@ -54,20 +61,20 @@ public class FavoritesDialogView extends JPanel {
 
     public FavoritesDialogView() {
         setLayout(new BorderLayout());
-        setBackground(Color.WHITE);
+        setBackground(ThemeColors.card());
 
         // ====== TOP: header + command bar ======
-        JPanel top = new JPanel();
-        top.setOpaque(true);
-        top.setBackground(Color.WHITE);
-        top.setLayout(new BorderLayout());
-        top.setBorder(BorderFactory.createEmptyBorder(18, 18, 12, 18));
+        topPanel = new JPanel();
+        topPanel.setOpaque(true);
+        topPanel.setBackground(ThemeColors.card());
+        topPanel.setLayout(new BorderLayout());
+        topPanel.setBorder(BorderFactory.createEmptyBorder(18, 18, 12, 18));
 
-        top.add(buildHeader(), BorderLayout.NORTH);
-        top.add(Box.createVerticalStrut(12), BorderLayout.CENTER);
-        top.add(buildCommandBar(), BorderLayout.SOUTH);
+        topPanel.add(buildHeader(), BorderLayout.NORTH);
+        topPanel.add(Box.createVerticalStrut(12), BorderLayout.CENTER);
+        topPanel.add(buildCommandBar(), BorderLayout.SOUTH);
 
-        add(top, BorderLayout.NORTH);
+        add(topPanel, BorderLayout.NORTH);
 
         // ====== CENTER: list ======
         favoritesView.setBorder(BorderFactory.createEmptyBorder(8, 18, 18, 18));
@@ -83,14 +90,14 @@ public class FavoritesDialogView extends JPanel {
         // li aggiungiamo in buildCommandBar() tramite placeholder panel; quindi serve rimpiazzare lì.
         // -> Per semplicità: ricostruiamo command bar ora che abbiamo i bottoni
         removeAll();
-        add(top, BorderLayout.NORTH);
+        add(topPanel, BorderLayout.NORTH);
         add(favoritesView, BorderLayout.CENTER);
 
         // rimpiazza command bar con versione reale
-        top.remove(2);
-        top.add(buildCommandBarReal(), BorderLayout.SOUTH);
-        top.revalidate();
-        top.repaint();
+        topPanel.remove(2);
+        topPanel.add(buildCommandBarReal(), BorderLayout.SOUTH);
+        topPanel.revalidate();
+        topPanel.repaint();
 
         // stato iniziale
         setMode(Mode.FERMATA);
@@ -111,6 +118,47 @@ public class FavoritesDialogView extends JPanel {
                 }
             }
         });
+
+        applyThemeToComponents();
+    }
+
+    /**
+     * Richiamabile dal controller/dialog quando cambia il tema.
+     * Aggiorna i colori dei componenti custom che usano paintComponent.
+     */
+    public void refreshTheme() {
+        applyThemeToComponents();
+        revalidate();
+        repaint();
+    }
+
+    private void applyThemeToComponents() {
+        // ✅ SOLO colori (niente font, niente Look&Feel)
+        setBackground(ThemeColors.card());
+
+        if (topPanel != null) {
+            topPanel.setBackground(ThemeColors.card());
+        }
+
+        // header text colors
+        titleLabel.setForeground(ThemeColors.text());
+        subtitleLabel.setForeground(ThemeColors.textMuted());
+
+        // separator color
+        if (commandSeparator != null) {
+            commandSeparator.setForeground(ThemeColors.border());
+        }
+
+        // repaint anche dei componenti custom che disegnano in paintComponent
+        repaint();
+
+        // se siamo dentro una finestra, ridisegna senza toccare UI defaults
+        SwingUtilities.invokeLater(() -> {
+            Window w = SwingUtilities.getWindowAncestor(FavoritesDialogView.this);
+            if (w != null) {
+                w.repaint();
+            }
+        });
     }
 
     // ===================== BUILD UI =====================
@@ -125,7 +173,7 @@ public class FavoritesDialogView extends JPanel {
                 super.paintComponent(g);
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(new Color(0xFF, 0x7A, 0x00));
+                g2.setColor(ThemeColors.primary());
                 g2.fillRoundRect(0, 0, getWidth(), getHeight(), 12, 12);
                 g2.dispose();
             }
@@ -141,10 +189,10 @@ public class FavoritesDialogView extends JPanel {
         text.setBorder(BorderFactory.createEmptyBorder(0, 14, 0, 0));
 
         titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 28f));
-        titleLabel.setForeground(new Color(20, 20, 20));
+        titleLabel.setForeground(ThemeColors.text());
 
         subtitleLabel.setFont(subtitleLabel.getFont().deriveFont(Font.PLAIN, 16f));
-        subtitleLabel.setForeground(new Color(110, 110, 110));
+        subtitleLabel.setForeground(ThemeColors.textMuted());
 
         text.add(titleLabel);
         text.add(Box.createVerticalStrut(4));
@@ -222,10 +270,10 @@ public class FavoritesDialogView extends JPanel {
         outer.setOpaque(false);
         outer.add(barWrap, BorderLayout.CENTER);
 
-        JSeparator sep = new JSeparator(SwingConstants.HORIZONTAL);
-        sep.setForeground(new Color(235, 235, 235));
-        sep.setOpaque(false);
-        outer.add(sep, BorderLayout.SOUTH);
+        commandSeparator = new JSeparator(SwingConstants.HORIZONTAL);
+        commandSeparator.setForeground(ThemeColors.border());
+        commandSeparator.setOpaque(false);
+        outer.add(commandSeparator, BorderLayout.SOUTH);
 
         return outer;
     }
@@ -298,7 +346,7 @@ public class FavoritesDialogView extends JPanel {
         @Override protected void paintComponent(Graphics g) {
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g2.setColor(new Color(245, 245, 245));
+            g2.setColor(ThemeColors.hover());
             g2.fillRoundRect(0, 0, getWidth(), getHeight(), arc, arc);
             g2.dispose();
             super.paintComponent(g);
@@ -351,10 +399,10 @@ public class FavoritesDialogView extends JPanel {
 
             Shape rr = new RoundRectangle2D.Double(0, 0, w, h, arc, arc);
 
-            g2.setColor(Color.WHITE);
+            g2.setColor(ThemeColors.card());
             g2.fill(rr);
 
-            g2.setColor(hover ? new Color(170, 170, 170) : new Color(200, 200, 200));
+            g2.setColor(hover ? ThemeColors.borderStrong() : ThemeColors.border());
             g2.setStroke(new BasicStroke(1.1f));
             g2.draw(rr);
 
@@ -418,17 +466,17 @@ public class FavoritesDialogView extends JPanel {
             int w = getWidth(), h = getHeight();
             int arc = 16;
 
-            Color base = Color.WHITE;
-            Color over = new Color(245, 245, 245);
+            Color base = ThemeColors.card();
+            Color over = ThemeColors.hover();
 
             g2.setColor(hover ? over : base);
             g2.fillRoundRect(0, 0, w, h, arc, arc);
 
-            g2.setColor(new Color(170, 170, 170));
+            g2.setColor(ThemeColors.borderStrong());
             g2.setStroke(new BasicStroke(2f));
             g2.drawRoundRect(1, 1, w - 2, h - 2, arc, arc);
 
-            g2.setColor(new Color(25, 25, 25));
+            g2.setColor(ThemeColors.text());
             g2.setFont(getFont());
 
             FontMetrics fm = g2.getFontMetrics();
@@ -616,4 +664,104 @@ public class FavoritesDialogView extends JPanel {
             g2.dispose();
         }
     }
+// ===================== THEME (safe via reflection) =====================
+private static final class ThemeColors {
+
+    private static final Color FALLBACK_PRIMARY = new Color(0xFF, 0x7A, 0x00);
+    private static final Color FALLBACK_PRIMARY_HOVER = new Color(0xFF, 0x8F, 0x33);
+    private static final Color FALLBACK_BG = new Color(245, 245, 245);
+    private static final Color FALLBACK_CARD = Color.WHITE;
+
+    private static final Color FALLBACK_TEXT = new Color(25, 25, 25);
+    private static final Color FALLBACK_TEXT_MUTED = new Color(110, 110, 110);
+
+    private static final Color FALLBACK_BORDER = new Color(235, 235, 235);
+    private static final Color FALLBACK_BORDER_STRONG = new Color(200, 200, 200);
+
+    private static final Color FALLBACK_HOVER = new Color(245, 245, 245);
+    private static final Color FALLBACK_SELECTED = new Color(230, 230, 230);
+
+    private static final Color FALLBACK_DISABLED_TEXT = new Color(150, 150, 150);
+
+    private ThemeColors() {}
+
+    static Color primary() {
+        Color c = fromThemeField("primary");
+        return (c != null) ? c : FALLBACK_PRIMARY;
+    }
+
+    static Color primaryHover() {
+        Color c = fromThemeField("primaryHover");
+        return (c != null) ? c : FALLBACK_PRIMARY_HOVER;
+    }
+
+    static Color bg() {
+        Color c = fromThemeField("bg");
+        return (c != null) ? c : FALLBACK_BG;
+    }
+
+    static Color card() {
+        Color c = fromThemeField("card");
+        return (c != null) ? c : FALLBACK_CARD;
+    }
+
+    static Color text() {
+        Color c = fromThemeField("text");
+        return (c != null) ? c : FALLBACK_TEXT;
+    }
+
+    static Color textMuted() {
+        Color c = fromThemeField("textMuted");
+        return (c != null) ? c : FALLBACK_TEXT_MUTED;
+    }
+
+    static Color border() {
+        Color c = fromThemeField("border");
+        return (c != null) ? c : FALLBACK_BORDER;
+    }
+
+    static Color borderStrong() {
+        Color c = fromThemeField("borderStrong");
+        return (c != null) ? c : FALLBACK_BORDER_STRONG;
+    }
+
+    static Color hover() {
+        Color c = fromThemeField("hover");
+        return (c != null) ? c : FALLBACK_HOVER;
+    }
+
+    static Color selected() {
+        Color c = fromThemeField("selected");
+        return (c != null) ? c : FALLBACK_SELECTED;
+    }
+
+    static Color disabledText() {
+        Color c = fromThemeField("disabledText");
+        return (c != null) ? c : FALLBACK_DISABLED_TEXT;
+    }
+
+    /**
+     * Prova a leggere un campo pubblico (Color) dall'oggetto Theme corrente:
+     * View.Theme.ThemeManager.get() -> Theme, poi fieldName.
+     */
+    private static Color fromThemeField(String fieldName) {
+        try {
+            Class<?> tm = Class.forName("View.Theme.ThemeManager");
+            Method get = tm.getMethod("get");
+            Object theme = get.invoke(null);
+            if (theme == null) return null;
+
+            try {
+                Field f = theme.getClass().getField(fieldName);
+                Object v = f.get(theme);
+                return (v instanceof Color col) ? col : null;
+            } catch (NoSuchFieldException nf) {
+                return null;
+            }
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+}
+
 }

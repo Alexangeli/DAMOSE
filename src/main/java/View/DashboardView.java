@@ -1,5 +1,6 @@
 package View;
 import java.util.Locale;
+import java.lang.reflect.*;
 
 import Model.User.Session;
 import config.AppConfig;
@@ -82,7 +83,7 @@ public class DashboardView extends JPanel {
 
     public DashboardView() {
         setLayout(new BorderLayout());
-        setBackground(AppConfig.BACKGROUND_COLOR);
+        setBackground(ThemeColors.bg());
 
         // ===================== MAPPA =====================
         mapView = new MapView();
@@ -152,12 +153,12 @@ public class DashboardView extends JPanel {
         // ===================== HEADER MODERNO (Dettagli) =====================
         detailsTitleLabel = new JLabel("Dettagli");
         detailsTitleLabel.setOpaque(false);
-        detailsTitleLabel.setForeground(new Color(25, 25, 25));
+        detailsTitleLabel.setForeground(ThemeColors.text());
         detailsTitleLabel.setFont(detailsTitleLabel.getFont().deriveFont(Font.BOLD, 20f));
 
         detailsSubtitleLabel = new JLabel("Seleziona una fermata o una linea");
         detailsSubtitleLabel.setOpaque(false);
-        detailsSubtitleLabel.setForeground(new Color(90, 90, 90));
+        detailsSubtitleLabel.setForeground(ThemeColors.textMuted());
         detailsSubtitleLabel.setFont(detailsSubtitleLabel.getFont().deriveFont(Font.PLAIN, 14.5f));
 
         detailsHeader = new DetailsHeaderPanel(detailsTitleLabel, detailsSubtitleLabel);
@@ -169,7 +170,7 @@ public class DashboardView extends JPanel {
         headerWrap.add(detailsHeader, BorderLayout.CENTER);
 
         JSeparator headerSep = new JSeparator(SwingConstants.HORIZONTAL);
-        headerSep.setForeground(new Color(225, 225, 225));
+        headerSep.setForeground(ThemeColors.border());
         headerSep.setOpaque(false);
         headerWrap.add(headerSep, BorderLayout.SOUTH);
 
@@ -181,7 +182,7 @@ public class DashboardView extends JPanel {
 
         detailsPlaceholder = new JLabel("Dettagli in caricamento…", SwingConstants.CENTER);
         detailsPlaceholder.setOpaque(false);
-        detailsPlaceholder.setForeground(new Color(70, 70, 70));
+        detailsPlaceholder.setForeground(ThemeColors.textMuted());
         detailsPlaceholder.setFont(detailsPlaceholder.getFont().deriveFont(Font.BOLD, 16.5f));
 
         detailsContainer = new JPanel(new CardLayout());
@@ -590,8 +591,8 @@ public class DashboardView extends JPanel {
 
             jl.setOpaque(false);
             jl.setBackground(new Color(0, 0, 0, 0));
-            jl.setSelectionBackground(new Color(230, 230, 230));
-            jl.setSelectionForeground(new Color(25, 25, 25));
+            jl.setSelectionBackground(ThemeColors.selected());
+            jl.setSelectionForeground(ThemeColors.text());
             jl.setFixedCellHeight(76);
             jl.setCellRenderer(new ModernListCellRenderer());
             jl.setBorder(BorderFactory.createEmptyBorder(4, 0, 8, 0));
@@ -751,19 +752,19 @@ public class DashboardView extends JPanel {
                 int h = getHeight();
 
                 int arc = 14;
-                g2.setColor(hover ? new Color(245, 245, 245) : Color.WHITE);
+                g2.setColor(hover ? ThemeColors.hover() : ThemeColors.card());
                 g2.fillRoundRect(0, 0, w, h, arc, arc);
 
-                g2.setColor(new Color(200, 200, 200));
+                g2.setColor(ThemeColors.borderStrong());
                 g2.setStroke(new BasicStroke(1.0f));
                 g2.drawRoundRect(0, 0, w - 1, h - 1, arc, arc);
 
                 boolean isFav = hasAnyCurrentSelection() && isCurrentSelectionFavorite();
                 String s = isFav ? "★" : "☆";
 
-                Color onC = new Color(0xFF, 0x7A, 0x00);
-                Color offC = new Color(60, 60, 60);
-                Color disabledC = new Color(150, 150, 150);
+                Color onC = ThemeColors.primary();
+                Color offC = ThemeColors.text();
+                Color disabledC = ThemeColors.disabledText();
                 g2.setColor(!isEnabled() ? disabledC : (isFav ? onC : offC));
 
                 g2.setFont(getFont().deriveFont(Font.BOLD, 20f));
@@ -931,8 +932,8 @@ public class DashboardView extends JPanel {
                 g2.scale(scale, scale);
                 g2.translate(-cx, -cy);
 
-                Color base = new Color(0xFF, 0x7A, 0x00);
-                Color hoverColor = new Color(0xFF, 0x8F, 0x33);
+                Color base = ThemeColors.primary();
+                Color hoverColor = ThemeColors.primaryHover();
 
                 g2.setColor(hover ? hoverColor : base);
                 g2.fillRoundRect(0, 0, size, size, arc, arc);
@@ -1213,7 +1214,7 @@ public class DashboardView extends JPanel {
             int barX = 6;
             int topPad = 6;
 
-            g2.setColor(new Color(0xFF, 0x7A, 0x00));
+            g2.setColor(ThemeColors.primary());
             g2.fillRoundRect(barX, topPad, barW, Math.max(10, h - (topPad * 2)), arc, arc);
 
             g2.dispose();
@@ -1240,12 +1241,12 @@ public class DashboardView extends JPanel {
 
             main = new JLabel();
             main.setOpaque(false);
-            main.setForeground(new Color(20, 20, 20));
+            main.setForeground(ThemeColors.text());
             main.setFont(main.getFont().deriveFont(Font.BOLD, 19f));
 
             sub = new JLabel();
             sub.setOpaque(false);
-            sub.setForeground(new Color(110, 110, 110));
+            sub.setForeground(ThemeColors.textMuted());
             sub.setFont(sub.getFont().deriveFont(Font.PLAIN, 14.5f));
 
             JPanel text = new JPanel();
@@ -1340,7 +1341,7 @@ public class DashboardView extends JPanel {
             int arc = 16;
 
             if (selected) {
-                g2.setColor(new Color(230, 230, 230));
+                g2.setColor(ThemeColors.selected());
             } else {
                 g2.setColor(new Color(255, 255, 255, 0));
             }
@@ -1352,12 +1353,12 @@ public class DashboardView extends JPanel {
             int ascent = tfm.getAscent();
             int topPad = 12;
             int dy = topPad + Math.max(0, (ascent - dot) / 2);
-            // realtime = green, static = orange (default), unknown = gray
+            // realtime = green, static = theme primary (default), unknown = gray
             Color dotColor;
             if (Boolean.TRUE.equals(realtimeDot)) {
                 dotColor = new Color(0, 140, 0);
             } else if (Boolean.FALSE.equals(realtimeDot)) {
-                dotColor = new Color(0xFF, 0x7A, 0x00);
+                dotColor = ThemeColors.primary();
             } else {
                 dotColor = new Color(140, 140, 140);
             }
@@ -1369,8 +1370,125 @@ public class DashboardView extends JPanel {
             super.paintComponent(g);
         }
     }
+    // ===================== THEME (safe via reflection) =====================
 
-    public ScrollingInfoBar getInfoBar() {
-        return infoBar;
+    private static final class ThemeColors {
+
+        private static final Color FALLBACK_PRIMARY = new Color(0xFF, 0x7A, 0x00);
+        private static final Color FALLBACK_PRIMARY_HOVER = new Color(0xFF, 0x8F, 0x33);
+        private static final Color FALLBACK_BG = AppConfig.BACKGROUND_COLOR;
+        private static final Color FALLBACK_CARD = Color.WHITE;
+
+        private static final Color FALLBACK_TEXT = new Color(25, 25, 25);
+        private static final Color FALLBACK_TEXT_MUTED = new Color(90, 90, 90);
+
+        private static final Color FALLBACK_BORDER = new Color(225, 225, 225);
+        private static final Color FALLBACK_BORDER_STRONG = new Color(200, 200, 200);
+
+        private static final Color FALLBACK_HOVER = new Color(245, 245, 245);
+        private static final Color FALLBACK_SELECTED = new Color(230, 230, 230);
+
+        private static final Color FALLBACK_DISABLED_TEXT = new Color(150, 150, 150);
+
+        private ThemeColors() {}
+
+        static Color primary() {
+            Color c = fromThemeField("primary");
+            return (c != null) ? c : FALLBACK_PRIMARY;
+        }
+
+        static Color primaryHover() {
+            // Se il tema non espone primaryHover, NON usare un fallback arancione.
+            // Deriviamo invece un hover dal primary corrente (così il tema resta coerente).
+            Color c = fromThemeField("primaryHover");
+            if (c != null) return c;
+
+            Color p = primary();
+            return lighten(p, 0.12f);
+        }
+
+        private static Color lighten(Color c, float amount) {
+            amount = Math.max(0f, Math.min(1f, amount));
+            int r = (int) Math.round(c.getRed()   + (255 - c.getRed())   * amount);
+            int g = (int) Math.round(c.getGreen() + (255 - c.getGreen()) * amount);
+            int b = (int) Math.round(c.getBlue()  + (255 - c.getBlue())  * amount);
+            int a = c.getAlpha();
+            return new Color(
+                    Math.max(0, Math.min(255, r)),
+                    Math.max(0, Math.min(255, g)),
+                    Math.max(0, Math.min(255, b)),
+                    Math.max(0, Math.min(255, a))
+            );
+        }
+
+        static Color bg() {
+            Color c = fromThemeField("bg");
+            return (c != null) ? c : FALLBACK_BG;
+        }
+
+        static Color card() {
+            Color c = fromThemeField("card");
+            return (c != null) ? c : FALLBACK_CARD;
+        }
+
+        static Color text() {
+            Color c = fromThemeField("text");
+            return (c != null) ? c : FALLBACK_TEXT;
+        }
+
+        static Color textMuted() {
+            Color c = fromThemeField("textMuted");
+            return (c != null) ? c : FALLBACK_TEXT_MUTED;
+        }
+
+        static Color border() {
+            Color c = fromThemeField("border");
+            return (c != null) ? c : FALLBACK_BORDER;
+        }
+
+        static Color borderStrong() {
+            Color c = fromThemeField("borderStrong");
+            return (c != null) ? c : FALLBACK_BORDER_STRONG;
+        }
+
+        static Color hover() {
+            Color c = fromThemeField("hover");
+            return (c != null) ? c : FALLBACK_HOVER;
+        }
+
+        static Color selected() {
+            Color c = fromThemeField("selected");
+            return (c != null) ? c : FALLBACK_SELECTED;
+        }
+
+        static Color disabledText() {
+            Color c = fromThemeField("disabledText");
+            return (c != null) ? c : FALLBACK_DISABLED_TEXT;
+        }
+
+        /**
+         * Prova a leggere un campo pubblico (Color) dall'oggetto Theme corrente:
+         * View.Theme.ThemeManager.get() -> Theme, poi fieldName.
+         * Se il sistema temi non è ancora presente, ritorna null e restano i fallback.
+         */
+        private static Color fromThemeField(String fieldName) {
+            try {
+                Class<?> tm = Class.forName("View.Theme.ThemeManager");
+                Method get = tm.getMethod("get");
+                Object theme = get.invoke(null);
+                if (theme == null) return null;
+
+                try {
+                    Field f = theme.getClass().getField(fieldName);
+                    Object v = f.get(theme);
+                    return (v instanceof Color col) ? col : null;
+                } catch (NoSuchFieldException nf) {
+                    // ok, campo non presente
+                    return null;
+                }
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
     }
 }
