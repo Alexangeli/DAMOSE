@@ -128,7 +128,7 @@ public class AccountSettingsDialog extends JDialog {
         menu.setBorder(new EmptyBorder(0, 0, 0, 16));
 
         btnGenerali = new SideMenuButton("Generali");
-        btnTema = new SideMenuButton("Cambia tema");
+        btnTema = new SideMenuButton("Tema");
         btnDashboard = new SideMenuButton("Dashboard");
 
         menu.add(btnGenerali);

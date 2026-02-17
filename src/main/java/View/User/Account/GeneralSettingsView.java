@@ -2,6 +2,7 @@ package View.User.Account;
 
 import javax.swing.*;
 import java.awt.*;
+import Model.User.Session;
 
 public class GeneralSettingsView extends JPanel {
 
@@ -24,6 +25,11 @@ public class GeneralSettingsView extends JPanel {
     private JTextField email;
     private JPasswordField password;
     private JLabel msg;
+
+    private boolean editMode = false;
+    private int realPasswordLength = 0;
+    private String realPassword = "";
+    private HoverScaleFillButton primaryBtn;
 
     public GeneralSettingsView(OnSave onSave) {
         this.onSave = onSave;
@@ -70,7 +76,7 @@ public class GeneralSettingsView extends JPanel {
 
         card.add(Box.createVerticalStrut(14));
 
-        card.add(labelLeft("Nuova password"));
+        card.add(labelLeft("Password"));
         card.add(Box.createVerticalStrut(8));
         card.add(roundedField(password));
 
@@ -84,18 +90,138 @@ public class GeneralSettingsView extends JPanel {
 
         card.add(Box.createVerticalStrut(10));
 
-        HoverScaleFillButton saveBtn = new HoverScaleFillButton("Salva", ORANGE, ORANGE_HOVER);
-        saveBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
-        saveBtn.setPreferredSize(new Dimension(FIELD_W, 46));
-        saveBtn.setMaximumSize(new Dimension(FIELD_W, 46));
-        card.add(saveBtn);
+        primaryBtn = new HoverScaleFillButton("Modifica", ORANGE, ORANGE_HOVER);
+        primaryBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
+        primaryBtn.setPreferredSize(new Dimension(FIELD_W, 46));
+        primaryBtn.setMaximumSize(new Dimension(FIELD_W, 46));
+        card.add(primaryBtn);
 
         card.add(Box.createVerticalGlue());
 
         add(card, BorderLayout.CENTER);
 
-        saveBtn.addActionListener(e -> doSave());
-        password.addActionListener(e -> saveBtn.doClick());
+        // inizializza campi con dati reali (Session) e parte in modalità "visualizza"
+        loadFromSession();
+        setEditMode(false);
+
+        primaryBtn.addActionListener(e -> onPrimaryAction());
+        password.addActionListener(e -> {
+            // Enter sulla password salva solo se siamo in edit mode
+            if (editMode) primaryBtn.doClick();
+        });
+    }
+
+    private void onPrimaryAction() {
+        // Se siamo in view mode → entra in edit mode
+        if (!editMode) {
+            setEditMode(true);
+            msg.setForeground(MUTED);
+            msg.setText(" ");
+            return;
+        }
+        // Se siamo in edit mode → salva
+        doSave();
+    }
+
+    private void setEditMode(boolean on) {
+        this.editMode = on;
+
+        // username/email
+        if (username != null) {
+            username.setEditable(on);
+            username.setEnabled(on);
+        }
+        if (email != null) {
+            email.setEditable(on);
+            email.setEnabled(on);
+        }
+
+        // password: in VIEW -> masked (******), in EDIT -> visible (plain)
+        if (password != null) {
+            // keep enabled so Swing actually paints the text; disable editing instead
+            password.setEnabled(true);
+            password.setEditable(on);
+
+            if (on) {
+                // edit mode: show real characters
+                password.setEchoChar((char) 0);
+                password.setText(realPassword != null ? realPassword : "");
+            } else {
+                // view mode: mask with '*'
+                password.setEchoChar('*');
+                password.setText(realPassword != null ? realPassword : "");
+                // optional: avoid focus/caret in view mode
+                password.setCaretPosition(0);
+            }
+        }
+
+        // testo bottone
+        if (primaryBtn != null) {
+            primaryBtn.setText(on ? "Salva" : "Modifica");
+        }
+
+        // focus sul primo campo quando entri in edit
+        if (on && username != null) {
+            SwingUtilities.invokeLater(() -> username.requestFocusInWindow());
+        }
+    }
+
+    /**
+     * Popola i campi con i dati reali letti da Session.getCurrentUser().
+     * Usa reflection per non dipendere dalla firma esatta di User.
+     */
+    private void loadFromSession() {
+        try {
+            Object u = Session.getCurrentUser();
+            if (u == null) return;
+
+            String uName = readString(u, "getUsername", "getUserName", "username");
+            String uEmail = readString(u, "getEmail", "email");
+
+            if (uName != null && username != null) username.setText(uName);
+            if (uEmail != null && email != null) email.setText(uEmail);
+
+            String rawPass = readString(u, "getPassword", "password");
+            realPassword = (rawPass != null) ? rawPass : "";
+            realPasswordLength = realPassword.length();
+
+            if (password != null) {
+                // default: view mode look (masked)
+                password.setEchoChar('*');
+                password.setText(realPassword);
+            }
+        } catch (Exception ignored) {
+            // noop
+        }
+    }
+
+    private static String readString(Object obj, String... candidates) {
+        if (obj == null) return null;
+        for (String c : candidates) {
+            try {
+                // prova getter
+                if (c.startsWith("get")) {
+                    var m = obj.getClass().getMethod(c);
+                    Object out = m.invoke(obj);
+                    if (out != null) {
+                        String s = String.valueOf(out).trim();
+                        if (!s.isEmpty()) return s;
+                    }
+                } else {
+                    // prova field pubblico/privato
+                    var f = obj.getClass().getDeclaredField(c);
+                    f.setAccessible(true);
+                    Object out = f.get(obj);
+                    if (out != null) {
+                        String s = String.valueOf(out).trim();
+                        if (!s.isEmpty()) return s;
+                    }
+                }
+            } catch (Exception ignored) {
+                // continua
+            }
+        }
+        return null;
     }
 
     private void doSave() {
@@ -117,9 +243,18 @@ public class GeneralSettingsView extends JPanel {
 
         if (onSave != null) onSave.save(u, e, p);
 
+        // aggiorna cache locale (in attesa che il backend aggiorni Session)
+        if (!p.isEmpty()) {
+            realPassword = p;
+            realPasswordLength = p.length();
+        }
+
         msg.setForeground(new Color(20, 140, 0));
-        msg.setText("Modifiche inviate (backend da collegare).");
-        password.setText("");
+        msg.setText("Modifiche salvate.");
+
+        // torna in view mode e ricarica (se il backend aggiorna Session)
+        setEditMode(false);
+        loadFromSession();
     }
 
     private static String safe(String s) {
