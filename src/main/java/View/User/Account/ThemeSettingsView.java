@@ -1,5 +1,6 @@
 package View.User.Account;
 
+import java.lang.reflect.*;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
@@ -14,6 +15,10 @@ public class ThemeSettingsView extends JPanel {
     private static final Color ORANGE = new Color(0xFF, 0x7A, 0x00);
     private static final Color ORANGE_HOVER = new Color(0xFF, 0x8F, 0x33);
     private static final Color MUTED = new Color(120, 120, 120);
+
+    // Rosso pompeiano / ATAC (puoi affinare i valori quando vuoi)
+    private static final Color POMPEII = new Color(0xC0, 0x39, 0x2B);
+    private static final Color POMPEII_HOVER = new Color(0xE7, 0x4C, 0x3C);
 
     private final OnPickTheme onPick;
 
@@ -37,7 +42,7 @@ public class ThemeSettingsView extends JPanel {
         title.setFont(new Font("SansSerif", Font.BOLD, 22));
         title.setForeground(new Color(15, 15, 15));
 
-        JLabel subtitle = new JLabel("Placeholder: qui sceglierai 1 tra 3 temi");
+        JLabel subtitle = new JLabel("Scegli tra Tema Arancione e Tema ATAC)");
         subtitle.setFont(new Font("SansSerif", Font.PLAIN, 13));
         subtitle.setForeground(MUTED);
 
@@ -46,26 +51,64 @@ public class ThemeSettingsView extends JPanel {
         col.add(subtitle);
         col.add(Box.createVerticalStrut(18));
 
-        ThemePickButton t1 = new ThemePickButton("Tema 1 (Chiaro)");
-        ThemePickButton t2 = new ThemePickButton("Tema 2 (Scuro)");
-        ThemePickButton t3 = new ThemePickButton("Tema 3 (Extra)");
+        ThemePickButton orangeBtn = new ThemePickButton("Tema Arancione", ORANGE, ORANGE_HOVER);
+        ThemePickButton atacBtn   = new ThemePickButton("Tema ATAC", POMPEII, POMPEII_HOVER);
 
-        t1.addActionListener(e -> { if (onPick != null) onPick.pick("THEME_1"); });
-        t2.addActionListener(e -> { if (onPick != null) onPick.pick("THEME_2"); });
-        t3.addActionListener(e -> { if (onPick != null) onPick.pick("THEME_3"); });
+        orangeBtn.addActionListener(e -> applyTheme("DEFAULT_ARANCIONE"));
+        atacBtn.addActionListener(e -> applyTheme("ROSSO_POMPEIANO"));
 
-        t1.setAlignmentX(Component.LEFT_ALIGNMENT);
-        t2.setAlignmentX(Component.LEFT_ALIGNMENT);
-        t3.setAlignmentX(Component.LEFT_ALIGNMENT);
+        orangeBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
+        atacBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        col.add(t1);
+        col.add(orangeBtn);
         col.add(Box.createVerticalStrut(10));
-        col.add(t2);
-        col.add(Box.createVerticalStrut(10));
-        col.add(t3);
+        col.add(atacBtn);
         col.add(Box.createVerticalGlue());
 
         add(col, BorderLayout.CENTER);
+    }
+
+    /**
+     * Applica subito il tema se esiste View.Theme.ThemeManager (safe via reflection).
+     * In ogni caso notifica anche il callback onPick (così il controller può salvare la scelta).
+     */
+    private void applyTheme(String themeKey) {
+        // 1) prova switch tema via ThemeManager/Teams (se già presenti)
+        try {
+            Class<?> themesClz = Class.forName("View.Theme.Themes");
+            Object themeObj;
+            if ("ROSSO_POMPEIANO".equals(themeKey)) {
+                Field f = themesClz.getField("ROSSO_POMPEIANO");
+                themeObj = f.get(null);
+            } else {
+                Field f = themesClz.getField("DEFAULT_ARANCIONE");
+                themeObj = f.get(null);
+            }
+
+            Class<?> tmClz = Class.forName("View.Theme.ThemeManager");
+            Method setM = tmClz.getMethod("set", Class.forName("View.Theme.Theme"));
+            setM.invoke(null, themeObj);
+
+            // refresh finestra
+            Window w = SwingUtilities.getWindowAncestor(this);
+            try {
+                Method applyWin = tmClz.getMethod("applyToWindow", Window.class);
+                applyWin.invoke(null, w);
+            } catch (NoSuchMethodException nsme) {
+                // fallback: refresh Swing standard
+                if (w != null) {
+                    SwingUtilities.updateComponentTreeUI(w);
+                    w.invalidate();
+                    w.validate();
+                    w.repaint();
+                }
+            }
+        } catch (Exception ignored) {
+            // Se ThemeManager non esiste ancora, non facciamo nulla qui.
+        }
+
+        // 2) notifica callback (persistenza / logica esterna)
+        if (onPick != null) onPick.pick(themeKey);
     }
 
     private static class ThemePickButton extends JButton {
@@ -73,9 +116,13 @@ public class ThemeSettingsView extends JPanel {
         private double scale = 1.0;
         private double targetScale = 1.0;
         private final Timer anim;
+        private final Color baseColor;
+        private final Color hoverColor;
 
-        ThemePickButton(String text) {
+        ThemePickButton(String text, Color base, Color hoverCol) {
             super(text);
+            this.baseColor = base;
+            this.hoverColor = hoverCol;
             setFocusPainted(false);
             setBorderPainted(false);
             setContentAreaFilled(false);
@@ -116,7 +163,7 @@ public class ThemeSettingsView extends JPanel {
             g2.translate(-cx, -cy);
 
             int arc = 14;
-            g2.setColor(hover ? ORANGE_HOVER : ORANGE);
+            g2.setColor(hover ? hoverColor : baseColor);
             g2.fillRoundRect(0, 0, w, h, arc, arc);
 
             g2.dispose();

@@ -22,6 +22,18 @@ public class ScrollingInfoBar extends JPanel {
     private int messageWidth = 0;
 
     private int countdown = 30;
+
+    // ===================== BACKEND =====================
+    // Il Controller può chiamare questo metodo per aggiornare
+    // il countdown reale sincronizzato con il refresh backend.
+    // Esempio:
+    //    infoBar.setSecondsToNextRefresh(secondsRemaining);
+    // ================================================
+    public void setSecondsToNextRefresh(int seconds) {
+        this.countdown = Math.max(0, seconds);
+        updateMessage();
+    }
+
     private int totalCorse = 0; // verrà collegato al backend
 
     private final Timer scrollTimer;
@@ -54,10 +66,23 @@ public class ScrollingInfoBar extends JPanel {
         scrollTimer.start();
 
         // ===== Countdown (1s) =====
+        // ⚠️ BACKEND: qui NON dovrebbe vivere la logica reale di refresh.
+        // Idealmente il Controller deve:
+        //  - chiamare il backend ogni 30s
+        //  - poi chiamare setSecondsToNextRefresh(...)
         countdownTimer = new Timer(1000, e -> {
             countdown--;
             if (countdown <= 0) {
                 countdown = 30;
+
+                // ===================== BACKEND =====================
+                // QUI il Controller dovrebbe intercettare lo scatto dei 30s
+                // ed eseguire:
+                //   - refresh dati real-time
+                //   - aggiornamento totale corse (setTotalCorse)
+                // Questa classe dovrebbe solo mostrare il valore.
+                // ================================================
+
             }
             updateMessage();
         });
@@ -68,7 +93,13 @@ public class ScrollingInfoBar extends JPanel {
         clockTimer.start();
     }
 
-    // Aggiornabile dal backend
+
+    // ===================== BACKEND =====================
+    // Questo metodo deve essere chiamato dal Controller
+    // quando riceve dal backend il nuovo numero totale di corse attive.
+    // Esempio nel Controller:
+    //    infoBar.setTotalCorse(service.getTotalTripsNow());
+    // ================================================
     public void setTotalCorse(int total) {
         this.totalCorse = Math.max(0, total);
         updateMessage();

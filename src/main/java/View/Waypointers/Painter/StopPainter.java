@@ -10,6 +10,7 @@ import java.awt.*;
 import java.awt.geom.Point2D;
 import java.util.HashSet;
 import java.util.Set;
+import java.lang.reflect.*;
 
 /**
  * Disegna i waypoint delle fermate.
@@ -68,10 +69,13 @@ public class StopPainter extends WaypointPainter<Waypoint> {
     }
 
     private void drawDot(Graphics2D g, int x, int y) {
-        g.setColor(new Color(255, 0, 0, 200));
+        Color fill = withAlpha(themePrimaryOrFallback(), 200);
+        Color stroke = themeBorderStrongOrFallback(fill);
+
+        g.setColor(fill);
         g.fillOval(x - DOT_SIZE / 2, y - DOT_SIZE / 2, DOT_SIZE, DOT_SIZE);
 
-        g.setColor(Color.BLACK);
+        g.setColor(stroke);
         g.drawOval(x - DOT_SIZE / 2, y - DOT_SIZE / 2, DOT_SIZE, DOT_SIZE);
     }
 
@@ -84,7 +88,9 @@ public class StopPainter extends WaypointPainter<Waypoint> {
         int circleCenterY = y - r * 2;   // sposto il cerchio sopra la punta
 
         // corpo rosso
-        g.setColor(new Color(220, 0, 0, 230));
+        Color fill = withAlpha(themePrimaryOrFallback(), 230);
+        Color stroke = themeBorderStrongOrFallback(fill);
+        g.setColor(fill);
         g.fillOval(x - r, circleCenterY - r, 2 * r, 2 * r);
 
         Polygon p = new Polygon();
@@ -94,7 +100,7 @@ public class StopPainter extends WaypointPainter<Waypoint> {
         g.fillPolygon(p);
 
         // bordo
-        g.setColor(Color.DARK_GRAY);
+        g.setColor(stroke);
         g.drawOval(x - r, circleCenterY - r, 2 * r, 2 * r);
         g.drawPolygon(p);
 
@@ -111,5 +117,60 @@ public class StopPainter extends WaypointPainter<Waypoint> {
         double eps = 1e-6;
         return Math.abs(a.getLatitude() - b.getLatitude()) < eps
                 && Math.abs(a.getLongitude() - b.getLongitude()) < eps;
+    }
+
+    // ===================== THEME (safe via reflection) =====================
+
+    private static Color themePrimaryOrFallback() {
+        Color c = fromThemeField("primary");
+        return (c != null) ? c : new Color(255, 0, 0);
+    }
+
+    private static Color themeBorderStrongOrFallback(Color base) {
+        Color c = fromThemeField("borderStrong");
+        if (c != null) return c;
+        // fallback: a slightly darker stroke derived from base
+        return darken(base, 0.55);
+    }
+
+    private static Color withAlpha(Color c, int a) {
+        if (c == null) return null;
+        int aa = Math.max(0, Math.min(255, a));
+        return new Color(c.getRed(), c.getGreen(), c.getBlue(), aa);
+    }
+
+    private static Color darken(Color c, double factor) {
+        if (c == null) return null;
+        factor = Math.max(0.0, Math.min(1.0, factor));
+        int r = (int) Math.round(c.getRed() * factor);
+        int g = (int) Math.round(c.getGreen() * factor);
+        int b = (int) Math.round(c.getBlue() * factor);
+        return new Color(r, g, b, c.getAlpha());
+    }
+
+    /**
+     * Prova a leggere un campo pubblico (Color) dall'oggetto Theme corrente:
+     * View.Theme.ThemeManager.get() -> Theme, poi fieldName.
+     * Se il sistema temi non è presente, ritorna null.
+     */
+    private static Color fromThemeField(String fieldName) {
+        try {
+            Class<?> tm = Class.forName("View.Theme.ThemeManager");
+            Method get = tm.getMethod("get");
+            Object theme = get.invoke(null);
+            if (theme == null) return null;
+
+            Field f;
+            try {
+                f = theme.getClass().getField(fieldName);
+            } catch (NoSuchFieldException nf) {
+                return null;
+            }
+
+            Object v = f.get(theme);
+            return (v instanceof Color col) ? col : null;
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 }
