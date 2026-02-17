@@ -8,6 +8,7 @@ import Controller.SearchMode.SearchMode;
 import View.Map.LineStopsView;
 import View.Map.MapView;
 import View.SearchBar.SearchBarView;
+import View.components.ScrollingInfoBar;
 
 import javax.swing.*;
 import java.awt.*;
@@ -66,6 +67,9 @@ public class DashboardView extends JPanel {
 
     private final JLayeredPane layeredPane;
     private boolean clickAwayInstalled = false;
+
+    // Barra informativa scorrevole in basso
+    private final ScrollingInfoBar infoBar;
 
     // Callback per richiedere login (apre AuthDialog). Viene impostato dal Main.
     private Runnable onRequireAuth;
@@ -296,6 +300,10 @@ public class DashboardView extends JPanel {
         layeredPane.moveToFront(favoritesButton);
 
         add(layeredPane, BorderLayout.CENTER);
+
+        // ===== Barra informativa scorrevole (bottom ticker) =====
+        infoBar = new ScrollingInfoBar();
+        add(infoBar, BorderLayout.SOUTH);
 
         installExpandOnClick(searchBarView);
         installShowDetailsOnEnter();
