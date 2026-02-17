@@ -78,7 +78,7 @@ public class StopLinesController {
         currentStopName = stop.getName();
 
         List<ArrivalRow> rows = arrivalPredictionService.getArrivalsForStop(currentStopId);
-        view.showArrivalsAtStop(currentStopName, rows);
+        view.showArrivalsAtStop(currentStopName, currentStopId, rows);
 
         if (!refreshTimer.isRunning()) refreshTimer.start();
     }
@@ -94,7 +94,7 @@ public class StopLinesController {
         if (stopId == null || stopId.isBlank()) return;
 
         List<ArrivalRow> rows = arrivalPredictionService.getArrivalsForStop(stopId);
-        view.showArrivalsAtStop(stopName != null ? stopName : "", rows);
+        view.showArrivalsAtStop(stopName != null ? stopName : "", stopId, rows);
 
         System.out.println("[StopLinesController] refresh arrivals stopId=" + stopId);
     }

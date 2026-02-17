@@ -28,11 +28,12 @@ public final class TripUpdatesRtIndex {
             int dir = (dirObj == null) ? -1 : dirObj;
 
             Long feedTs = tu.timestamp;
-            Integer tuDelay = tu.delay; // seconds, può essere null
+            Integer tuDelay = tu.delay;
+
+            String tripId = safe(tu.tripId);          // ✅ NEW
+            if (tripId.isEmpty()) tripId = null;      // ✅ normalize
 
             if (tu.stopTimeUpdates == null || tu.stopTimeUpdates.isEmpty()) {
-                // non possiamo indicizzare ETA per stop, ma il delay del trip può servire allo storico
-                // (lo useremo in ArrivalPredictionService per history, se vuoi)
                 continue;
             }
 
@@ -56,10 +57,10 @@ public final class TripUpdatesRtIndex {
                                 (stu.departureDelay != null) ? stu.departureDelay :
                                         tuDelay;
 
-                // scarta ETA nel passato
                 if (eta != null && eta < nowEpoch) continue;
 
-                BestEta candidate = new BestEta(eta, delaySec, realtime, source, feedTs);
+                // ✅ NEW: includi tripId
+                BestEta candidate = new BestEta(tripId, eta, delaySec, realtime, source, feedTs);
 
                 idx.computeIfAbsent(routeId, k -> new HashMap<>())
                         .computeIfAbsent(dir, k -> new HashMap<>())

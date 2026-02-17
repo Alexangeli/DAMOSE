@@ -169,7 +169,8 @@ public class ArrivalPredictionService {
 
             int minutes = (int) ((best.etaEpoch - now) / 60);
             LocalTime time = Instant.ofEpochSecond(best.etaEpoch).atZone(ZoneId.systemDefault()).toLocalTime();
-            return new ArrivalRow(routeId, -1, line, headsign, minutes, time, true);
+            String tripId = best.tripId; // può essere null, ok
+            return new ArrivalRow(tripId, routeId, directionId, line, headsign, minutes, time, true);
         }
 
         BestEta best = rtIndex.findBestEta(routeId, directionId, stopId);
@@ -177,7 +178,8 @@ public class ArrivalPredictionService {
 
         int minutes = (int) ((best.etaEpoch - now) / 60);
         LocalTime time = Instant.ofEpochSecond(best.etaEpoch).atZone(ZoneId.systemDefault()).toLocalTime();
-        return new ArrivalRow(routeId, directionId, line, headsign, minutes, time, true);
+        String tripId = best.tripId; // può essere null, ok
+        return new ArrivalRow(tripId, routeId, directionId, line, headsign, minutes, time, true);
     }
 
     private static BestEta pickBest(BestEta a, BestEta b) {
@@ -195,7 +197,7 @@ public class ArrivalPredictionService {
 
         Integer bestSec = findBestStaticArrivalSec(stopId, routeId, directionId, nowSec);
         if (bestSec == null) {
-            return new ArrivalRow(routeId, directionId, line, headsign, null, null, false);
+            return new ArrivalRow(null, routeId, directionId, line, headsign, null, null, false);
         }
 
         // ✅ delay stimato solo se directionId != -1 (merged non ha senso stimare)
@@ -209,7 +211,7 @@ public class ArrivalPredictionService {
         }
 
         LocalTime bestTime = LocalTime.ofSecondOfDay(Math.floorMod(bestSec, 86400));
-        return new ArrivalRow(routeId, directionId, line, headsign, null, bestTime, false);
+        return new ArrivalRow(null, routeId, directionId, line, headsign, null, bestTime, false);
     }
 
     private Integer findBestStaticArrivalSec(String stopId, String routeId, int directionId, int nowSec) {
