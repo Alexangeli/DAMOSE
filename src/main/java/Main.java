@@ -1,4 +1,5 @@
 // Main.java
+import Controller.User.account.AccountSettingsController;
 import config.AppConfig;
 
 import javax.swing.*;
@@ -140,6 +141,7 @@ public class Main {
         };
 
         dashboardView.setOnRequireAuth(openAuthDialog);
+        AccountSettingsController accountSettingsController = new AccountSettingsController();
 
         AccountDropdown dropdown = new AccountDropdown(
                 myFrame,
@@ -148,15 +150,26 @@ public class Main {
                     AccountSettingsDialog dlg = new AccountSettingsDialog(myFrame, new AccountSettingsDialog.Callbacks() {
                         @Override
                         public void onSaveGeneral(String username, String email, String newPassword) {
-                            // TODO: collegare controller/DB
-                            JOptionPane.showMessageDialog(
-                                    myFrame,
-                                    "Modifiche inviate (backend da collegare).\n" +
-                                            "Username: " + username + "\n" +
-                                            "Email: " + email,
-                                    "Salvataggio",
-                                    JOptionPane.INFORMATION_MESSAGE
-                            );
+                            boolean ok = accountSettingsController.updateCurrentUserProfile(username, email, newPassword);
+
+                            if (!ok) {
+                                JOptionPane.showMessageDialog(
+                                        myFrame,
+                                        "Salvataggio fallito (username/email già esistenti oppure errore DB).",
+                                        "Errore",
+                                        JOptionPane.ERROR_MESSAGE
+                                );
+                                return;
+                            }
+
+                            // aggiorna UI “avatar/login button” e dropdown username
+                            AppShellView shell = shellRef.get();
+                            if (shell != null) shell.refreshAuthButton();
+
+                            AccountDropdown dd = dropdownRef.get();
+                            if (dd != null && Session.getCurrentUser() != null) {
+                                dd.setUsername(Session.getCurrentUser().getUsername());
+                            }
                         }
 
                         @Override
