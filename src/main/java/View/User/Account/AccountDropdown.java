@@ -100,7 +100,7 @@ public class AccountDropdown {
 
         helloLabel.setForeground(new Color(15, 15, 15));
 
-        manageBtn = new OutlineButton("Informazioni account");
+        manageBtn = new OutlineButton("Gestisci il tuo account");
         logoutBtn = new HoverFillButton("Logout");
 
         // Allineamento orizzontale: CENTRO

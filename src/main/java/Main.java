@@ -24,6 +24,7 @@ import View.DashboardView;
 
 import View.User.Account.AccountDropdown;
 import View.User.Account.AuthDialog;
+import View.User.Account.AccountSettingsDialog;
 
 import java.awt.*;
 import javax.swing.ImageIcon;
@@ -143,22 +144,40 @@ public class Main {
         AccountDropdown dropdown = new AccountDropdown(
                 myFrame,
                 () -> {
-                    Object u = Session.getCurrentUser();
-                    String username = "(guest)";
-                    try {
-                        if (u != null) {
-                            var m = u.getClass().getMethod("getUsername");
-                            Object out = m.invoke(u);
-                            if (out != null) username = String.valueOf(out);
+                    // Apri finestra impostazioni account (frontend)
+                    AccountSettingsDialog dlg = new AccountSettingsDialog(myFrame, new AccountSettingsDialog.Callbacks() {
+                        @Override
+                        public void onSaveGeneral(String username, String email, String newPassword) {
+                            // TODO: collegare controller/DB
+                            JOptionPane.showMessageDialog(
+                                    myFrame,
+                                    "Modifiche inviate (backend da collegare).\n" +
+                                            "Username: " + username + "\n" +
+                                            "Email: " + email,
+                                    "Salvataggio",
+                                    JOptionPane.INFORMATION_MESSAGE
+                            );
                         }
-                    } catch (Exception ignored) {}
 
-                    JOptionPane.showMessageDialog(
-                            myFrame,
-                            "Profilo utente: " + username,
-                            "Profilo",
-                            JOptionPane.INFORMATION_MESSAGE
-                    );
+                        @Override
+                        public void onPickTheme(String themeKey) {
+                            // TODO: implementerete più avanti i 3 temi
+                            JOptionPane.showMessageDialog(
+                                    myFrame,
+                                    "Tema selezionato: " + themeKey + " (placeholder)",
+                                    "Tema",
+                                    JOptionPane.INFORMATION_MESSAGE
+                            );
+                        }
+
+                        @Override
+                        public AccountSettingsDialog.DashboardData requestDashboardData() {
+                            // TODO: collegare agli alert real-time del collega
+                            return new AccountSettingsDialog.DashboardData(0, 0, 0);
+                        }
+                    });
+
+                    dlg.showCentered();
                 },
                 () -> {
                     Session.logout();
