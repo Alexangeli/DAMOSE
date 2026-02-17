@@ -27,13 +27,14 @@ public class AccountSettingsDialog extends JDialog {
     }
 
     public static class DashboardData {
-        public final int onTime;
-        public final int delayed;
-        public final int canceled;
-        public DashboardData(int onTime, int delayed, int canceled) {
+        public final int early;    // anticipo (delay < 0, oltre soglia)
+        public final int onTime;   // in orario (|delay| <= soglia)
+        public final int delayed;  // ritardo (delay > 0, oltre soglia)
+
+        public DashboardData(int early, int onTime, int delayed) {
+            this.early = Math.max(0, early);
             this.onTime = Math.max(0, onTime);
             this.delayed = Math.max(0, delayed);
-            this.canceled = Math.max(0, canceled);
         }
     }
 
@@ -75,13 +76,13 @@ public class AccountSettingsDialog extends JDialog {
         root.setBorder(new EmptyBorder(18, 18, 18, 18));
         setContentPane(root);
 
-        // ===== card container principale (bianco) =====
+        // ===== shell bianco =====
         JPanel shell = new JPanel(new BorderLayout());
         shell.setBackground(Color.WHITE);
         shell.setBorder(new EmptyBorder(18, 18, 18, 18));
         root.add(shell, BorderLayout.CENTER);
 
-        // ===== header =====
+        // ===== header (titolo + sottotitolo + chiudi) =====
         JPanel header = new JPanel(new BorderLayout());
         header.setOpaque(false);
 
@@ -107,13 +108,23 @@ public class AccountSettingsDialog extends JDialog {
         close.setForeground(MUTED);
         close.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         close.setFont(new Font("SansSerif", Font.PLAIN, 13));
+        close.addMouseListener(new MouseAdapter() {
+            @Override public void mouseEntered(MouseEvent e) { close.setForeground(new Color(60, 60, 60)); }
+            @Override public void mouseExited(MouseEvent e)  { close.setForeground(MUTED); }
+        });
         close.addActionListener(e -> dispose());
 
         header.add(titleBox, BorderLayout.WEST);
         header.add(close, BorderLayout.EAST);
 
         shell.add(header, BorderLayout.NORTH);
-        shell.add(new JSeparator(), BorderLayout.CENTER);
+
+        // ===== separatore sotto header =====
+        JPanel headerSepWrap = new JPanel(new BorderLayout());
+        headerSepWrap.setOpaque(false);
+        headerSepWrap.setBorder(new EmptyBorder(14, 0, 0, 0));
+        headerSepWrap.add(new JSeparator(), BorderLayout.CENTER);
+        shell.add(headerSepWrap, BorderLayout.CENTER);
 
         // ===== body (menu + contenuto) =====
         JPanel body = new JPanel(new BorderLayout());
@@ -138,13 +149,13 @@ public class AccountSettingsDialog extends JDialog {
         menu.add(btnDashboard);
         menu.add(Box.createVerticalGlue());
 
-        // ---- contenuto destro ----
+        // ---- contenuto destro (cardlayout) ----
         contentCL = new CardLayout();
         contentCards = new JPanel(contentCL);
         contentCards.setOpaque(false);
 
-        generalView = new GeneralSettingsView((u,e,p) -> {
-            if (cb != null) cb.onSaveGeneral(u,e,p);
+        generalView = new GeneralSettingsView((u, e, p) -> {
+            if (cb != null) cb.onSaveGeneral(u, e, p);
         });
 
         themeView = new ThemeSettingsView(themeKey -> {
@@ -152,9 +163,9 @@ public class AccountSettingsDialog extends JDialog {
         });
 
         dashboardView = new DashboardStatsView(() -> {
-            if (cb == null) return new DashboardData(0,0,0);
+            if (cb == null) return new DashboardData(0, 0, 0);
             DashboardData d = cb.requestDashboardData();
-            return (d != null) ? d : new DashboardData(0,0,0);
+            return (d != null) ? d : new DashboardData(0, 0, 0);
         });
 
         contentCards.add(generalView, "GEN");
@@ -169,7 +180,7 @@ public class AccountSettingsDialog extends JDialog {
         body.add(menu, BorderLayout.WEST);
         body.add(contentWrap, BorderLayout.CENTER);
 
-        // ---- navigation ----
+        // ===== navigation =====
         btnGenerali.addActionListener(e -> showSection("GEN"));
         btnTema.addActionListener(e -> showSection("THEME"));
         btnDashboard.addActionListener(e -> showSection("DASH"));

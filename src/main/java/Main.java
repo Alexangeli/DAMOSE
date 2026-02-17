@@ -172,8 +172,21 @@ public class Main {
 
                         @Override
                         public AccountSettingsDialog.DashboardData requestDashboardData() {
-                            // TODO: collegare agli alert real-time del collega
-                            return new AccountSettingsDialog.DashboardData(0, 0, 0);
+                            final int ON_TIME_WINDOW_SEC = 60;
+
+                            int early = 0, onTime = 0, delayed = 0;
+                            var list = tripSvc.getTripUpdates();
+                            if (list != null) {
+                                for (var t : list) {
+                                    if (t == null || t.delay == null) continue;
+                                    int d = t.delay;
+
+                                    if (Math.abs(d) <= ON_TIME_WINDOW_SEC) onTime++;
+                                    else if (d < 0) early++;
+                                    else delayed++;
+                                }
+                            }
+                            return new AccountSettingsDialog.DashboardData(early, onTime, delayed);
                         }
                     });
 
