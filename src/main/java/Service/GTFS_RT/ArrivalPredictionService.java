@@ -135,6 +135,9 @@ public class ArrivalPredictionService {
     // ========================= LINE MODE =========================
 
     public ArrivalRow getNextForStopOnRoute(String stopId, String routeId, int directionId) {
+        System.out.println("[ETA NEXT ACTIVE] stop=" + stopId
+                + " route=" + routeId + " dir=" + directionId
+                + " state=" + statusProvider.getState());
         if (stopId == null || stopId.isBlank()) return null;
         if (routeId == null || routeId.isBlank()) return null;
 
