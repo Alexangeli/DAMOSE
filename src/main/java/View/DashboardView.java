@@ -982,6 +982,7 @@ public class DashboardView extends JPanel {
     public SearchBarView getSearchBarView() { return searchBarView; }
     public LineStopsView getLineStopsView() { return lineStopsView; }
     public JButton getFavoritesButton() { return favoritesButton; }
+    public ScrollingInfoBar getInfoBar() {return infoBar;}
 
     public void setFavoritesCount(int count) {
         this.favoritesCount = Math.max(0, count);
