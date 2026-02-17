@@ -45,6 +45,9 @@ public class RealTimeController {
 
     private volatile boolean realtimeRunning = false;
 
+    // Countdown “di sistema”
+    private volatile long nextFetchAtMs = 0L;
+
     // callback UI
     private Consumer<List<VehicleInfo>> onVehicles = v -> {};
     private Consumer<List<TripUpdateInfo>> onTripUpdates = t -> {};
@@ -56,7 +59,7 @@ public class RealTimeController {
     private long lastTripsHash = Long.MIN_VALUE;
     private long lastAlertsHash = Long.MIN_VALUE;
 
-    // NEW: republish alerts anche se uguali
+    // republish alerts anche se uguali
     private long lastAlertsPublishMs = 0;
 
     public RealTimeController(ConnectionStatusProvider statusProvider,
@@ -83,14 +86,18 @@ public class RealTimeController {
         this.statusListener = newState -> SwingUtilities.invokeLater(() -> {
             onConnectionState.accept(newState);
 
-            if (newState == ConnectionState.ONLINE) startRealtimeIfNeeded();
-            else stopRealtimeIfNeeded();
+            if (newState == ConnectionState.ONLINE) {
+                // appena online, avvia e imposta countdown “sensato”
+                nextFetchAtMs = System.currentTimeMillis() + ALERTS_REPUBLISH_MS;
+                startRealtimeIfNeeded();
+            } else {
+                nextFetchAtMs = 0L;
+                stopRealtimeIfNeeded();
+            }
         });
     }
 
-    /* =========================
-       Lifecycle
-       ========================= */
+    // ========================= Lifecycle =========================
 
     public void start() {
         statusProvider.addListener(statusListener);
@@ -100,8 +107,13 @@ public class RealTimeController {
         ConnectionState s = statusProvider.getState();
         SwingUtilities.invokeLater(() -> onConnectionState.accept(s));
 
-        if (s == ConnectionState.ONLINE) startRealtimeIfNeeded();
-        else stopRealtimeIfNeeded();
+        if (s == ConnectionState.ONLINE) {
+            nextFetchAtMs = System.currentTimeMillis() + ALERTS_REPUBLISH_MS;
+            startRealtimeIfNeeded();
+        } else {
+            nextFetchAtMs = 0L;
+            stopRealtimeIfNeeded();
+        }
     }
 
     public void stop() {
@@ -113,9 +125,7 @@ public class RealTimeController {
         } catch (Exception ignored) { }
     }
 
-    /* =========================
-       Binding callback UI
-       ========================= */
+    // ========================= Binding callback UI =========================
 
     public void setOnVehicles(Consumer<List<VehicleInfo>> cb) {
         this.onVehicles = (cb != null) ? cb : v -> {};
@@ -133,9 +143,7 @@ public class RealTimeController {
         this.onConnectionState = (cb != null) ? cb : s -> {};
     }
 
-    /* =========================
-       Pull access (opzionale)
-       ========================= */
+    // ========================= Pull access =========================
 
     public List<VehicleInfo> getVehicles() {
         List<VehicleInfo> v = vehicleService.getVehicles();
@@ -156,9 +164,19 @@ public class RealTimeController {
         return statusProvider.getState();
     }
 
-    /* =========================
-       Internals: start/stop servizi
-       ========================= */
+    /** Countdown in secondi al “prossimo giro” (basato sul republish 30s). */
+    public int getSecondsToNextFetch() {
+        if (getConnectionState() != ConnectionState.ONLINE) return -1;
+
+        long next = nextFetchAtMs;
+        if (next <= 0) return -1;
+
+        long diff = next - System.currentTimeMillis();
+        if (diff < 0) diff = 0;
+        return (int) (diff / 1000);
+    }
+
+    // ========================= start/stop servizi =========================
 
     private void startRealtimeIfNeeded() {
         if (realtimeRunning) return;
@@ -177,16 +195,13 @@ public class RealTimeController {
         tripUpdatesService.stop();
         alertsService.stop();
 
-        // reset per forzare refresh UI alla prossima ONLINE
         lastVehiclesHash = Long.MIN_VALUE;
         lastTripsHash = Long.MIN_VALUE;
         lastAlertsHash = Long.MIN_VALUE;
         lastAlertsPublishMs = 0;
     }
 
-    /* =========================
-       Internals: publish UI
-       ========================= */
+    // ========================= publish UI =========================
 
     private void publishToUi() {
         List<VehicleInfo> vehicles = getVehicles();
@@ -207,7 +222,6 @@ public class RealTimeController {
             SwingUtilities.invokeLater(() -> onTripUpdates.accept(trips));
         }
 
-        // ALERTS: cambia OR ripubblica almeno ogni 30s
         long now = System.currentTimeMillis();
         boolean timeToRepublish = (now - lastAlertsPublishMs) >= ALERTS_REPUBLISH_MS;
 
@@ -216,11 +230,14 @@ public class RealTimeController {
             lastAlertsPublishMs = now;
             SwingUtilities.invokeLater(() -> onAlerts.accept(alerts));
         }
+
+        // countdown: allinealo al republish (30s)
+        if (timeToRepublish) {
+            nextFetchAtMs = System.currentTimeMillis() + ALERTS_REPUBLISH_MS;
+        }
     }
 
-    /* =========================
-       Cheap hashes (limit 50)
-       ========================= */
+    // ========================= Cheap hashes (limit 50) =========================
 
     private static long cheapHashVehicles(List<VehicleInfo> vehicles) {
         long h = vehicles.size();

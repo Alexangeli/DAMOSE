@@ -303,6 +303,8 @@ public class DashboardView extends JPanel {
 
         // ===== Barra informativa scorrevole (bottom ticker) =====
         infoBar = new ScrollingInfoBar();
+
+
         add(infoBar, BorderLayout.SOUTH);
 
         installExpandOnClick(searchBarView);
@@ -1366,5 +1368,9 @@ public class DashboardView extends JPanel {
             g2.dispose();
             super.paintComponent(g);
         }
+    }
+
+    public ScrollingInfoBar getInfoBar() {
+        return infoBar;
     }
 }

@@ -40,6 +40,9 @@ public class ConnectionManager {
 
     private final int failuresToGoOffline;
 
+    private final java.util.concurrent.atomic.AtomicLong nextFetchAtMs =
+            new java.util.concurrent.atomic.AtomicLong(0L);
+
     // ====== COSTRUTTORE "PRODUZIONE" ======
     public ConnectionManager(URI healthUri, Runnable realtimeFetchTask) {
         this(
@@ -88,15 +91,20 @@ public class ConnectionManager {
     public void start() {
         scheduler.scheduleAtFixedRate(this::checkFeed, 0, checkPeriodMs, TimeUnit.MILLISECONDS);
 
+        // NEW: inizializza una stima subito (se poi sei OFFLINE non verrà usata)
+        nextFetchAtMs.set(System.currentTimeMillis() + fetchPeriodMs);
+
         scheduler.scheduleAtFixedRate(() -> {
             if (state.get() != ConnectionState.ONLINE) return;
 
+            // NEW: imposta SUBITO il prossimo tick, così il countdown è sempre visibile
+            nextFetchAtMs.set(System.currentTimeMillis() + fetchPeriodMs);
+
             try {
                 realtimeFetchTask.run();
-                fetchFailures = 0; // fetch ok
+                fetchFailures = 0;
             } catch (Exception ex) {
-                ex.printStackTrace();   // <<< AGGIUNGI QUESTO
-
+                ex.printStackTrace();
                 fetchFailures++;
                 if (fetchFailures >= failuresToGoOffline) {
                     setState(ConnectionState.OFFLINE);
@@ -125,6 +133,14 @@ public class ConnectionManager {
     private void setState(ConnectionState newState) {
         ConnectionState old = state.getAndSet(newState);
         if (old != newState) {
+
+            if (newState == ConnectionState.OFFLINE) {
+                nextFetchAtMs.set(0L);
+            } else if (newState == ConnectionState.ONLINE) {
+                // opzionale: se rientri online, imposta un prossimo fetch “sensato”
+                nextFetchAtMs.set(System.currentTimeMillis() + fetchPeriodMs);
+            }
+
             for (ConnectionListener l : listeners) {
                 l.onConnectionStateChanged(newState);
             }
@@ -167,4 +183,18 @@ public class ConnectionManager {
                 Integer.MAX_VALUE   // non serve, ma per sicurezza
         );
     }
+    /** Ritorna i secondi al prossimo fetch realtime (solo se ONLINE), altrimenti -1. */
+    public int getSecondsToNextFetch() {
+        if (state.get() != ConnectionState.ONLINE) return -1;
+
+        long next = nextFetchAtMs.get();
+        if (next <= 0) return -1;
+
+        long diffMs = next - System.currentTimeMillis();
+        if (diffMs < 0) diffMs = 0;
+
+        return (int) (diffMs / 1000);
+    }
+
+
 }
