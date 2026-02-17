@@ -64,12 +64,9 @@ public class Main {
         final String tripsCsvPath     = "src/main/resources/rome_static_gtfs/trips.csv";
         final String stopTimesCsvPath = "src/main/resources/rome_static_gtfs/stop_times.csv";
 
-        DashboardController controller =
-                new DashboardController(stopsCsvPath, routesCsvPath, tripsCsvPath, stopTimesCsvPath);
-
-        DashboardView dashboardView = controller.getView();
-
-        // ====== RT ======
+        // =========================================================
+        // 1) REALTIME services + status provider (CREATI PRIMA)
+        // =========================================================
         ConnectionStatusService statusService = new ConnectionStatusService(GTFS_RT_HEALTH_URL);
         ConnectionStatusProvider statusProvider = statusService;
 
@@ -77,30 +74,49 @@ public class Main {
         TripUpdatesService tripSvc = new TripUpdatesService(GTFS_RT_TRIP_URL);
         AlertsService alertsSvc = new AlertsService(GTFS_RT_ALERTS_URL);
 
-        vehicleSvc.start();
+        // =========================================================
+        // 2) DASHBOARD (NON crea RT interni: li riceve)
+        // =========================================================
+        DashboardController controller = new DashboardController(
+                stopsCsvPath,
+                routesCsvPath,
+                tripsCsvPath,
+                stopTimesCsvPath,
+                vehicleSvc,
+                tripSvc,
+                statusProvider
+        );
 
-        // ---- RealTime controller (gated by statusProvider) ----
-        RealTimeController rtController = new RealTimeController(statusProvider, vehicleSvc, tripSvc, alertsSvc);
+        DashboardView dashboardView = controller.getView();
+
+        // =========================================================
+        // 3) REALTIME controller (gated by statusProvider)
+        // =========================================================
+        RealTimeController rtController = new RealTimeController(
+                statusProvider,
+                vehicleSvc,
+                tripSvc,
+                alertsSvc
+        );
+
         statusService.start();
         rtController.start();
 
+        // =========================================================
+        // 4) UI shell + account/favorites (tua parte invariata)
+        // =========================================================
         AtomicReference<AppShellView> shellRef = new AtomicReference<>();
         AtomicReference<AccountDropdown> dropdownRef = new AtomicReference<>();
 
-        // ===================== PREFERITI: UNA SOLA SORGENTE (DB) =====================
         FavoritesService favoritesService = new FavoritesService();
 
         AtomicReference<JDialog> favoritesDialogRef = new AtomicReference<>();
         AtomicReference<FavoritesDialogView> favoritesViewRef = new AtomicReference<>();
         AtomicBoolean pendingOpenFavoritesAfterLogin = new AtomicBoolean(false);
 
-        // Guardia anti doppio-open
         AtomicBoolean openingFavoritesGuard = new AtomicBoolean(false);
-
-        // per richiamare openFavorites dopo login
         AtomicReference<Runnable> openFavoritesDialogRefRunnable = new AtomicReference<>();
 
-        // ===================== AUTH =====================
         Runnable openAuthDialog = () -> {
             AuthDialog dlg = new AuthDialog(myFrame, () -> {
                 if (!Session.isLoggedIn()) {
@@ -124,7 +140,6 @@ public class Main {
 
         dashboardView.setOnRequireAuth(openAuthDialog);
 
-        // ===================== DROPDOWN ACCOUNT =====================
         AccountDropdown dropdown = new AccountDropdown(
                 myFrame,
                 () -> {
@@ -148,7 +163,6 @@ public class Main {
                 () -> {
                     Session.logout();
 
-                    // chiudi dialog preferiti
                     JDialog fd = favoritesDialogRef.getAndSet(null);
                     if (fd != null) {
                         try { fd.dispose(); } catch (Exception ignored) {}
@@ -167,10 +181,10 @@ public class Main {
                     if (favBtn != null) favBtn.setEnabled(true);
                 }
         );
+
         dropdownRef.set(dropdown);
         dropdown.bindConnectionStatus(statusProvider);
 
-        // ===================== SHELL (ACCOUNT BUTTON) =====================
         AppShellView shell = new AppShellView(dashboardView, () -> {
             if (!Session.isLoggedIn()) {
                 openAuthDialog.run();
@@ -188,9 +202,8 @@ public class Main {
             updateDropdownPosition(myFrame, dashboardView, shellRef.get(), dd);
             dd.showAtScreen(lastScreenX, lastScreenY);
         });
-        shellRef.set(shell);
 
-        // ===================== OPEN PREFERITI =====================
+        shellRef.set(shell);
 
         Runnable openFavoritesDialogEDT = () -> {
             if (!openingFavoritesGuard.compareAndSet(false, true)) return;
@@ -213,7 +226,6 @@ public class Main {
                 final JDialog dialog = new JDialog(myFrame, "Preferiti", false);
                 dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
 
-                // ✅ anti-glitch: chiusura fuori finestra con guard + defer su EDT
                 AtomicBoolean closingFavDialog = new AtomicBoolean(false);
                 dialog.addWindowFocusListener(new WindowAdapter() {
                     @Override
@@ -229,13 +241,8 @@ public class Main {
 
                 FavoritesDialogView panel = new FavoritesDialogView();
 
-                panel.setOnModeChanged(m ->
-                        refreshFavoritesPanel(panel, favoritesService)
-                );
-
-                panel.setOnFiltersChanged(() ->
-                        refreshFavoritesPanel(panel, favoritesService)
-                );
+                panel.setOnModeChanged(m -> refreshFavoritesPanel(panel, favoritesService));
+                panel.setOnFiltersChanged(() -> refreshFavoritesPanel(panel, favoritesService));
 
                 panel.setOnRemoveSelected(item -> {
                     if (item == null) return;
@@ -244,7 +251,7 @@ public class Main {
                 });
 
                 dialog.setContentPane(panel);
-                dialog.setMinimumSize(new Dimension(600,500));
+                dialog.setMinimumSize(new Dimension(600, 500));
                 dialog.setSize(600, 500);
                 dialog.setLocationRelativeTo(myFrame);
 
@@ -253,7 +260,6 @@ public class Main {
                         favoritesDialogRef.set(null);
                         favoritesViewRef.set(null);
                         openingFavoritesGuard.set(false);
-                        // reset guard per sicurezza (se riusi lo stesso oggetto, non serve ma non fa male)
                         closingFavDialog.set(false);
                     }
                 });
@@ -262,8 +268,6 @@ public class Main {
                 favoritesViewRef.set(panel);
 
                 refreshFavoritesPanel(panel, favoritesService);
-
-                // show: meglio dopo set refs e refresh
                 dialog.setVisible(true);
 
             } finally {
@@ -288,7 +292,6 @@ public class Main {
         JButton favBtn = dashboardView.getFavoritesButton();
         if (favBtn != null) favBtn.setEnabled(true);
 
-        // ===================== DROPDOWN FOLLOW =====================
         myFrame.addComponentListener(new ComponentAdapter() {
             @Override public void componentMoved(ComponentEvent e) {
                 updateDropdownPosition(myFrame, dashboardView, shellRef.get(), dropdownRef.get());
@@ -419,7 +422,7 @@ public class Main {
     }
 
     private static void refreshFavoritesPanel(FavoritesDialogView panel,
-                                             FavoritesService favoritesService) {
+                                              FavoritesService favoritesService) {
 
         if (panel == null) return;
 

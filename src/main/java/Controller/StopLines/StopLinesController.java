@@ -5,6 +5,7 @@ import Model.ArrivalRow;
 import Model.Points.StopModel;
 import Service.GTFS_RT.ArrivalPredictionService;
 import Service.Parsing.TripStopsService;
+import Service.Parsing.Static.StaticGtfsRepository;
 import View.Map.LineStopsView;
 
 import javax.swing.*;
@@ -16,12 +17,9 @@ import java.util.Map;
 public class StopLinesController {
 
     private final LineStopsView view;
-    private final String stopTimesPath;
-    private final String tripsCsvPath;
-    private final String routesCsvPath;
-    private final String stopsCsvPath;
     private final MapController mapController;
     private final ArrivalPredictionService arrivalPredictionService;
+    private final StaticGtfsRepository repo;
 
     private volatile String currentStopId = null;
     private volatile String currentStopName = null;
@@ -29,25 +27,18 @@ public class StopLinesController {
     private final Timer refreshTimer;
 
     public StopLinesController(LineStopsView view,
-                               String stopTimesPath,
-                               String tripsCsvPath,
-                               String routesCsvPath,
-                               String stopsCsvPath,
+                               StaticGtfsRepository repo,
                                MapController mapController,
                                ArrivalPredictionService arrivalPredictionService) {
+
         this.view = view;
-        this.stopTimesPath = stopTimesPath;
-        this.tripsCsvPath = tripsCsvPath;
-        this.routesCsvPath = routesCsvPath;
-        this.stopsCsvPath = stopsCsvPath;
+        this.repo = repo;
         this.mapController = mapController;
         this.arrivalPredictionService = arrivalPredictionService;
 
-        // ✅ timer che aggiorna solo se c’è una fermata attiva
         refreshTimer = new Timer(30_000, e -> refreshIfStopSelected());
         refreshTimer.setRepeats(true);
 
-        // ✅ click su riga arrival
         this.view.setOnArrivalSelected(row -> {
             if (row == null) return;
 
@@ -57,14 +48,11 @@ public class StopLinesController {
             mapController.clearRouteHighlight();
 
             if (dir == -1) {
-                // merged: evidenzia entrambe le direzioni
                 mapController.highlightRouteAllDirectionsKeepStopView(routeId);
                 mapController.showVehiclesForRoute(routeId, -1);
 
-                List<StopModel> stops0 = TripStopsService.getStopsForRouteDirection(
-                        routeId, 0, tripsCsvPath, stopTimesPath, stopsCsvPath);
-                List<StopModel> stops1 = TripStopsService.getStopsForRouteDirection(
-                        routeId, 1, tripsCsvPath, stopTimesPath, stopsCsvPath);
+                List<StopModel> stops0 = TripStopsService.getStopsForRouteDirection(routeId, 0, repo);
+                List<StopModel> stops1 = TripStopsService.getStopsForRouteDirection(routeId, 1, repo);
 
                 List<StopModel> merged = mergeStopsById(stops0, stops1);
                 if (!merged.isEmpty()) mapController.hideUselessStops(merged);
@@ -74,9 +62,8 @@ public class StopLinesController {
             mapController.highlightRouteKeepStopView(routeId, String.valueOf(dir));
             mapController.showVehiclesForRoute(routeId, dir);
 
-            List<StopModel> stops = TripStopsService.getStopsForRouteDirection(
-                    routeId, dir, tripsCsvPath, stopTimesPath, stopsCsvPath);
-            if (stops != null && !stops.isEmpty()) mapController.hideUselessStops(stops);
+            List<StopModel> stops = TripStopsService.getStopsForRouteDirection(routeId, dir, repo);
+            if (!stops.isEmpty()) mapController.hideUselessStops(stops);
         });
     }
 
@@ -90,14 +77,9 @@ public class StopLinesController {
         currentStopId = stop.getId();
         currentStopName = stop.getName();
 
-        // ✅ mostra subito
-        String stopId = currentStopId;
-        String stopName = (currentStopName != null) ? currentStopName : "";
+        List<ArrivalRow> rows = arrivalPredictionService.getArrivalsForStop(currentStopId);
+        view.showArrivalsAtStop(currentStopName, rows);
 
-        List<ArrivalRow> rows = arrivalPredictionService.getArrivalsForStop(stopId);
-        view.showArrivalsAtStop(stopId, stopName, rows);
-
-        // ✅ avvia refresh
         if (!refreshTimer.isRunning()) refreshTimer.start();
     }
 
@@ -112,7 +94,7 @@ public class StopLinesController {
         if (stopId == null || stopId.isBlank()) return;
 
         List<ArrivalRow> rows = arrivalPredictionService.getArrivalsForStop(stopId);
-        view.showArrivalsAtStop(stopId, stopName != null ? stopName : "", rows);
+        view.showArrivalsAtStop(stopName != null ? stopName : "", rows);
 
         System.out.println("[StopLinesController] refresh arrivals stopId=" + stopId);
     }
@@ -125,9 +107,11 @@ public class StopLinesController {
     private static List<StopModel> mergeStopsById(List<StopModel> a, List<StopModel> b) {
         if (a == null) a = List.of();
         if (b == null) b = List.of();
+
         Map<String, StopModel> map = new LinkedHashMap<>();
         for (StopModel s : a) if (s != null && s.getId() != null) map.put(s.getId(), s);
         for (StopModel s : b) if (s != null && s.getId() != null) map.putIfAbsent(s.getId(), s);
+
         return new ArrayList<>(map.values());
     }
 }

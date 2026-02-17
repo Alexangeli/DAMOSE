@@ -21,8 +21,14 @@ public class TripUpdatesService {
         this.fetcher = new GtfsRtTripUpdatesFetcher(gtfsRtUrl, client);
 
         this.connectionManager = ConnectionManager.fetchOnly(() -> {
-            try { refreshOnce(); }
-            catch (Exception e) { throw new RuntimeException(e); }
+            try {
+                refreshOnce();
+            } catch (InterruptedException ie) {
+                // 🔥 normale durante shutdown/offline
+                Thread.currentThread().interrupt();
+            } catch (Exception e) {
+                e.printStackTrace(); // log ok
+            }
         }, 30_000L);
     }
 

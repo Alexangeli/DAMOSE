@@ -11,6 +11,7 @@ import java.util.List;
 // Si occupa di richiamare il servizio che legge i dati dal CSV e restituirli come lista di oggetti StopTimesModel.
 public class StopTimesController {
 
+
     // Legge il file CSV indicato dal percorso e restituisce una lista di oggetti StopTimesModel.
     public List<StopTimesModel> getStopTimes(String filePath) {
         return StopTimesService.getAllStopTimes(filePath);
