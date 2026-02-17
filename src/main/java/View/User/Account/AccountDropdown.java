@@ -30,6 +30,9 @@ public class AccountDropdown {
     private double uiScale = 1.0;
     // evita repack/pack continui (causano flicker su JWindow)
     private static final double SCALE_EPS = 0.01;
+    // Distanza (gap) tra l'icona profilo (anchor) e il dropdown
+    // ✅ Aumentato: evita che la card tocchi/schiacci l'icona profilo
+    private static final int DROPDOWN_Y_GAP_PX = 20; // px @ uiScale=1.0
     private double lastAppliedScale = -1.0;
     // Se arriva una nuova scala mentre la window è visibile, la applichiamo solo alla prossima apertura
     private double pendingScale = -1.0;
@@ -275,6 +278,10 @@ public class AccountDropdown {
         }
     }
 
+    private int applyDropdownGapY(int y) {
+        return y + scale(DROPDOWN_Y_GAP_PX);
+    }
+
     public void showAtScreen(int x, int y) {
         syncUsernameFromSession();
         // Applica eventuale scala rimandata (arrivata mentre era visibile)
@@ -291,7 +298,8 @@ public class AccountDropdown {
             repack();
         }
 
-        window.setLocation(x, y);
+        // ✅ Sposta il dropdown più in basso per lasciare spazio rispetto all'icona profilo
+        window.setLocation(x, applyDropdownGapY(y));
         window.setVisible(true);
     }
 
@@ -299,7 +307,9 @@ public class AccountDropdown {
         window.setVisible(false);
     }
     public boolean isVisible() { return window.isVisible(); }
-    public void setLocationOnScreen(int x, int y) { window.setLocation(x, y); }
+    public void setLocationOnScreen(int x, int y) {
+        window.setLocation(x, applyDropdownGapY(y));
+    }
     public int getWindowWidth() { return window.getWidth(); }
 
     // ================= helpers =================
