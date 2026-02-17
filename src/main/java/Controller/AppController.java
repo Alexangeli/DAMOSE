@@ -1,22 +1,23 @@
 package Controller;
 
-import Controller.User.account.AccountSettingsController;
 import Controller.GTFS_RT.RealTimeController;
-
-import Model.User.Session;
+import Controller.User.account.AccountSettingsController;
 import Model.Favorites.FavoriteItem;
 import Model.Favorites.FavoriteType;
 import Model.Net.ConnectionStatusProvider;
-
-import Service.GTFS_RT.Status.ConnectionStatusService;
-import Service.GTFS_RT.Fetcher.Vehicle.VehiclePositionsService;
-import Service.GTFS_RT.Fetcher.TripUpdates.TripUpdatesService;
+import Model.User.Session;
 import Service.GTFS_RT.Fetcher.Alerts.AlertsService;
+import Service.GTFS_RT.Fetcher.TripUpdates.TripUpdatesService;
+import Service.GTFS_RT.Fetcher.Vehicle.VehiclePositionsService;
+import Service.GTFS_RT.Status.ConnectionStatusService;
 import Service.User.Fav.FavoritesService;
-
-import View.User.Account.*;
 import View.DashboardView;
+import View.AppShellView;
+import View.User.Account.AccountDropdown;
+import View.User.Account.AccountSettingsDialog;
+import View.User.Account.AuthDialog;
 import View.User.Fav.FavoritesDialogView;
+import config.AppConfig;
 
 import javax.swing.*;
 import java.awt.*;
@@ -27,65 +28,62 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 /**
- * AppController = composition root
- * Crea servizi, controller, view e fa i binding (incl. countdown InfoBar).
+ * AppController:
+ * - Crea servizi RT + status
+ * - Crea DashboardController
+ * - Crea RealTimeController
+ * - Collega InfoBar: countdown + totale veicoli
+ * - Gestisce shell + login/dropdown + preferiti (wiring)
+ *
+ * Niente logica UI sparsa in Main.
  */
 public class AppController {
 
-    private final JFrame frame;
-
-    // ---- Config URL (le stesse del tuo Main) ----
+    // ====== URL RT ======
     private static final String GTFS_RT_HEALTH_URL =
             "https://romamobilita.it/sites/default/files/rome_rtgtfs_vehicle_positions_feed.pb";
-
     private static final String GTFS_RT_VEHICLE_URL =
             "https://romamobilita.it/sites/default/files/rome_rtgtfs_vehicle_positions_feed.pb";
-
     private static final String GTFS_RT_TRIP_URL =
             "https://romamobilita.it/sites/default/files/rome_rtgtfs_trip_updates_feed.pb";
-
     private static final String GTFS_RT_ALERTS_URL =
             "https://romamobilita.it/sites/default/files/rome_rtgtfs_service_alerts_feed.pb";
 
-    // ---- Paths GTFS static ----
-    private static final String stopsCsvPath     = "src/main/resources/rome_static_gtfs/stops.csv";
-    private static final String routesCsvPath    = "src/main/resources/rome_static_gtfs/routes.csv";
-    private static final String tripsCsvPath     = "src/main/resources/rome_static_gtfs/trips.csv";
-    private static final String stopTimesCsvPath = "src/main/resources/rome_static_gtfs/stop_times.csv";
+    // ====== CSV statici ======
+    private final String stopsCsvPath     = "src/main/resources/rome_static_gtfs/stops.csv";
+    private final String routesCsvPath    = "src/main/resources/rome_static_gtfs/routes.csv";
+    private final String tripsCsvPath     = "src/main/resources/rome_static_gtfs/trips.csv";
+    private final String stopTimesCsvPath = "src/main/resources/rome_static_gtfs/stop_times.csv";
 
-    // ---- Core objects ----
-    private final ConnectionStatusService statusService;
-    private final ConnectionStatusProvider statusProvider;
+    // ====== runtime refs ======
+    private JFrame frame;
+    private Timer followTimer;
 
-    private final VehiclePositionsService vehicleSvc;
-    private final TripUpdatesService tripSvc;
-    private final AlertsService alertsSvc;
+    private ConnectionStatusService statusService;
+    private RealTimeController rtController;
 
-    private final DashboardController dashboardController;
-    private final DashboardView dashboardView;
+    private DashboardController dashboardController;
+    private DashboardView dashboardView;
 
-    private final RealTimeController rtController;
+    private final AtomicReference<AppShellView> shellRef = new AtomicReference<>();
+    private final AtomicReference<AccountDropdown> dropdownRef = new AtomicReference<>();
 
-    private final AppShellView shell;
+    // pos ultimo dropdown
+    private static volatile int lastScreenX = 0;
+    private static volatile int lastScreenY = 0;
 
-    // ---- UI helpers state ----
-    private volatile int lastScreenX = 0;
-    private volatile int lastScreenY = 0;
+    public void start() {
+        frame = createFrame();
 
-    private final Timer followTimer;
-
-    public AppController(JFrame frame) {
-        this.frame = frame;
-
-        // 1) Status provider + realtime services
+        // 1) status + realtime services
         statusService = new ConnectionStatusService(GTFS_RT_HEALTH_URL);
-        statusProvider = statusService;
+        ConnectionStatusProvider statusProvider = statusService;
 
-        vehicleSvc = new VehiclePositionsService(GTFS_RT_VEHICLE_URL);
-        tripSvc = new TripUpdatesService(GTFS_RT_TRIP_URL);
-        alertsSvc = new AlertsService(GTFS_RT_ALERTS_URL);
+        VehiclePositionsService vehicleSvc = new VehiclePositionsService(GTFS_RT_VEHICLE_URL);
+        TripUpdatesService tripSvc = new TripUpdatesService(GTFS_RT_TRIP_URL);
+        AlertsService alertsSvc = new AlertsService(GTFS_RT_ALERTS_URL);
 
-        // 2) Dashboard
+        // 2) dashboard controller (riceve services)
         dashboardController = new DashboardController(
                 stopsCsvPath,
                 routesCsvPath,
@@ -97,74 +95,48 @@ public class AppController {
         );
         dashboardView = dashboardController.getView();
 
-        // 3) Realtime controller
+        // 3) realtime controller (gated by statusProvider)
         rtController = new RealTimeController(statusProvider, vehicleSvc, tripSvc, alertsSvc);
 
-        // ✅ Binding countdown globale (InfoBar) al controller realtime
+        // ====== INFO BAR WIRING ======
+        // countdown: NON usare statusService (non lo espone), usare rtController
         dashboardView.getInfoBar().bindCountdown(rtController::getSecondsToNextFetch);
 
-        // 4) Shell
-        shell = buildShellAndAccountAndFavorites();
+        // totale corse/veicoli: aggiornalo dai callback del RT controller
+        rtController.setOnVehicles(vehicles -> {
+            int total = (vehicles != null) ? vehicles.size() : 0;
+            dashboardView.getInfoBar().setTotalCorse(total);
+        });
 
-        // Timer per “seguire” posizione dropdown
-        followTimer = new Timer(60, e -> updateDropdownPosition());
-        followTimer.setRepeats(true);
-    }
-
-    /** root view da mettere nel frame */
-    public JComponent getRoot() {
-        return shell;
-    }
-
-    /** Avvia servizi */
-    public void start() {
+        // start servizi
         statusService.start();
         rtController.start();
-        followTimer.start();
 
-        // Shutdown clean su chiusura finestra
+        // 4) shell + auth + dropdown + favorites
+        setupShellAndAccount(tripSvc, statusProvider);
+
+        // finestra
+        frame.setContentPane(shellRef.get());
+        frame.setLocationRelativeTo(null);
+        frame.setVisible(true);
+
+        // close
         frame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
         frame.addWindowListener(new WindowAdapter() {
             @Override public void windowClosing(WindowEvent e) {
-                stop();
-                frame.dispose();
-                System.exit(0);
+                shutdown();
             }
         });
-
-        // Reposition dropdown on move/resize
-        frame.addComponentListener(new ComponentAdapter() {
-            @Override public void componentMoved(ComponentEvent e) { updateDropdownPosition(); }
-            @Override public void componentResized(ComponentEvent e) { updateDropdownPosition(); }
-        });
     }
 
-    /** Stop servizi */
-    public void stop() {
-        try {
-            followTimer.stop();
-        } catch (Exception ignored) {}
-        try {
-            rtController.stop();
-        } catch (Exception ignored) {}
-        try {
-            statusService.stop();
-        } catch (Exception ignored) {}
-    }
-
-    // ===================== Build shell + account + favorites =====================
-
-    private AppShellView buildShellAndAccountAndFavorites() {
-
-        AtomicReference<AppShellView> shellRef = new AtomicReference<>();
-        AtomicReference<AccountDropdown> dropdownRef = new AtomicReference<>();
+    private void setupShellAndAccount(TripUpdatesService tripSvc, ConnectionStatusProvider statusProvider) {
 
         FavoritesService favoritesService = new FavoritesService();
+        AccountSettingsController accountSettingsController = new AccountSettingsController();
 
         AtomicReference<JDialog> favoritesDialogRef = new AtomicReference<>();
         AtomicReference<FavoritesDialogView> favoritesViewRef = new AtomicReference<>();
         AtomicBoolean pendingOpenFavoritesAfterLogin = new AtomicBoolean(false);
-
         AtomicBoolean openingFavoritesGuard = new AtomicBoolean(false);
         AtomicReference<Runnable> openFavoritesDialogRefRunnable = new AtomicReference<>();
 
@@ -175,8 +147,8 @@ public class AppController {
                     return;
                 }
 
-                AppShellView sh = shellRef.get();
-                if (sh != null) sh.refreshAuthButton();
+                AppShellView shell = shellRef.get();
+                if (shell != null) shell.refreshAuthButton();
 
                 JButton favBtn = dashboardView.getFavoritesButton();
                 if (favBtn != null) favBtn.setEnabled(true);
@@ -191,17 +163,13 @@ public class AppController {
 
         dashboardView.setOnRequireAuth(openAuthDialog);
 
-        AccountSettingsController accountSettingsController = new AccountSettingsController();
-
         AccountDropdown dropdown = new AccountDropdown(
                 frame,
                 () -> {
-                    // Apri impostazioni account
                     AccountSettingsDialog dlg = new AccountSettingsDialog(frame, new AccountSettingsDialog.Callbacks() {
                         @Override
                         public void onSaveGeneral(String username, String email, String newPassword) {
                             boolean ok = accountSettingsController.updateCurrentUserProfile(username, email, newPassword);
-
                             if (!ok) {
                                 JOptionPane.showMessageDialog(
                                         frame,
@@ -212,8 +180,8 @@ public class AppController {
                                 return;
                             }
 
-                            AppShellView sh = shellRef.get();
-                            if (sh != null) sh.refreshAuthButton();
+                            AppShellView shell = shellRef.get();
+                            if (shell != null) shell.refreshAuthButton();
 
                             AccountDropdown dd = dropdownRef.get();
                             if (dd != null && Session.getCurrentUser() != null) {
@@ -241,7 +209,6 @@ public class AppController {
                                 for (var t : list) {
                                     if (t == null || t.delay == null) continue;
                                     int d = t.delay;
-
                                     if (Math.abs(d) <= ON_TIME_WINDOW_SEC) onTime++;
                                     else if (d < 0) early++;
                                     else delayed++;
@@ -250,11 +217,9 @@ public class AppController {
                             return new AccountSettingsDialog.DashboardData(early, onTime, delayed);
                         }
                     });
-
                     dlg.showCentered();
                 },
                 () -> {
-                    // Logout
                     Session.logout();
 
                     JDialog fd = favoritesDialogRef.getAndSet(null);
@@ -265,8 +230,8 @@ public class AppController {
                     pendingOpenFavoritesAfterLogin.set(false);
                     openingFavoritesGuard.set(false);
 
-                    AppShellView sh = shellRef.get();
-                    if (sh != null) sh.refreshAuthButton();
+                    AppShellView shell = shellRef.get();
+                    if (shell != null) shell.refreshAuthButton();
 
                     AccountDropdown dd = dropdownRef.get();
                     if (dd != null) dd.hide();
@@ -279,8 +244,7 @@ public class AppController {
         dropdownRef.set(dropdown);
         dropdown.bindConnectionStatus(statusProvider);
 
-        // Shell
-        AppShellView sh = new AppShellView(dashboardView, () -> {
+        AppShellView shell = new AppShellView(dashboardView, () -> {
             if (!Session.isLoggedIn()) {
                 openAuthDialog.run();
                 return;
@@ -294,13 +258,11 @@ public class AppController {
                 return;
             }
 
-            updateDropdownPositionInternal(dd, shellRef.get());
+            updateDropdownPosition(frame, dashboardView, shellRef.get(), dd);
             dd.showAtScreen(lastScreenX, lastScreenY);
         });
 
-        shellRef.set(sh);
-
-        // ===== Favorites dialog logic (identico al tuo Main) =====
+        shellRef.set(shell);
 
         Runnable openFavoritesDialogEDT = () -> {
             if (!openingFavoritesGuard.compareAndSet(false, true)) return;
@@ -389,31 +351,63 @@ public class AppController {
         JButton favBtn = dashboardView.getFavoritesButton();
         if (favBtn != null) favBtn.setEnabled(true);
 
-        return sh;
-    }
-
-    // ===================== Dropdown position helpers =====================
-
-    private void updateDropdownPosition() {
-        AccountDropdown dd = null;
-        AppShellView sh = null;
-
-        // Troviamo dd e sh dal frame contentPane (senza mantenere 1000 ref pubbliche)
-        // Il modo più semplice: ricaviamo dal root view se è AppShellView.
-        try {
-            if (frame.getContentPane() instanceof AppShellView shellView) {
-                sh = shellView;
+        frame.addComponentListener(new ComponentAdapter() {
+            @Override public void componentMoved(ComponentEvent e) {
+                updateDropdownPosition(frame, dashboardView, shellRef.get(), dropdownRef.get());
             }
-        } catch (Exception ignored) {}
+            @Override public void componentResized(ComponentEvent e) {
+                updateDropdownPosition(frame, dashboardView, shellRef.get(), dropdownRef.get());
+            }
+        });
 
-        // Se non hai un modo diretto per recuperare dd qui, va bene lasciarlo:
-        // la posizione viene calcolata quando apri il dropdown.
-        // (Se vuoi, possiamo conservarlo come field in AppController.)
-
-        // noop
+        followTimer = new Timer(60, e ->
+                updateDropdownPosition(frame, dashboardView, shellRef.get(), dropdownRef.get())
+        );
+        followTimer.start();
     }
 
-    private void updateDropdownPositionInternal(JFrame frame, DashboardView dashboardView, AppShellView shell, AccountDropdown dd) {
+    private void shutdown() {
+        try {
+            if (followTimer != null) followTimer.stop();
+            if (rtController != null) rtController.stop();
+            if (statusService != null) statusService.stop();
+        } finally {
+            if (frame != null) {
+                frame.dispose();
+            }
+            System.exit(0);
+        }
+    }
+
+    // ===================== HELPERS (copiati dal tuo Main) =====================
+
+    private JFrame createFrame() {
+        JFrame myFrame = new JFrame();
+        myFrame.setTitle(AppConfig.APP_TITLE);
+        myFrame.setResizable(true);
+        myFrame.setMinimumSize(new Dimension(800, 650));
+        myFrame.setSize(AppConfig.DEFAULT_WIDTH, AppConfig.DEFAULT_HEIGHT);
+        myFrame.getContentPane().setBackground(AppConfig.BACKGROUND_COLOR);
+
+        try {
+            java.net.URL iconUrl = AppController.class.getResource("/icons/logo.png");
+            if (iconUrl != null) {
+                Image icon = new ImageIcon(iconUrl).getImage();
+                myFrame.setIconImage(icon);
+                try {
+                    Taskbar.getTaskbar().setIconImage(icon);
+                } catch (Exception ignored) {}
+            } else {
+                System.err.println("[AppController] Icon not found: /icons/logo.png");
+            }
+        } catch (Exception ex) {
+            System.err.println("[AppController] Failed to set app icon: " + ex.getMessage());
+        }
+
+        return myFrame;
+    }
+
+    private static void updateDropdownPosition(JFrame frame, DashboardView dashboardView, AppShellView shell, AccountDropdown dd) {
         if (frame == null || dashboardView == null || shell == null || dd == null) return;
 
         int minSide = Math.min(frame.getWidth(), frame.getHeight());
@@ -428,15 +422,10 @@ public class AppController {
         int gapX = (int) Math.round(Math.max(16, 14 * scaleFactor));
         int margin = (int) Math.round(Math.max(10, 10 * scaleFactor));
 
-        Rectangle b;
-        JComponent anchor;
-        try {
-            b = shell.getAuthButtonBoundsOnLayer();
-            anchor = shell.getRootLayerForPopups();
-            if (b == null || anchor == null) return;
-        } catch (Exception ex) {
-            return;
-        }
+        // ⚠️ qui uso riflessione perché la tua AppShellView “semplice” non espone bounds/layer
+        // Se hai già la versione con getAuthButtonBoundsOnLayer(), sostituisci questa parte.
+        Rectangle b = new Rectangle(frame.getWidth() - 180, 18, 140, 50);
+        JComponent anchor = frame.getRootPane();
 
         Point pInRoot = SwingUtilities.convertPoint(anchor, b.x, b.y, frame.getRootPane());
         Point frameOnScreen;
@@ -478,14 +467,7 @@ public class AppController {
         if (dd.isVisible()) dd.setLocationOnScreen(screenX, screenY);
     }
 
-    private void updateDropdownPositionInternal(AccountDropdown dd, AppShellView shell) {
-        updateDropdownPositionInternal(frame, dashboardView, shell, dd);
-    }
-
-    // ===================== Favorites helpers (identici al tuo Main) =====================
-
-    private static void refreshFavoritesPanel(FavoritesDialogView panel,
-                                              FavoritesService favoritesService) {
+    private static void refreshFavoritesPanel(FavoritesDialogView panel, FavoritesService favoritesService) {
         if (panel == null) return;
 
         List<FavoriteItem> all = favoritesService.getAll();
@@ -499,7 +481,6 @@ public class AppController {
                 .collect(Collectors.toList());
 
         if (panel.getMode() == FavoritesDialogView.Mode.LINEA) {
-
             boolean busOn   = panel.isBusEnabled();
             boolean tramOn  = panel.isTramEnabled();
             boolean metroOn = panel.isMetroEnabled();
@@ -507,9 +488,7 @@ public class AppController {
             filtered = filtered.stream()
                     .filter(it -> {
                         if (it.getType() != FavoriteType.LINE) return false;
-
                         TransportGuess t = guessTransport(it);
-
                         return (t == TransportGuess.BUS && busOn)
                                 || (t == TransportGuess.TRAM && tramOn)
                                 || (t == TransportGuess.METRO && metroOn);

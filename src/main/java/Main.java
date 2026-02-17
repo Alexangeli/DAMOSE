@@ -7,23 +7,11 @@ import java.awt.event.*;
 import javax.swing.ImageIcon;
 
 public class Main {
-
     public static void main(String[] args) {
-        SwingUtilities.invokeLater(Main::startApp);
+        SwingUtilities.invokeLater(() -> new AppController().start());
     }
 
-    private static void startApp() {
-        JFrame myFrame = createFrame();
 
-        AppController app = new AppController(myFrame);
-
-        myFrame.setContentPane(app.getRoot());
-        myFrame.setLocationRelativeTo(null);
-        myFrame.setVisible(true);
-
-        // avvia dopo che la UI è pronta
-        app.start();
-    }
 
     private static JFrame createFrame() {
         JFrame myFrame = new JFrame();

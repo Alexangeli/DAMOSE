@@ -145,4 +145,10 @@ public class VehiclePositionsService {
         long tb = (b.timestamp != null) ? b.timestamp : 0L;
         return ta > tb;
     }
+
+    /** Totale veicoli presenti nell’ultimo fetch (anche senza lat/lon). */
+    public int getTotalVehicles() {
+        List<VehicleInfo> v = lastVehicles;
+        return (v != null) ? v.size() : 0;
+    }
 }
