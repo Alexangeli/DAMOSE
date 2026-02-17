@@ -1,6 +1,8 @@
 package Controller.Map;
 
 import Model.Map.MapModel;
+import Model.Net.ConnectionState;
+import Model.Net.ConnectionStatusProvider;
 import Model.Parsing.Static.ShapesModel;
 import Model.Parsing.Static.TripsModel;
 import Model.Points.ClusterModel;
@@ -703,5 +705,21 @@ public class MapController {
         highlightedPosition = null;
         highlightedStopWaypoint = null;
         refreshView();
+    }
+
+    public void bindConnectionStatus(ConnectionStatusProvider provider) {
+        if (provider == null) return;
+
+        provider.addListener(state -> SwingUtilities.invokeLater(() -> {
+            if (state == ConnectionState.OFFLINE) {
+                // ✅ niente realtime in offline
+                clearVehicles();
+                vehiclesRefreshTimer.stop(); // opzionale ma consigliato
+            } else {
+                // ✅ online: puoi riprendere
+                if (!vehiclesRefreshTimer.isRunning()) vehiclesRefreshTimer.start();
+                refreshVehiclesLayerIfNeeded();
+            }
+        }));
     }
 }

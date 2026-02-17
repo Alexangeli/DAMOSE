@@ -88,6 +88,8 @@ public class DashboardController {
                 vehiclePositionsService
         );
 
+        this.mapController.bindConnectionStatus(statusProvider);
+
         // SEARCH CONTROLLERS
         this.stopSearchController =
                 new StopSearchController(searchBar, mapController, stopsCsvPath);
