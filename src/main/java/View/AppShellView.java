@@ -11,6 +11,20 @@ public class AppShellView extends JPanel {
     private final JComponent centerContent;
     private final JButton authFloatingButton;
 
+    /**
+     * Contenitore principale dell'app che ospita il contenuto centrale (es. dashboard/mappa)
+     * e sovrappone un bottone flottante in alto a destra per login/account.
+     *
+     * Il bottone cambia aspetto in base allo stato della sessione:
+     * - guest: pulsante "LOGIN" in stile pill/rounded
+     * - loggato: sola icona profilo con anello sottile
+     *
+     * Il layout è gestito tramite {@link JLayeredPane} per permettere la sovrapposizione
+     * senza interferire con il contenuto centrale.
+     *
+     * @param centerContent componente centrale a pieno schermo
+     * @param onUserClick callback invocata al click sul bottone account/login
+     */
     public AppShellView(JComponent centerContent, Runnable onUserClick) {
         this.centerContent = centerContent;
         this.authFloatingButton = createFloatingAuthButton();
@@ -90,8 +104,8 @@ public class AppShellView extends JPanel {
     }
 
     /**
-     * Chiamalo dopo login/logout per aggiornare rendering + layout
-     * (da LOGIN → icona profilo).
+     * Forza il refresh del bottone flottante dopo un cambio di stato sessione (login/logout).
+     * Serve a ridisegnare correttamente stile, dimensioni e posizione.
      */
     public void refreshAuthButton() {
         authFloatingButton.revalidate();
@@ -101,10 +115,14 @@ public class AppShellView extends JPanel {
     }
 
     /**
-     * Bottone flottante account/login:
-     * - guest: rettangolo arancione con testo LOGIN (come ★)
-     * - loggato: solo icona profilo (niente background)
-     * - hover zoom fluido in entrambi i casi
+     * Crea il bottone flottante per autenticazione/account.
+     *
+     * Caratteristiche:
+     * - guest: rettangolo arancione con testo "LOGIN"
+     * - loggato: immagine profilo senza background, con anello sottile
+     * - hover: animazione di zoom fluida, gestita tramite {@link Timer}
+     *
+     * @return bottone pronto da inserire in {@link JLayeredPane}
      */
     private JButton createFloatingAuthButton() {
         return new JButton() {
@@ -129,12 +147,12 @@ public class AppShellView extends JPanel {
 
                 setToolTipText("Account");
 
-                // Carica immagine profilo default:
+                // Carica immagine profilo di default dalle risorse.
                 java.net.URL url = AppShellView.class.getResource("/immagini_profilo/immagine_profilo.png");
                 if (url == null) {
                     throw new IllegalStateException(
                             "Immagine profilo non trovata: /immagini_profilo/immagine_profilo.png " +
-                            "(mettila in src/main/resources/immagini_profilo/immagine_profilo.png)"
+                                    "(mettila in src/main/resources/immagini_profilo/immagine_profilo.png)"
                     );
                 }
                 ImageIcon ii = new ImageIcon(url);
@@ -142,7 +160,7 @@ public class AppShellView extends JPanel {
                 imgW = ii.getIconWidth();
                 imgH = ii.getIconHeight();
 
-                // animazione hover
+                // Animazione hover: interpola scale verso targetScale a ~60 FPS.
                 animTimer = new Timer(16, e -> {
                     double diff = targetScale - scale;
                     if (Math.abs(diff) < 0.01) {
@@ -187,7 +205,7 @@ public class AppShellView extends JPanel {
                 int ih = h - pad * 2;
                 if (iw <= 0 || ih <= 0) { g2.dispose(); return; }
 
-                // scala hover al centro
+                // Scala hover centrata sul componente
                 int cx = w / 2;
                 int cy = h / 2;
                 g2.translate(cx, cy);
@@ -195,10 +213,9 @@ public class AppShellView extends JPanel {
                 g2.translate(-cx, -cy);
 
                 if (Session.isLoggedIn()) {
-                    // ===== LOGGATO: icona + anello bianco sottile (staccato, effetto floating) =====
+                    // ===== LOGGATO: icona profilo + anello bianco sottile (effetto floating) =====
 
-                    // 1) Disegna l'immagine alla dimensione “normale” (NON rimpicciolita)
-                    //    -> la facciamo entrare quasi tutta nell'area interna (iw/ih)
+                    // L'immagine viene scalata per entrare quasi tutta nell'area interna.
                     double maxW = iw * 0.98;
                     double maxH = ih * 0.98;
 
@@ -209,27 +226,24 @@ public class AppShellView extends JPanel {
                     int ix = pad + (iw - drawW) / 2;
                     int iy = pad + (ih - drawH) / 2;
 
-                    // 2) Anello: praticamente attaccato all'immagine (gap = 0)
+                    // Anello praticamente attaccato all'immagine (gap ~ 0)
                     int ringD = Math.max(drawW, drawH);
 
                     int ringX = pad + (iw - ringD) / 2;
                     int ringY = pad + (ih - ringD) / 2;
 
-                    // 3) Effetto “floating”: ombrina morbida dietro l'anello
-                    //    (molto leggera, non invasiva)
+                    // Ombra leggera dietro l'anello per staccare dal fondo
                     float ringStroke = Math.max(1.4f, Math.min(2.2f, (float) (ringD * 0.032)));
 
                     g2.setStroke(new BasicStroke(ringStroke, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
                     g2.setColor(new Color(0, 0, 0, 35));
                     g2.drawOval(ringX + 1, ringY + 2, ringD - 2, ringD - 2);
 
-                    // 4) Anello bianco sottile
-                    //    (staccato dall'immagine grazie a ringGap)
+                    // Anello bianco sottile
                     g2.setColor(new Color(255, 255, 255, 240));
                     g2.drawOval(ringX + 1, ringY + 1, ringD - 2, ringD - 2);
 
-                    // 5) Immagine profilo sopra
-                    //    (dimensione normale, non ridotta)
+                    // Immagine profilo
                     g2.drawImage(profileImg, ix, iy, drawW, drawH, this);
 
                 } else {
@@ -264,7 +278,12 @@ public class AppShellView extends JPanel {
         };
     }
 
-    /** Cerca ricorsivamente la SearchBarView nel subtree di root. */
+    /**
+     * Cerca ricorsivamente la {@link SearchBarView} nel sotto-albero di componenti a partire da root.
+     *
+     * @param root nodo di partenza della ricerca
+     * @return la SearchBarView trovata, oppure null se assente
+     */
     private static SearchBarView findSearchBar(Component root) {
         if (root == null) return null;
         if (root instanceof SearchBarView sb) return sb;
@@ -277,7 +296,14 @@ public class AppShellView extends JPanel {
         return null;
     }
 
-    /** Bounds della SearchBarView convertiti nel coordinate space del layered pane. */
+    /**
+     * Restituisce i bounds della {@link SearchBarView} convertiti nello spazio di coordinate del layered pane.
+     * Serve per allineare verticalmente il bottone flottante alla barra di ricerca.
+     *
+     * @param layer layered pane che ospita overlay e contenuto
+     * @param centerContent contenuto centrale in cui cercare la SearchBarView
+     * @return rettangolo dei bounds nel coordinate space del layer, oppure null se non trovata
+     */
     private static Rectangle findSearchBarBoundsOnLayer(JLayeredPane layer, JComponent centerContent) {
         try {
             SearchBarView sb = findSearchBar(centerContent);
@@ -290,27 +316,45 @@ public class AppShellView extends JPanel {
             return null;
         }
     }
+
     // ===================== THEME (safe via reflection) =====================
+
+    /**
+     * Utility minimale per recuperare i colori dal tema dell'applicazione, se presente.
+     * In caso contrario usa colori di fallback coerenti con lo stile del progetto.
+     */
     private static final class ThemeColors {
         private ThemeColors() {}
 
         private static final Color FALLBACK_PRIMARY = new Color(0xFF, 0x7A, 0x00);
         private static final Color FALLBACK_PRIMARY_HOVER = new Color(0xFF, 0x8F, 0x33);
 
+        /**
+         * @return colore primario del tema, oppure fallback
+         */
         static Color primary() {
             Color c = fromThemeField("primary");
             return (c != null) ? c : FALLBACK_PRIMARY;
         }
 
+        /**
+         * @return colore usato in hover per il bottone guest; se non presente nel tema viene derivato dal primary
+         */
         static Color primaryHover() {
             Color c = fromThemeField("primaryHover");
             if (c != null) return c;
 
-            // se non esiste primaryHover nel tema, genera un hover leggermente più chiaro del primary
+            // Se non esiste primaryHover nel tema, genera una variante leggermente più chiara del primary.
             Color p = primary();
             return lighten(p, 0.10f);
         }
 
+        /**
+         * Prova a leggere un campo pubblico di tipo {@link Color} dal tema corrente.
+         *
+         * @param fieldName nome del campo (es. "primary", "primaryHover")
+         * @return colore del tema, oppure null se tema/campo non disponibili
+         */
         private static Color fromThemeField(String fieldName) {
             try {
                 Class<?> tm = Class.forName("View.Theme.ThemeManager");
@@ -330,6 +374,13 @@ public class AppShellView extends JPanel {
             }
         }
 
+        /**
+         * Schiarisce un colore spostandolo verso il bianco.
+         *
+         * @param c colore di partenza
+         * @param amount intensità di schiarita (0..1)
+         * @return colore schiarito mantenendo lo stesso alpha
+         */
         private static Color lighten(Color c, float amount) {
             if (c == null) return FALLBACK_PRIMARY_HOVER;
             amount = Math.max(0f, Math.min(1f, amount));

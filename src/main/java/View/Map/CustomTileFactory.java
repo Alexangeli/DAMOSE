@@ -7,45 +7,54 @@ import org.jxmapviewer.viewer.TileFactoryInfo;
 import java.io.File;
 
 /**
- * Factory per la creazione di {@link TileFactory} personalizzata basata su OpenStreetMap.
+ * Factory per creare una {@link TileFactory} basata su OpenStreetMap con supporto cache su disco.
  *
- * <p>Responsabilità principali:</p>
- * <ul>
- *     <li>Configurare la sorgente tile OSM.</li>
- *     <li>Installare una cache su disco per migliorare le performance.</li>
- *     <li>Supportare modalità offline (uso esclusivo della cache locale).</li>
- * </ul>
+ * Responsabilità:
+ * - Configurare la sorgente tile di OpenStreetMap per JXMapViewer.
+ * - Installare una cache persistente su disco per ridurre richieste HTTP e migliorare le performance.
+ * - Supportare una modalità offline in cui le tile vengono lette solo dalla cache locale.
  *
- * <p>La cache viene installata tramite reflection per mantenere compatibilità
- * con diverse versioni di JXMapViewer2.</p>
+ * Note di compatibilità:
+ * - La cache viene installata tramite reflection perché {@code LocalResponseCache} può cambiare firma tra versioni
+ *   diverse di JXMapViewer2. Se l'installazione non è possibile, l'app continua a funzionare comunque.
  *
- * <h2>Offline mode</h2>
- * Se abilitata, le tile vengono caricate esclusivamente dalla cache locale.
- * Se non presenti, non viene effettuata alcuna richiesta HTTP.
- *
- * @author Team Damose
- * @since 1.0
+ * Modalità offline:
+ * - Se offlineOnly è true, il sistema prova a servire solo tile già presenti in cache.
+ * - Se una tile non è in cache, non viene effettuata alcuna richiesta di rete.
  */
 public class CustomTileFactory {
 
-    /** Directory di cache locale per le tile OSM. */
+    /**
+     * Directory di cache locale per le tile OSM.
+     * Viene inizializzata in {@link #create()} e usata anche per reinstallare la cache in modalità offline/online.
+     */
     private static File cacheDir;
 
-    /** Indica se la cache è già stata installata. */
+    /**
+     * Indica se la cache è già stata installata (o almeno tentata con successo).
+     * Volatile perché può essere modificata da thread diversi (es. eventi UI / rete).
+     */
     private static volatile boolean installed = false;
 
-    /** Ultimo stato offline impostato (evita reinstallazioni inutili). */
+    /**
+     * Ultimo valore di offlineOnly impostato, usato per evitare reinstallazioni inutili della cache.
+     */
     private static volatile boolean lastOfflineOnly = false;
 
     /**
      * Crea una {@link TileFactory} configurata su OpenStreetMap.
+     *
+     * Comportamento:
+     * - imposta la directory cache (in home utente)
+     * - abilita la cache su disco (default: online con cache attiva)
+     * - configura la generazione URL delle tile in base allo zoom richiesto da JXMapViewer
      *
      * @return TileFactory pronta per essere usata da JXMapViewer
      */
     public static TileFactory create() {
         cacheDir = new File(System.getProperty("user.home"), ".damose/tile-cache");
 
-        // Modalità default: online con cache attiva
+        // Modalità default: online con cache attiva.
         setOfflineOnly(false);
         installDiskTileCache();
 
@@ -57,7 +66,7 @@ public class CustomTileFactory {
         ) {
             @Override
             public String getTileUrl(int x, int y, int zoom) {
-                // Conversione livello zoom per compatibilità con OSM
+                // JXMapViewer usa zoom invertito rispetto alla convenzione OSM.
                 int z = 19 - zoom;
                 return String.format("%s/%d/%d/%d.png", this.baseURL, z, x, y);
             }
@@ -69,9 +78,13 @@ public class CustomTileFactory {
     /**
      * Installa una cache locale su disco per le tile.
      *
-     * <p>Se la libreria {@code LocalResponseCache} è disponibile,
-     * viene configurata tramite reflection. In caso contrario
-     * il sistema continua a funzionare senza cache persistente.</p>
+     * Dettagli:
+     * - usa {@code org.jxmapviewer.viewer.util.LocalResponseCache} se disponibile
+     * - prova due firme diverse del metodo {@code installResponseCache} per compatibilità tra versioni
+     *
+     * Se la reflection fallisce o la classe non esiste:
+     * - nessun errore bloccante
+     * - la mappa continua a funzionare senza cache persistente
      */
     private static void installDiskTileCache() {
         try {
@@ -80,26 +93,32 @@ public class CustomTileFactory {
 
             Class<?> cls = Class.forName("org.jxmapviewer.viewer.util.LocalResponseCache");
 
+            // Firma più recente: installResponseCache(File, boolean)
             try {
                 var m = cls.getMethod("installResponseCache", File.class, boolean.class);
                 m.invoke(null, dir, false);
                 return;
             } catch (NoSuchMethodException ignored) {}
 
+            // Firma alternativa: installResponseCache(String, boolean)
             try {
                 var m = cls.getMethod("installResponseCache", String.class, boolean.class);
                 m.invoke(null, dir.getAbsolutePath(), false);
             } catch (NoSuchMethodException ignored) {
-                // Versione incompatibile → nessuna cache persistente
+                // Versione incompatibile: nessuna cache persistente.
             }
 
         } catch (Throwable ignored) {
-            // Reflection fallita → la cache non viene installata
+            // Cache non installabile: continuiamo senza cache persistente.
         }
     }
 
     /**
      * Abilita o disabilita la modalità offline.
+     *
+     * Implementazione:
+     * - se lo stato richiesto è già attivo e la cache risulta installata, non facciamo nulla
+     * - altrimenti reinstalliamo la cache impostando il flag offlineOnly
      *
      * @param offlineOnly true = usa solo tile già in cache, false = permette richieste online
      */
@@ -111,7 +130,11 @@ public class CustomTileFactory {
     }
 
     /**
-     * Installa la cache con la modalità offline specificata.
+     * Installa la cache impostando la modalità offline specificata.
+     *
+     * Nota:
+     * - questo metodo è separato da {@link #installDiskTileCache()} perché qui passiamo il flag offlineOnly
+     *   all'installazione della cache (se supportato dalla versione di JXMapViewer).
      *
      * @param offlineOnly modalità offline attiva o meno
      */
@@ -125,6 +148,7 @@ public class CustomTileFactory {
 
             Class<?> cls = Class.forName("org.jxmapviewer.viewer.util.LocalResponseCache");
 
+            // Firma più recente: installResponseCache(File, boolean)
             try {
                 var m = cls.getMethod("installResponseCache", File.class, boolean.class);
                 m.invoke(null, dir, offlineOnly);
@@ -132,16 +156,17 @@ public class CustomTileFactory {
                 return;
             } catch (NoSuchMethodException ignored) {}
 
+            // Firma alternativa: installResponseCache(String, boolean)
             try {
                 var m = cls.getMethod("installResponseCache", String.class, boolean.class);
                 m.invoke(null, dir.getAbsolutePath(), offlineOnly);
                 installed = true;
             } catch (NoSuchMethodException ignored) {
-                // Nessuna installazione possibile
+                // Nessuna installazione possibile con questa versione.
             }
 
         } catch (Throwable ignored) {
-            // Nessuna azione: il sistema continua a funzionare online
+            // Nessuna azione: la mappa continua a funzionare (in pratica online senza cache persistente).
         }
     }
 }

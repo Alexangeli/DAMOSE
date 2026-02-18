@@ -13,9 +13,14 @@ import java.util.Set;
 import java.lang.reflect.*;
 
 /**
- * Disegna i waypoint delle fermate.
- * - fermate normali: pallino rosso
- * - fermata evidenziata: pin rosso tipo "marker mappa"
+ * Painter che disegna i waypoint delle fermate sulla mappa.
+ *
+ * Regole di rendering:
+ * - fermate normali: puntino (dot) con riempimento e bordo
+ * - fermata evidenziata: marker "a goccia" (pin) con foro bianco centrale
+ *
+ * La colorazione prova ad utilizzare il tema dell'applicazione tramite reflection;
+ * in assenza del sistema tema, viene usato un fallback consistente.
  */
 public class StopPainter extends WaypointPainter<Waypoint> {
 
@@ -24,19 +29,33 @@ public class StopPainter extends WaypointPainter<Waypoint> {
     private final GeoPosition highlightedPos;
 
     /**
-     * Costruttore che accetta un Set<StopWaypoint> e
-     * la posizione evidenziata (può essere null).
+     * Costruisce il painter delle fermate.
+     * Viene fatta una copia difensiva del set per evitare modifiche concorrenti durante il rendering.
+     *
+     * @param stops insieme di waypoint di fermata (possono essere null)
+     * @param highlightedPos posizione da evidenziare (può essere null)
      */
     public StopPainter(Set<StopWaypoint> stops, GeoPosition highlightedPos) {
         this.highlightedPos = highlightedPos;
 
         Set<Waypoint> copy = new HashSet<>();
         if (stops != null) {
-            copy.addAll(stops);   // StopWaypoint estende DefaultWaypoint → è un Waypoint
+            // StopWaypoint è un Waypoint, quindi può essere aggiunto direttamente.
+            copy.addAll(stops);
         }
         setWaypoints(copy);
     }
 
+    /**
+     * Disegna tutte le fermate visibili nel viewport corrente.
+     * Per ciascun waypoint calcola la posizione in pixel e sceglie se renderizzare
+     * dot oppure pin in base al confronto con la posizione evidenziata.
+     *
+     * @param g contesto grafico
+     * @param map mappa JXMapViewer
+     * @param w larghezza disponibile per il painter
+     * @param h altezza disponibile per il painter
+     */
     @Override
     protected void doPaint(Graphics2D g, JXMapViewer map, int w, int h) {
         Set<? extends Waypoint> pts = getWaypoints();
@@ -68,6 +87,13 @@ public class StopPainter extends WaypointPainter<Waypoint> {
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, oldAA);
     }
 
+    /**
+     * Disegna un puntino centrato sulla posizione (x,y).
+     *
+     * @param g contesto grafico
+     * @param x coordinata x in pixel
+     * @param y coordinata y in pixel
+     */
     private void drawDot(Graphics2D g, int x, int y) {
         Color fill = withAlpha(themePrimaryOrFallback(), 200);
         Color stroke = themeBorderStrongOrFallback(fill);
@@ -80,38 +106,48 @@ public class StopPainter extends WaypointPainter<Waypoint> {
     }
 
     /**
-     * Disegna un marker "a goccia" rosso con buco bianco al centro,
-     * con la punta in basso (tipo Google Maps).
+     * Disegna un marker "a goccia" con la punta rivolta verso il basso.
+     * La punta coincide con (x,y), mentre la parte circolare viene disegnata più in alto.
+     *
+     * @param g contesto grafico
+     * @param x coordinata x in pixel della punta
+     * @param y coordinata y in pixel della punta
      */
     private void drawPinMarker(Graphics2D g, int x, int y) {
-        int r = 10;           // raggio del cerchio
-        int circleCenterY = y - r * 2;   // sposto il cerchio sopra la punta
+        int r = 10;
+        int circleCenterY = y - r * 2;
 
-        // corpo rosso
         Color fill = withAlpha(themePrimaryOrFallback(), 230);
         Color stroke = themeBorderStrongOrFallback(fill);
+
+        // Corpo (cerchio + triangolo)
         g.setColor(fill);
         g.fillOval(x - r, circleCenterY - r, 2 * r, 2 * r);
 
         Polygon p = new Polygon();
-        p.addPoint(x, y);                    // punta
-        p.addPoint(x - r, circleCenterY);    // sinistra
-        p.addPoint(x + r, circleCenterY);    // destra
+        p.addPoint(x, y);
+        p.addPoint(x - r, circleCenterY);
+        p.addPoint(x + r, circleCenterY);
         g.fillPolygon(p);
 
-        // bordo
+        // Bordo
         g.setColor(stroke);
         g.drawOval(x - r, circleCenterY - r, 2 * r, 2 * r);
         g.drawPolygon(p);
 
-        // buco bianco interno
+        // Foro interno per enfatizzare il marker
         int innerR = r / 2;
         g.setColor(Color.WHITE);
         g.fillOval(x - innerR, circleCenterY - innerR, 2 * innerR, 2 * innerR);
     }
 
     /**
-     * Confronto "morbido" tra due GeoPosition (per eventuali arrotondamenti).
+     * Confronto "morbido" tra due posizioni geografiche.
+     * Serve a gestire piccoli scostamenti dovuti a conversioni/arrotondamenti.
+     *
+     * @param a prima posizione
+     * @param b seconda posizione
+     * @return true se latitudine e longitudine sono sufficientemente vicine
      */
     private boolean samePosition(GeoPosition a, GeoPosition b) {
         double eps = 1e-6;
@@ -121,24 +157,46 @@ public class StopPainter extends WaypointPainter<Waypoint> {
 
     // ===================== THEME (safe via reflection) =====================
 
+    /**
+     * @return colore principale del tema, oppure rosso puro come fallback
+     */
     private static Color themePrimaryOrFallback() {
         Color c = fromThemeField("primary");
         return (c != null) ? c : new Color(255, 0, 0);
     }
 
+    /**
+     * Recupera un colore di bordo dal tema; se non esiste, ne deriva uno più scuro dal colore base.
+     *
+     * @param base colore di riferimento per il fallback
+     * @return colore bordo forte (tema o fallback)
+     */
     private static Color themeBorderStrongOrFallback(Color base) {
         Color c = fromThemeField("borderStrong");
         if (c != null) return c;
-        // fallback: a slightly darker stroke derived from base
         return darken(base, 0.55);
     }
 
+    /**
+     * Applica un valore alpha (0..255) ad un colore.
+     *
+     * @param c colore base
+     * @param a alpha desiderato (viene clampato tra 0 e 255)
+     * @return colore con alpha aggiornato, oppure null se c è null
+     */
     private static Color withAlpha(Color c, int a) {
         if (c == null) return null;
         int aa = Math.max(0, Math.min(255, a));
         return new Color(c.getRed(), c.getGreen(), c.getBlue(), aa);
     }
 
+    /**
+     * Scurisce un colore mantenendo lo stesso alpha.
+     *
+     * @param c colore base
+     * @param factor fattore moltiplicativo sui canali RGB (0..1)
+     * @return colore scurito, oppure null se c è null
+     */
     private static Color darken(Color c, double factor) {
         if (c == null) return null;
         factor = Math.max(0.0, Math.min(1.0, factor));
@@ -149,9 +207,11 @@ public class StopPainter extends WaypointPainter<Waypoint> {
     }
 
     /**
-     * Prova a leggere un campo pubblico (Color) dall'oggetto Theme corrente:
-     * View.Theme.ThemeManager.get() -> Theme, poi fieldName.
-     * Se il sistema temi non è presente, ritorna null.
+     * Legge un campo pubblico di tipo {@link Color} dal tema corrente, se presente.
+     * Flusso: View.Theme.ThemeManager.get() -> theme, poi accesso al campo fieldName.
+     *
+     * @param fieldName nome del campo colore nel tema
+     * @return colore del tema, oppure null se il tema non esiste o il campo non è disponibile
      */
     private static Color fromThemeField(String fieldName) {
         try {

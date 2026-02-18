@@ -15,27 +15,23 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * Pannello "Dettagli" della dashboard: visualizza liste diverse a seconda della modalità di ricerca.
+ * Pannello "Dettagli" della dashboard: mostra contenuti diversi in base al contesto di ricerca selezionato.
  *
- * <p>La view è riutilizzata in più contesti:</p>
- * <ul>
- *   <li><b>LINE_STOPS</b>: linea selezionata → elenco fermate della linea (con centering mappa al click).</li>
- *   <li><b>STOP_ROUTES</b>: fermata selezionata → elenco linee (RoutesModel) che passano per la fermata.</li>
- *   <li><b>STOP_ROUTE_DIRECTIONS</b>: fermata selezionata → elenco linee + direzioni (capolinea/headsign).</li>
- *   <li><b>STOP_ARRIVALS</b>: fermata selezionata → elenco arrivi con orario/minuti + eventuale occupazione.</li>
- * </ul>
+ * Responsabilità:
+ * - Visualizzare una lista testuale che cambia in base alla modalità:
+ *   - LINE_STOPS: linea selezionata -> elenco fermate della linea
+ *   - STOP_ROUTES: fermata selezionata -> elenco linee (RoutesModel) che passano alla fermata
+ *   - STOP_ROUTE_DIRECTIONS: fermata selezionata -> elenco linee + direzioni (capolinea/headsign)
+ *   - STOP_ARRIVALS: fermata selezionata -> elenco arrivi (minuti/orario) e, se disponibile, occupazione
+ * - Gestire input utente (selezione e doppio click) e delegare la logica applicativa tramite callback.
  *
- * <h2>Separazione responsabilità</h2>
- * <p>Questa classe gestisce solo UI e input utente (selezioni/doppio click). La logica applicativa
- * (es. apertura dettagli, fetch realtime, ecc.) è delegata ai controller tramite callback.</p>
+ * Separazione delle responsabilità:
+ * - Questa view non esegue fetch realtime, non calcola percorsi e non cambia stato applicativo.
+ * - I controller esterni si occupano di fornire i dati e reagire alle callback.
  *
- * <h2>Nota UI</h2>
- * <p>Per mostrare due righe (titolo + sottotitolo) usiamo stringhe con '\n'. In Swing, il rendering
- * multi-linea in {@link JList} richiede un renderer dedicato; in assenza, la newline può non andare a capo
- * in alcune LAF. Se necessario, introdurre un custom cell renderer.</p>
- *
- * @author Team Damose
- * @since 1.0
+ * Nota UI:
+ * - Le righe multi-linea vengono costruite con '\n'. In Swing la newline può non andare a capo in tutte le LAF
+ *   senza un renderer dedicato. Se serve un comportamento 100% consistente, introdurre un cell renderer custom.
  */
 public class LineStopsView extends JPanel {
 
@@ -54,13 +50,13 @@ public class LineStopsView extends JPanel {
     /** Controller mappa, usato per centrare e filtrare fermate visibili. */
     private MapController mapController;
 
-    /** Callback su doppio click di una fermata in modalità LINE. */
+    /** Callback su doppio click di una fermata in modalità LINE_STOPS. */
     private Consumer<StopModel> onStopDoubleClick;
 
     // ===== MODE: STOP_ROUTES (fermata -> linee) =====
     private List<RoutesModel> currentRoutes = Collections.emptyList();
 
-    /** Callback su selezione di una linea (RoutesModel) in modalità STOP. */
+    /** Callback su selezione di una linea (RoutesModel) in modalità STOP_ROUTES. */
     private Consumer<RoutesModel> onRouteSelected;
 
     // ===== MODE: STOP_ROUTE_DIRECTIONS (fermata -> linee+direzioni) =====
@@ -75,25 +71,30 @@ public class LineStopsView extends JPanel {
     /** Callback su selezione singola di un arrivo. */
     private Consumer<ArrivalRow> onArrivalSelected;
 
-    /** Callback su doppio click di un arrivo (di solito apre dettagli linea/veicolo). */
+    /** Callback su doppio click di un arrivo (tipicamente: apri dettagli linea/veicolo). */
     private Consumer<ArrivalRow> onArrivalDoubleClick;
 
-    /** Service opzionale usato per arricchire le righe con occupazione (solo realtime). */
+    /**
+     * Service opzionale per arricchire le righe con informazioni di occupazione.
+     * Viene usato solo se presente e solo per righe realtime.
+     */
     private Service.GTFS_RT.Fetcher.Vehicle.VehiclePositionsService vehiclePositionsService;
 
-    /** Modalità corrente del pannello: guida la semantica di click e selezioni. */
+    /**
+     * Modalità corrente del pannello: definisce il significato di selezione e doppio click.
+     */
     private enum PanelMode { NONE, LINE_STOPS, STOP_ROUTES, STOP_ROUTE_DIRECTIONS, STOP_ARRIVALS }
 
     /** Modalità iniziale: nessun contenuto. */
     private PanelMode panelMode = PanelMode.NONE;
 
-    /** Formatter orario (fallback quando non abbiamo minutes). */
+    /** Formatter orario quando non sono disponibili i minuti. */
     private static final DateTimeFormatter HHMM = DateTimeFormatter.ofPattern("HH:mm");
 
     /**
-     * Costruisce il pannello e registra i listener della lista.
+     * Costruisce il pannello e registra i listener di selezione e doppio click.
      *
-     * <p>I listener interpretano selezione e doppio click in base alla {@link PanelMode} corrente.</p>
+     * I listener interpretano gli eventi in modo diverso a seconda della {@link PanelMode} corrente.
      */
     public LineStopsView() {
         setLayout(new BorderLayout());
@@ -117,7 +118,9 @@ public class LineStopsView extends JPanel {
     /**
      * Registra la logica di selezione singola.
      *
-     * <p>Scopo: interpretare il click (selezione) in base alla modalità corrente e delegare ai callback.</p>
+     * Comportamento:
+     * - legge l'indice selezionato
+     * - in base alla modalità, invoca l'handler corrispondente (che a sua volta delega ai callback)
      */
     private void installSelectionBehavior() {
         list.addListSelectionListener(e -> {
@@ -131,7 +134,7 @@ public class LineStopsView extends JPanel {
                 case STOP_ROUTES -> handleStopRoutesSelection(idx);
                 case STOP_ROUTE_DIRECTIONS -> handleStopRouteDirectionsSelection(idx);
                 case STOP_ARRIVALS -> handleStopArrivalsSelection(idx);
-                default -> { /* no-op */ }
+                default -> { /* nessuna azione */ }
             }
         });
     }
@@ -139,7 +142,9 @@ public class LineStopsView extends JPanel {
     /**
      * Registra la logica di doppio click.
      *
-     * <p>Scopo: aprire dettagli/azioni più "forti" rispetto alla selezione, delegando ai controller.</p>
+     * Scopo:
+     * - eseguire un'azione "forte" rispetto alla semplice selezione (es. aprire dettagli)
+     * - delegare la logica al controller tramite callback
      */
     private void installDoubleClickBehavior() {
         list.addMouseListener(new java.awt.event.MouseAdapter() {
@@ -165,6 +170,12 @@ public class LineStopsView extends JPanel {
         });
     }
 
+    /**
+     * Handler della selezione in modalità LINE_STOPS.
+     * Click singolo: centra la mappa sulla fermata selezionata.
+     *
+     * @param idx indice selezionato in lista
+     */
     private void handleLineStopsSelection(int idx) {
         if (mapController == null) return;
         if (idx >= currentStops.size()) return;
@@ -173,6 +184,11 @@ public class LineStopsView extends JPanel {
         mapController.centerMapOnGtfsStop(stop);
     }
 
+    /**
+     * Handler della selezione in modalità STOP_ROUTES.
+     *
+     * @param idx indice selezionato in lista
+     */
     private void handleStopRoutesSelection(int idx) {
         if (onRouteSelected == null) return;
         if (idx >= currentRoutes.size()) return;
@@ -180,6 +196,11 @@ public class LineStopsView extends JPanel {
         onRouteSelected.accept(currentRoutes.get(idx));
     }
 
+    /**
+     * Handler della selezione in modalità STOP_ROUTE_DIRECTIONS.
+     *
+     * @param idx indice selezionato in lista
+     */
     private void handleStopRouteDirectionsSelection(int idx) {
         if (onRouteDirectionSelected == null) return;
         if (idx >= currentRouteDirections.size()) return;
@@ -187,6 +208,11 @@ public class LineStopsView extends JPanel {
         onRouteDirectionSelected.accept(currentRouteDirections.get(idx));
     }
 
+    /**
+     * Handler della selezione in modalità STOP_ARRIVALS.
+     *
+     * @param idx indice selezionato in lista
+     */
     private void handleStopArrivalsSelection(int idx) {
         if (onArrivalSelected == null) return;
         if (idx >= currentArrivals.size()) return;
@@ -195,44 +221,48 @@ public class LineStopsView extends JPanel {
     }
 
     /**
-     * Callback invocato quando l'utente seleziona una linea (Stop → Routes).
+     * Imposta la callback invocata quando l'utente seleziona una linea (Stop -> Routes).
      *
-     * @param cb consumer chiamato con la route selezionata
+     * @param cb consumer chiamato con la route selezionata (può essere null)
      */
     public void setOnRouteSelected(Consumer<RoutesModel> cb) { this.onRouteSelected = cb; }
 
     /**
-     * Callback invocato quando l'utente seleziona una route con direzione (Stop → RouteDirectionOption).
+     * Imposta la callback invocata quando l'utente seleziona una route con direzione
+     * (Stop -> {@link RouteDirectionOption}).
      *
-     * @param cb consumer chiamato con l'opzione selezionata
+     * @param cb consumer chiamato con l'opzione selezionata (può essere null)
      */
     public void setOnRouteDirectionSelected(Consumer<RouteDirectionOption> cb) { this.onRouteDirectionSelected = cb; }
 
     /**
-     * Callback invocato quando l'utente seleziona una riga arrivo (Stop → Arrivals).
+     * Imposta la callback invocata quando l'utente seleziona una riga arrivo (Stop -> Arrivals).
      *
-     * @param cb consumer chiamato con l'arrivo selezionato
+     * @param cb consumer chiamato con l'arrivo selezionato (può essere null)
      */
     public void setOnArrivalSelected(Consumer<ArrivalRow> cb) { this.onArrivalSelected = cb; }
 
     /**
-     * Callback invocato al doppio click su un arrivo (tipicamente: apri dettagli linea/corsa).
+     * Imposta la callback invocata al doppio click su un arrivo
+     * (tipicamente: apri dettagli linea/corsa/veicolo).
      *
-     * @param cb consumer chiamato con l'arrivo scelto
+     * @param cb consumer chiamato con l'arrivo scelto (può essere null)
      */
     public void setOnArrivalDoubleClick(Consumer<ArrivalRow> cb) { this.onArrivalDoubleClick = cb; }
 
     /**
-     * Callback invocato al doppio click su una fermata in modalità linea (tipicamente: apri dettagli fermata).
+     * Imposta la callback invocata al doppio click su una fermata in modalità LINE_STOPS.
      *
-     * @param cb consumer chiamato con la fermata scelta
+     * @param cb consumer chiamato con la fermata scelta (può essere null)
      */
     public void setOnStopDoubleClick(Consumer<StopModel> cb) { this.onStopDoubleClick = cb; }
 
     /**
      * Mostra elenco fermate per una linea (modalità LINE_STOPS).
      *
-     * <p>Click singolo: centra la mappa sulla fermata.</p>
+     * Comportamento:
+     * - click singolo: centra la mappa sulla fermata selezionata
+     * - (opzionale) filtra le fermate visibili in mappa in base alla lista corrente
      *
      * @param label testo titolo (se null usa un default)
      * @param stops fermate della linea
@@ -341,12 +371,10 @@ public class LineStopsView extends JPanel {
     /**
      * Mostra gli arrivi previsti ad una fermata (modalità STOP_ARRIVALS).
      *
-     * <p>Ogni riga contiene:</p>
-     * <ul>
-     *   <li>Linea + direzione</li>
-     *   <li>Prossimo passaggio (minuti oppure orario)</li>
-     *   <li>Occupazione (solo se realtime e service disponibile)</li>
-     * </ul>
+     * Ogni riga è composta da:
+     * - prima riga: linea + direzione (se disponibile)
+     * - seconda riga: "Prossimo: tra X min" oppure "Prossimo: HH:mm"
+     * - append opzionale: occupazione solo se la riga è realtime e il service è disponibile
      *
      * @param stopId id GTFS della fermata (usato per calcolo occupazione)
      * @param stopName nome fermata
@@ -374,7 +402,7 @@ public class LineStopsView extends JPanel {
 
                 String bottom = buildBottomLine(r);
 
-                // Occupazione: solo se abbiamo RT e service disponibile
+                // Occupazione: solo se abbiamo RT e service disponibile.
                 if (vehiclePositionsService != null && r.realtime) {
                     String occLabel = vehiclePositionsService.getOccupancyLabelForArrival(r, stopId);
                     if (occLabel == null || occLabel.isBlank()) occLabel = "Posti: non disponibile";
@@ -390,6 +418,12 @@ public class LineStopsView extends JPanel {
         repaint();
     }
 
+    /**
+     * Costruisce la seconda riga della riga arrivo (minuti oppure orario).
+     *
+     * @param r riga arrivo
+     * @return stringa pronta per essere mostrata nella UI
+     */
     private String buildBottomLine(ArrivalRow r) {
         if (r.minutes != null) {
             return "Prossimo: tra " + r.minutes + " min";
@@ -401,7 +435,7 @@ public class LineStopsView extends JPanel {
     }
 
     /**
-     * Pulisce il pannello riportandolo allo stato iniziale.
+     * Pulisce il pannello e lo riporta allo stato iniziale.
      */
     public void clear() {
         panelMode = PanelMode.NONE;
@@ -423,20 +457,18 @@ public class LineStopsView extends JPanel {
     /**
      * @return true se la lista ha un elemento selezionato
      */
-    /**
-     * @return true se la lista ha un elemento selezionato
-     */
     public boolean hasSelection() { return list.getSelectedIndex() >= 0; }
 
     /**
      * Aggiunge un listener esterno alla selezione della lista.
+     * Utile se un controller vuole sincronizzare pulsanti o altre UI in base alla selezione.
      *
      * @param l listener da aggiungere
      */
     public void addSelectionListener(ListSelectionListener l) { list.addListSelectionListener(l); }
 
     /**
-     * @return numero elementi visualizzati nella lista
+     * @return numero di elementi visualizzati nella lista
      */
     public int getItemCount() { return listModel.getSize(); }
 
@@ -444,22 +476,25 @@ public class LineStopsView extends JPanel {
      * Normalizza una stringa per uso in UI.
      *
      * @param s stringa in input (può essere null)
-     * @return stringa non nulla e senza spazi laterali
+     * @return stringa non null e senza spazi laterali
      */
     private static String safe(String s) { return s == null ? "" : s.trim(); }
 
     /**
      * Variante della modalità LINE_STOPS che mostra anche un sottotitolo per ogni fermata.
      *
+     * Uso tipico:
+     * - quando vogliamo mostrare, sotto al nome fermata, un dato aggiuntivo (es. "Prossimo: ...").
+     *
      * @param label titolo pannello
      * @param stops fermate linea
-     * @param subtitles sottotitoli paralleli (es. "Prossimo: ...")
+     * @param subtitles sottotitoli paralleli (stesso ordine della lista fermate)
      * @param mapController controller mappa
      */
     public void showLineStopsWithSubtitles(String label,
-                                          List<StopModel> stops,
-                                          List<String> subtitles,
-                                          MapController mapController) {
+                                           List<StopModel> stops,
+                                           List<String> subtitles,
+                                           MapController mapController) {
         panelMode = PanelMode.LINE_STOPS;
 
         this.mapController = mapController;
