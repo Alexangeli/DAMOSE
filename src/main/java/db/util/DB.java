@@ -1,5 +1,7 @@
 package db.util;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -8,22 +10,28 @@ import java.sql.Statement;
 
 /**
  * Classe di utilità per la gestione delle connessioni JDBC verso SQLite.
- * <p>
+ *
  * Centralizza la creazione delle connessioni, l'abilitazione dei vincoli di
  * integrità referenziale e fornisce metodi helper per la chiusura sicura
  * delle risorse JDBC.
- * <p>
+ *
  * La classe è dichiarata final e non istanziabile perché contiene
  * esclusivamente metodi statici di supporto.
  */
 public final class DB {
 
     /**
-     * URL JDBC del database SQLite su file.
-     * <p>
-     * Il file viene creato automaticamente da SQLite se non esiste.
+     * Nome della cartella applicativa (sotto la home dell'utente) dove salvare il database.
+     *
+     *
+     * Questo approccio funziona sia in IDE sia nel JAR, perché non dipende da src/main.
      */
-    private static final String URL = "jdbc:sqlite:app.db";
+    private static final String APP_DIR_NAME = ".damose";
+
+    /**
+     * Nome del file database SQLite.
+     */
+    private static final String DB_FILE_NAME = "app.db";
 
     /**
      * Costruttore privato per impedire l'istanziazione della classe.
@@ -35,8 +43,31 @@ public final class DB {
     }
 
     /**
+     * Costruisce l'URL JDBC del database SQLite su file.
+     *
+     * Il database viene posizionato nella cartella utente (home) in una directory dedicata
+     * all'applicazione. Se la directory non esiste viene creata.
+     *
+     * Il file viene creato automaticamente da SQLite se non esiste.
+     *
+     * @return URL JDBC completo, pronto per DriverManager
+     */
+    private static String buildFileDbUrl() {
+        try {
+            Path dir = Path.of(System.getProperty("user.home"), APP_DIR_NAME);
+            Files.createDirectories(dir);
+
+            Path dbPath = dir.resolve(DB_FILE_NAME);
+            return "jdbc:sqlite:" + dbPath.toAbsolutePath();
+        } catch (Exception e) {
+            // Fallback: se per qualche motivo non posso creare la cartella, uso la directory corrente.
+            return "jdbc:sqlite:" + DB_FILE_NAME;
+        }
+    }
+
+    /**
      * Restituisce una nuova connessione al database SQLite su file.
-     * <p>
+     *
      * Dopo l'apertura della connessione viene esplicitamente abilitato
      * il controllo delle foreign key tramite PRAGMA, poiché in SQLite
      * non è attivo di default.
@@ -45,16 +76,23 @@ public final class DB {
      * @throws SQLException in caso di errore nella creazione della connessione
      */
     public static Connection getConnection() throws SQLException {
-        Connection conn = DriverManager.getConnection(URL);
+        String url = buildFileDbUrl();
+
+        Connection conn = DriverManager.getConnection(url);
         try (Statement stmt = conn.createStatement()) {
             stmt.execute("PRAGMA foreign_keys = ON");
         }
+
+        // Log utile in debug per capire quale file DB sta usando il JAR/IDE.
+        // Se non lo vuoi, puoi rimuoverlo.
+        // System.out.println("[DB] Using: " + url);
+
         return conn;
     }
 
     /**
-     * Chiude in modo sicuro un {@link ResultSet}.
-     * <p>
+     * Chiude in modo sicuro un ResultSet.
+     *
      * Eventuali eccezioni vengono intercettate e ignorate, per evitare che
      * errori in fase di chiusura mascherino l'eccezione principale.
      *
@@ -67,8 +105,8 @@ public final class DB {
     }
 
     /**
-     * Chiude in modo sicuro uno {@link Statement}.
-     * <p>
+     * Chiude in modo sicuro uno Statement.
+     *
      * Funziona sia con Statement sia con PreparedStatement.
      *
      * @param stmt statement da chiudere, può essere null
@@ -80,7 +118,7 @@ public final class DB {
     }
 
     /**
-     * Chiude in modo sicuro una {@link Connection}.
+     * Chiude in modo sicuro una Connection.
      *
      * @param conn connessione da chiudere, può essere null
      */
@@ -91,8 +129,8 @@ public final class DB {
     }
 
     /**
-     * Metodo helper per chiudere insieme {@link ResultSet} e {@link Statement}.
-     * <p>
+     * Metodo helper per chiudere insieme ResultSet e Statement.
+     *
      * Le risorse vengono chiuse in sequenza, ignorando eventuali eccezioni.
      *
      * @param rs result set da chiudere
@@ -104,9 +142,8 @@ public final class DB {
     }
 
     /**
-     * Metodo helper per chiudere insieme {@link ResultSet}, {@link Statement}
-     * e {@link Connection}.
-     * <p>
+     * Metodo helper per chiudere insieme ResultSet, Statement e Connection.
+     *
      * Utile in codice legacy dove non si utilizza try-with-resources.
      *
      * @param rs result set da chiudere
@@ -121,11 +158,11 @@ public final class DB {
 
     /**
      * Restituisce una connessione SQLite in-memory.
-     * <p>
-     * Questa connessione non utilizza il file {@code app.db} e viene usata
+     *
+     * Questa connessione non utilizza il file app.db e viene usata
      * principalmente nei test automatici per garantire isolamento e
      * riproducibilità.
-     * <p>
+     *
      * Anche in questo caso vengono abilitate le foreign key.
      *
      * @return nuova connessione SQLite in-memory

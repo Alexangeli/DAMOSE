@@ -85,6 +85,10 @@ public class UserDAO {
             ps.setString(3, user.getPasswordHash());
 
             return ps.executeUpdate() == 1;
+        }catch (Exception e) {
+            e.printStackTrace();
+            System.out.println(e.getMessage());
+            return false;
         }
     }
 
