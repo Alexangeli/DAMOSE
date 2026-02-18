@@ -1,13 +1,19 @@
 package Controller.SearchMode;
 
 /**
- * Modalità di ricerca selezionabile dalla UI:
- * - STOP  = ricerca fermate
- * - LINE  = ricerca linee
+ * Modalità di ricerca selezionabile dalla UI.
+ *
+ * Determina quale logica di ricerca viene applicata nella SearchBar:
+ * - STOP: ricerca e suggerimenti sulle fermate.
+ * - LINE: ricerca e suggerimenti sulle linee (route) e relative direzioni.
  *
  * Creatore: Simone Bonuso
  */
 public enum SearchMode {
-    STOP,   // modalità "Fermata"
-    LINE    // modalità "Linea"
+
+    /** Modalità "Fermata": la ricerca opera sulle fermate (stop). */
+    STOP,
+
+    /** Modalità "Linea": la ricerca opera sulle linee (route) e sulle direzioni disponibili. */
+    LINE
 }

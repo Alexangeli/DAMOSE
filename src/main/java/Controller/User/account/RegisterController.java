@@ -1,50 +1,70 @@
 package Controller.User.account;
 
 import Model.User.User;
-import db.DAO.UserDAO;
 import Util.PasswordUtil;
+import db.DAO.UserDAO;
 
 import java.sql.SQLException;
 
 /**
  * Controller responsabile della registrazione di un nuovo utente.
- * Verifica che lo username non esista già e applica una validazione
- * sulla password, richiedendo almeno 8 caratteri, una lettera maiuscola,
- * una lettera minuscola e un carattere speciale. Le password valide
- * vengono poi hashate tramite {@link PasswordUtil} prima di essere salvate.
+ *
+ * Responsabilità:
+ * - Verificare che lo username non sia già presente nel database.
+ * - Validare la password secondo criteri minimi di sicurezza.
+ * - Salvare l’utente con password hashata.
+ *
+ * Regole password:
+ * - Almeno 8 caratteri
+ * - Almeno una lettera maiuscola
+ * - Almeno una lettera minuscola
+ * - Almeno un carattere speciale (non alfanumerico)
+ *
+ * Note di sicurezza:
+ * - La password non viene mai salvata in chiaro.
+ * - L’hash viene generato tramite PasswordUtil prima della persistenza.
  */
 public class RegisterController {
 
     private final UserDAO userDAO;
 
+    /**
+     * Crea il controller di registrazione.
+     * Internamente istanzia il relativo UserDAO.
+     */
     public RegisterController() {
         this.userDAO = new UserDAO();
     }
 
     /**
-     * Registra un nuovo utente nel sistema, previa validazione della password
-     * e verifica dell’unicità dello username.
+     * Registra un nuovo utente nel sistema.
+     *
+     * Flusso:
+     * - Verifica che lo username non sia già utilizzato.
+     * - Valida la password.
+     * - Crea un nuovo User con password hashata.
+     * - Persiste l’utente tramite DAO.
      *
      * @param username nome utente scelto
-     * @param email    indirizzo email
+     * @param email indirizzo email
      * @param password password in chiaro da validare e hashare
      * @return true se la registrazione va a buon fine, false in caso di errori
      */
     public boolean register(String username, String email, String password) {
         try {
-            // Controlla se l'utente esiste già
+            // Username già esistente
             if (userDAO.findByUsername(username) != null) {
-                return false; // username già preso
+                return false;
             }
 
-            // Valida la password: almeno 8 caratteri, una maiuscola, una minuscola e un carattere speciale
+            // Validazione password
             if (!isValidPassword(password)) {
                 return false;
             }
 
-            // Crea utente con password hashata
             String hashed = PasswordUtil.hash(password);
             User user = new User(username, email, hashed);
+
             return userDAO.create(user);
 
         } catch (SQLException e) {
@@ -54,13 +74,13 @@ public class RegisterController {
     }
 
     /**
-     * Registra un nuovo utente nel DB usando una connessione specifica.
-     * Utile per i test con database in-memory.
+     * Variante del metodo register che utilizza una connessione specifica.
+     * Utile per test con database in-memory.
      *
      * @param username nome utente scelto
-     * @param email    indirizzo email
+     * @param email indirizzo email
      * @param password password in chiaro da validare e hashare
-     * @param conn     connessione DB da utilizzare
+     * @param conn connessione JDBC da utilizzare
      * @return true se la registrazione va a buon fine, false in caso di errori
      */
     public boolean register(String username, String email, String password, java.sql.Connection conn) {
@@ -69,13 +89,13 @@ public class RegisterController {
                 return false;
             }
 
-            // Valida la password con gli stessi criteri dell’overload senza connessione
             if (!isValidPassword(password)) {
                 return false;
             }
 
             String hashed = PasswordUtil.hash(password);
             User user = new User(username, email, hashed);
+
             return userDAO.create(conn, user);
 
         } catch (SQLException e) {
@@ -85,35 +105,39 @@ public class RegisterController {
     }
 
     /**
-     * Verifica che una password rispetti i requisiti minimi:
-     * - almeno 8 caratteri
-     * - contenga almeno una lettera maiuscola
-     * - contenga almeno una lettera minuscola
-     * - contenga almeno un carattere speciale (non alfanumerico)
+     * Verifica che la password rispetti i requisiti minimi di sicurezza.
      *
-     * @param password la password da validare
-     * @return true se la password è valida, false altrimenti
+     * @param password password da validare
+     * @return true se valida, false altrimenti
      */
     private boolean isValidPassword(String password) {
+
         if (password == null || password.length() < 8) {
             return false;
         }
+
         boolean hasUpper = false;
         boolean hasLower = false;
         boolean hasSpecial = false;
+
         for (char c : password.toCharArray()) {
+
             if (Character.isUpperCase(c)) {
                 hasUpper = true;
+
             } else if (Character.isLowerCase(c)) {
                 hasLower = true;
+
             } else if (!Character.isLetterOrDigit(c)) {
                 hasSpecial = true;
             }
-            // Se tutti i requisiti sono soddisfatti, possiamo uscire dal ciclo
+
+            // Ottimizzazione: interrompe il ciclo se tutti i requisiti sono soddisfatti
             if (hasUpper && hasLower && hasSpecial) {
                 return true;
             }
         }
+
         return hasUpper && hasLower && hasSpecial;
     }
 }
