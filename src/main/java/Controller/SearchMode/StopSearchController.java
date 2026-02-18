@@ -8,19 +8,23 @@ import javax.swing.*;
 import java.util.List;
 
 import Controller.Map.MapController;
+import Controller.StopLines.StopLinesController;
 
 public class StopSearchController {
 
     private final SearchBarView searchView;
     private final MapController mapController;
     private final String stopsCsvPath;
+    private final StopLinesController stopLinesController;
 
     public StopSearchController(SearchBarView searchView,
                                 MapController mapController,
-                                String stopsCsvPath) {
+                                String stopsCsvPath,
+                                StopLinesController stopLinesController) {
         this.searchView = searchView;
         this.mapController = mapController;
         this.stopsCsvPath = stopsCsvPath;
+        this.stopLinesController = stopLinesController;
     }
 
     public void onSearch(String query) {
@@ -37,6 +41,9 @@ public class StopSearchController {
             );
         } else if (results.size() == 1) {
             mapController.centerMapOnStop(results.get(0));
+            if (stopLinesController != null) {
+                stopLinesController.showLinesForStop(results.get(0));
+            }
         } else {
             if (results.size() > 30) results = results.subList(0, 30);
             searchView.showStopSuggestions(results);
@@ -63,6 +70,9 @@ public class StopSearchController {
     public void onSuggestionSelected(StopModel stop) {
         if (stop == null) return;
         mapController.centerMapOnStop(stop);
+        if (stopLinesController != null) {
+            stopLinesController.showLinesForStop(stop);
+        }
     }
 
     private void clearSelectionSoTypingDoesNotOverwrite() {
