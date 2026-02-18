@@ -11,8 +11,8 @@ import Service.GTFS_RT.Fetcher.TripUpdates.TripUpdatesService;
 import Service.GTFS_RT.Fetcher.Vehicle.VehiclePositionsService;
 import Service.GTFS_RT.Status.ConnectionStatusService;
 import Service.User.Fav.FavoritesService;
-import View.DashboardView;
 import View.AppShellView;
+import View.DashboardView;
 import View.User.Account.AccountDropdown;
 import View.User.Account.AccountSettingsDialog;
 import View.User.Account.AuthDialog;
@@ -28,34 +28,50 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 /**
- * AppController:
- * - Crea servizi RT + status
- * - Crea DashboardController
- * - Crea RealTimeController
- * - Collega InfoBar: countdown + totale veicoli
- * - Gestisce shell + login/dropdown + preferiti (wiring)
+ * Controller principale dell’app (entry-point logico lato UI).
  *
- * Niente logica UI sparsa in Main.
+ * Responsabilità:
+ * - Creare e avviare i service realtime (GTFS-RT) e il servizio di stato connessione.
+ * - Creare il DashboardController e ottenere la DashboardView.
+ * - Creare il RealTimeController e collegare i callback verso la UI (InfoBar, ecc.).
+ * - Costruire la shell dell’app (AppShellView) e gestire autenticazione, dropdown account e preferiti.
+ * - Gestire shutdown pulito (stop timer/service e chiusura finestra).
+ *
+ * Note di design:
+ * - La logica di wiring è centralizzata qui per evitare codice UI sparso nel Main.
+ * - I service realtime vengono “gated” da ConnectionStatusProvider: in OFFLINE si fermano.
+ * - L’uso di AtomicReference/AtomicBoolean serve a gestire oggetti Swing ricreati/chiusi e a prevenire
+ *   doppie aperture di dialog in condizioni di input ravvicinato.
  */
 public class AppController {
 
-    // ====== URL RT ======
+    // ========================= URL GTFS-RT =========================
+
+    /** URL usato per verificare la raggiungibilità del feed realtime (health check). */
     private static final String GTFS_RT_HEALTH_URL =
             "https://romamobilita.it/sites/default/files/rome_rtgtfs_vehicle_positions_feed.pb";
+
+    /** URL feed VehiclePositions (posizione veicoli). */
     private static final String GTFS_RT_VEHICLE_URL =
             "https://romamobilita.it/sites/default/files/rome_rtgtfs_vehicle_positions_feed.pb";
+
+    /** URL feed TripUpdates (ritardi/cambi corsa). */
     private static final String GTFS_RT_TRIP_URL =
             "https://romamobilita.it/sites/default/files/rome_rtgtfs_trip_updates_feed.pb";
+
+    /** URL feed ServiceAlerts (interruzioni/avvisi). */
     private static final String GTFS_RT_ALERTS_URL =
             "https://romamobilita.it/sites/default/files/rome_rtgtfs_service_alerts_feed.pb";
 
-    // ====== CSV statici ======
+    // ========================= CSV GTFS statici =========================
+
     private final String stopsCsvPath     = "src/main/resources/rome_static_gtfs/stops.csv";
     private final String routesCsvPath    = "src/main/resources/rome_static_gtfs/routes.csv";
     private final String tripsCsvPath     = "src/main/resources/rome_static_gtfs/trips.csv";
     private final String stopTimesCsvPath = "src/main/resources/rome_static_gtfs/stop_times.csv";
 
-    // ====== runtime refs ======
+    // ========================= Riferimenti runtime =========================
+
     private JFrame frame;
     private Timer followTimer;
 
@@ -68,14 +84,21 @@ public class AppController {
     private final AtomicReference<AppShellView> shellRef = new AtomicReference<>();
     private final AtomicReference<AccountDropdown> dropdownRef = new AtomicReference<>();
 
-    // pos ultimo dropdown
+    /** Ultima posizione (screen) del dropdown account, usata per follow su resize/move. */
     private static volatile int lastScreenX = 0;
     private static volatile int lastScreenY = 0;
 
+    /**
+     * Avvia l’applicazione:
+     * - crea la finestra,
+     * - inizializza service e controller,
+     * - collega la UI (InfoBar, auth, preferiti),
+     * - mostra il frame e registra lo shutdown handler.
+     */
     public void start() {
         frame = createFrame();
 
-        // 1) status + realtime services
+        // 1) Status + realtime services
         statusService = new ConnectionStatusService(GTFS_RT_HEALTH_URL);
         ConnectionStatusProvider statusProvider = statusService;
 
@@ -83,7 +106,7 @@ public class AppController {
         TripUpdatesService tripSvc = new TripUpdatesService(GTFS_RT_TRIP_URL);
         AlertsService alertsSvc = new AlertsService(GTFS_RT_ALERTS_URL);
 
-        // 2) dashboard controller (riceve services)
+        // 2) Dashboard controller (riceve i service per leggere cache e costruire UI)
         dashboardController = new DashboardController(
                 stopsCsvPath,
                 routesCsvPath,
@@ -95,32 +118,33 @@ public class AppController {
         );
         dashboardView = dashboardController.getView();
 
-        // 3) realtime controller (gated by statusProvider)
+        // 3) Realtime controller (avvio/stop dipende dallo stato connessione)
         rtController = new RealTimeController(statusProvider, vehicleSvc, tripSvc, alertsSvc);
 
-        // ====== INFO BAR WIRING ======
-        // countdown: NON usare statusService (non lo espone), usare rtController
+        // ===================== INFO BAR wiring =====================
+
+        // Countdown: uso rtController perché conosce il ciclo di publish/republish usato in UI.
         dashboardView.getInfoBar().bindCountdown(rtController::getSecondsToNextFetch);
 
-        // totale corse/veicoli: aggiornalo dai callback del RT controller
+        // Totale veicoli: derivato dalla callback vehicles (lista cacheata dal service).
         rtController.setOnVehicles(vehicles -> {
             int total = (vehicles != null) ? vehicles.size() : 0;
             dashboardView.getInfoBar().setTotalCorse(total);
         });
 
-        // start servizi
+        // Start servizi
         statusService.start();
         rtController.start();
 
-        // 4) shell + auth + dropdown + favorites
+        // 4) Shell + auth + dropdown + favorites
         setupShellAndAccount(tripSvc, statusProvider);
 
-        // finestra
+        // Finestra
         frame.setContentPane(shellRef.get());
         frame.setLocationRelativeTo(null);
         frame.setVisible(true);
 
-        // close
+        // Close: shutdown controllato (no EXIT brutale senza stop dei service).
         frame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
         frame.addWindowListener(new WindowAdapter() {
             @Override public void windowClosing(WindowEvent e) {
@@ -129,6 +153,13 @@ public class AppController {
         });
     }
 
+    /**
+     * Configura la shell e tutta la parte account:
+     * - dialog login
+     * - dropdown account e impostazioni
+     * - dialog preferiti (apertura post-login e filtri)
+     * - aggiornamento posizione dropdown quando la finestra si muove o ridimensiona
+     */
     private void setupShellAndAccount(TripUpdatesService tripSvc, ConnectionStatusProvider statusProvider) {
 
         FavoritesService favoritesService = new FavoritesService();
@@ -140,6 +171,7 @@ public class AppController {
         AtomicBoolean openingFavoritesGuard = new AtomicBoolean(false);
         AtomicReference<Runnable> openFavoritesDialogRefRunnable = new AtomicReference<>();
 
+        // Dialog di autenticazione: al successo aggiorna UI e riapre eventuale richiesta preferiti.
         Runnable openAuthDialog = () -> {
             AuthDialog dlg = new AuthDialog(frame, () -> {
                 if (!Session.isLoggedIn()) {
@@ -161,8 +193,10 @@ public class AppController {
             dlg.setVisible(true);
         };
 
+        // La dashboard può richiedere auth (es. utente tenta di aprire una feature protetta).
         dashboardView.setOnRequireAuth(openAuthDialog);
 
+        // Dropdown account: include settings (tema + profilo) e logout.
         AccountDropdown dropdown = new AccountDropdown(
                 frame,
                 () -> {
@@ -191,12 +225,13 @@ public class AppController {
 
                         @Override
                         public void onPickTheme(String themeKey) {
-                            // Applica il tema senza popup (solo colori)
+                            // Applica il tema senza popup: vogliamo un feedback immediato.
                             applyTheme(themeKey);
                         }
 
                         @Override
                         public AccountSettingsDialog.DashboardData requestDashboardData() {
+                            // Calcolo semplice di early/onTime/delayed basato sui TripUpdates.
                             final int ON_TIME_WINDOW_SEC = 60;
 
                             int early = 0, onTime = 0, delayed = 0;
@@ -216,6 +251,7 @@ public class AppController {
                     dlg.showCentered();
                 },
                 () -> {
+                    // Logout: reset sessione e chiudo UI collegate.
                     Session.logout();
 
                     JDialog fd = favoritesDialogRef.getAndSet(null);
@@ -240,6 +276,7 @@ public class AppController {
         dropdownRef.set(dropdown);
         dropdown.bindConnectionStatus(statusProvider);
 
+        // Shell: contiene dashboard + bottone auth che apre dropdown (se loggato) o login (se non loggato).
         AppShellView shell = new AppShellView(dashboardView, () -> {
             if (!Session.isLoggedIn()) {
                 openAuthDialog.run();
@@ -260,6 +297,7 @@ public class AppController {
 
         shellRef.set(shell);
 
+        // Apertura preferiti: gestisce anche il caso “richiesto prima del login”.
         Runnable openFavoritesDialogEDT = () -> {
             if (!openingFavoritesGuard.compareAndSet(false, true)) return;
 
@@ -281,6 +319,7 @@ public class AppController {
                 final JDialog dialog = new JDialog(frame, "Preferiti", false);
                 dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
 
+                // UX: chiudo la finestra preferiti quando perde focus (non modale).
                 AtomicBoolean closingFavDialog = new AtomicBoolean(false);
                 dialog.addWindowFocusListener(new WindowAdapter() {
                     @Override
@@ -326,8 +365,10 @@ public class AppController {
                 dialog.setVisible(true);
 
             } finally {
-                if (favoritesDialogRef.get() == null)
+                // Se la dialog non è stata creata, sblocco la guardia.
+                if (favoritesDialogRef.get() == null) {
                     openingFavoritesGuard.set(false);
+                }
             }
         };
 
@@ -347,6 +388,7 @@ public class AppController {
         JButton favBtn = dashboardView.getFavoritesButton();
         if (favBtn != null) favBtn.setEnabled(true);
 
+        // Follow dropdown: quando la finestra cambia posizione/dimensione, ricalcolo l’ancoraggio.
         frame.addComponentListener(new ComponentAdapter() {
             @Override public void componentMoved(ComponentEvent e) {
                 updateDropdownPosition(frame, dashboardView, shellRef.get(), dropdownRef.get());
@@ -362,21 +404,28 @@ public class AppController {
         followTimer.start();
     }
 
+    /**
+     * Shutdown controllato dell’app:
+     * - stop timer
+     * - stop realtime controller e status service
+     * - dispose della finestra
+     */
     private void shutdown() {
         try {
             if (followTimer != null) followTimer.stop();
             if (rtController != null) rtController.stop();
             if (statusService != null) statusService.stop();
         } finally {
-            if (frame != null) {
-                frame.dispose();
-            }
+            if (frame != null) frame.dispose();
             System.exit(0);
         }
     }
 
-    // ===================== HELPERS (copiati dal tuo Main) =====================
+    // ===================== Helpers (portati dal Main) =====================
 
+    /**
+     * Crea la finestra principale con impostazioni di base e icona coerente col tema corrente.
+     */
     private JFrame createFrame() {
         JFrame myFrame = new JFrame();
         myFrame.setTitle(AppConfig.APP_TITLE);
@@ -385,12 +434,20 @@ public class AppController {
         myFrame.setSize(AppConfig.DEFAULT_WIDTH, AppConfig.DEFAULT_HEIGHT);
         myFrame.getContentPane().setBackground(AppConfig.BACKGROUND_COLOR);
 
-        // Icona iniziale coerente col tema corrente
+        // Icona iniziale coerente col tema corrente.
         updateAppIcon(myFrame, getCurrentThemeKeySafe());
 
         return myFrame;
     }
 
+    /**
+     * Calcola e applica la posizione del dropdown account in coordinate schermo.
+     *
+     * Note:
+     * - Usa una scala UI derivata dalla dimensione della finestra (per mantenere proporzioni).
+     * - Applica clamp per evitare che il popup finisca fuori dal frame o sopra la sidebar.
+     * - Se il dropdown è visibile, lo sposta in tempo reale.
+     */
     private static void updateDropdownPosition(JFrame frame, DashboardView dashboardView, AppShellView shell, AccountDropdown dd) {
         if (frame == null || dashboardView == null || shell == null || dd == null) return;
 
@@ -406,8 +463,8 @@ public class AppController {
         int gapX = (int) Math.round(Math.max(16, 14 * scaleFactor));
         int margin = (int) Math.round(Math.max(10, 10 * scaleFactor));
 
-        // ⚠️ qui uso riflessione perché la tua AppShellView “semplice” non espone bounds/layer
-        // Se hai già la versione con getAuthButtonBoundsOnLayer(), sostituisci questa parte.
+        // Anchor: qui è un fallback perché AppShellView non espone bounds del bottone profilo.
+        // Se in futuro la shell fornisce bounds reali, basta sostituire questa parte.
         Rectangle b = new Rectangle(frame.getWidth() - 180, 18, 140, 50);
         JComponent anchor = frame.getRootPane();
 
@@ -419,7 +476,7 @@ public class AppController {
             return;
         }
 
-        int profileLeftX   = frameOnScreen.x + pInRoot.x;
+        int profileLeftX = frameOnScreen.x + pInRoot.x;
         int profileBottomY = frameOnScreen.y + pInRoot.y + b.height;
 
         int screenX = profileLeftX + b.width + gapX;
@@ -451,6 +508,9 @@ public class AppController {
         if (dd.isVisible()) dd.setLocationOnScreen(screenX, screenY);
     }
 
+    /**
+     * Aggiorna il pannello preferiti applicando filtro modalità (STOP/LINE) e filtri trasporto.
+     */
     private static void refreshFavoritesPanel(FavoritesDialogView panel, FavoritesService favoritesService) {
         if (panel == null) return;
 
@@ -465,8 +525,8 @@ public class AppController {
                 .collect(Collectors.toList());
 
         if (panel.getMode() == FavoritesDialogView.Mode.LINEA) {
-            boolean busOn   = panel.isBusEnabled();
-            boolean tramOn  = panel.isTramEnabled();
+            boolean busOn = panel.isBusEnabled();
+            boolean tramOn = panel.isTramEnabled();
             boolean metroOn = panel.isMetroEnabled();
 
             filtered = filtered.stream()
@@ -485,6 +545,10 @@ public class AppController {
 
     private enum TransportGuess { BUS, TRAM, METRO, UNKNOWN }
 
+    /**
+     * Euristica semplice per classificare il tipo di trasporto di un preferito LINE.
+     * Serve solo per i filtri UI (bus/tram/metro), non è una classificazione "ufficiale".
+     */
     private static TransportGuess guessTransport(FavoriteItem it) {
         try {
             String s = (it.getRouteShortName() != null ? it.getRouteShortName() : "") +
@@ -498,77 +562,71 @@ public class AppController {
         } catch (Exception ignored) {}
         return TransportGuess.UNKNOWN;
     }
+
     /**
-     * Applica il tema corrente senza mostrare popup.
-     * Usa reflection per restare compatibile anche se ThemeManager/Theme cambiano firma.
+     * Applica un tema alla UI senza mostrare popup.
+     *
+     * Nota:
+     * - Usa reflection per restare compatibile con diverse firme del ThemeManager.
+     * - Dopo l’applicazione aggiorna anche l’icona e forza repaint leggero.
      */
     private void applyTheme(String themeKey) {
         try {
-            // 1) prova ThemeManager.set(String)
             Class<?> tm = Class.forName("View.Theme.ThemeManager");
             boolean applied = false;
 
+            // Provo varie firme per compatibilità.
             try {
                 java.lang.reflect.Method set = tm.getMethod("set", String.class);
                 set.invoke(null, themeKey);
                 applied = true;
             } catch (NoSuchMethodException ignored) {
-                // 2) prova ThemeManager.setTheme(String)
                 try {
                     java.lang.reflect.Method set = tm.getMethod("setTheme", String.class);
                     set.invoke(null, themeKey);
                     applied = true;
                 } catch (NoSuchMethodException ignored2) {
-                    // 3) prova ThemeManager.apply(String)
                     try {
                         java.lang.reflect.Method apply = tm.getMethod("apply", String.class);
                         apply.invoke(null, themeKey);
                         applied = true;
                     } catch (NoSuchMethodException ignored3) {
-                        // niente
+                        // nessun metodo compatibile trovato
                     }
                 }
             }
 
-            // 4) Se esiste ThemeManager.apply(Component) / apply(JFrame), aggiorna la UI
+            // Se esiste ThemeManager.apply(Component) aggiorno la UI.
             try {
                 java.lang.reflect.Method applyTo = tm.getMethod("apply", java.awt.Component.class);
                 applyTo.invoke(null, frame);
                 applied = true;
             } catch (NoSuchMethodException ignored) {
-                // niente
+                // opzionale
             }
 
-            // aggiorna anche l'icona dell'app in base al tema
             if (frame != null) updateAppIcon(frame, themeKey);
 
-            // repaint leggero senza ricreare la UI (evita reset font)
-            if (frame != null) {
-                frame.repaint();
-            }
+            // Repaint leggero: evita reset font e ricostruzioni pesanti.
+            if (frame != null) frame.repaint();
 
-            // 6) Refresh anche bottone auth (hover/colore) se presente
             AppShellView shell = shellRef.get();
-            if (shell != null) {
-                shell.refreshAuthButton();
-            }
+            if (shell != null) shell.refreshAuthButton();
 
         } catch (Exception ignored) {
-            // fallback: solo repaint
+            // Fallback: aggiorno solo l’icona e forzo repaint.
             if (frame != null) updateAppIcon(frame, themeKey);
-            if (frame != null) {
-                frame.repaint();
-            }
+            if (frame != null) frame.repaint();
         }
     }
 
-    // ===================== ICON THEME =====================
+    // ===================== Icon theme =====================
 
     /**
-     * Aggiorna l'icona (finestra + dock/taskbar) in base al tema.
-     * Usa risorse:
-     *  - /icons/logoarancione.png
-     *  - /icons/logorosso.png
+     * Aggiorna l’icona (finestra + taskbar/dock) in base al tema.
+     * Risorse previste:
+     * - /icons/logoarancione.png
+     * - /icons/logorosso.png
      */
     private void updateAppIcon(JFrame targetFrame, String themeKey) {
         if (targetFrame == null) return;
@@ -578,7 +636,7 @@ public class AppController {
         try {
             java.net.URL iconUrl = AppController.class.getResource(iconPath);
             if (iconUrl == null) {
-                // fallback extra: prova il vecchio logo se manca
+                // Fallback extra: prova il vecchio logo se manca.
                 iconUrl = AppController.class.getResource("/icons/logo.png");
             }
             if (iconUrl != null) {
@@ -595,13 +653,14 @@ public class AppController {
         }
     }
 
+    /**
+     * Risolve il path dell’icona in base alla key del tema.
+     * Euristica: se contiene "rosso"/"atac"/"pompeiano"/"red" → icona rossa, altrimenti arancione.
+     */
     private String resolveIconPath(String themeKey) {
-        // default arancione
         if (themeKey == null) return "/icons/logoarancione.png";
 
         String k = themeKey.trim().toLowerCase();
-
-        // euristiche: qualunque tema che contenga 'rosso' o 'atac' -> rosso
         if (k.contains("rosso") || k.contains("atac") || k.contains("pompeiano") || k.contains("red")) {
             return "/icons/logorosso.png";
         }
@@ -609,16 +668,17 @@ public class AppController {
     }
 
     /**
-     * Prova a leggere la key del tema corrente via reflection:
+     * Prova a leggere la key del tema corrente via reflection.
+     * Tenta:
      * - ThemeManager.getKey() / getCurrentKey() / getThemeKey()
-     * - altrimenti tenta ThemeManager.get() e legge field 'key'/'name'
-     * Se fallisce ritorna null.
+     * - in alternativa ThemeManager.get() e lettura field "key"/"name"/"themeKey".
+     *
+     * @return key del tema corrente, oppure null se non determinabile
      */
     private String getCurrentThemeKeySafe() {
         try {
             Class<?> tm = Class.forName("View.Theme.ThemeManager");
 
-            // 1) metodi diretti
             for (String mName : new String[]{"getKey", "getCurrentKey", "getThemeKey"}) {
                 try {
                     java.lang.reflect.Method m = tm.getMethod(mName);
@@ -630,13 +690,11 @@ public class AppController {
                 } catch (NoSuchMethodException ignored) {}
             }
 
-            // 2) ThemeManager.get() -> theme
             try {
                 java.lang.reflect.Method get = tm.getMethod("get");
                 Object theme = get.invoke(null);
                 if (theme == null) return null;
 
-                // field 'key' o 'name'
                 for (String fName : new String[]{"key", "name", "themeKey"}) {
                     try {
                         java.lang.reflect.Field f = theme.getClass().getField(fName);
@@ -650,6 +708,7 @@ public class AppController {
             } catch (NoSuchMethodException ignored) {}
 
         } catch (Exception ignored) {}
+
         return null;
     }
 }

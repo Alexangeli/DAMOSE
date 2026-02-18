@@ -1,5 +1,6 @@
 package Controller.Map;
 
+import Model.GTFS_RT.VehicleInfo;
 import Model.Map.MapModel;
 import Model.Net.ConnectionState;
 import Model.Net.ConnectionStatusProvider;
@@ -7,6 +8,7 @@ import Model.Parsing.Static.ShapesModel;
 import Model.Parsing.Static.TripsModel;
 import Model.Points.ClusterModel;
 import Model.Points.StopModel;
+import Service.GTFS_RT.Fetcher.Vehicle.VehiclePositionsService;
 import Service.Parsing.ShapesService;
 import Service.Parsing.TripsService;
 import Service.Points.ClusterService;
@@ -28,18 +30,27 @@ import java.util.Set;
 
 import static Service.Points.StopService.getAllStops;
 
-import Service.GTFS_RT.Fetcher.Vehicle.VehiclePositionsService;
-import Model.GTFS_RT.VehicleInfo;
-
 /**
- * Controller della mappa.
+ * Controller della mappa basato su JXMapViewer.
  *
- * Gestisce:
- * - caricamento e gestione dei waypoint
- * - drag, zoom, click mappa
- * - clustering delle fermate in base allo zoom
+ * Responsabilità:
+ * - Caricare le fermate (da CSV GTFS statico) e trasformarle in {@link StopWaypoint}.
+ * - Gestire interazioni utente: drag, zoom smooth, click su mappa/marker.
+ * - Applicare clustering delle fermate in base allo zoom, per evitare sovrapposizioni.
+ * - Gestire l’evidenziazione di una linea (shapes) e di una fermata selezionata.
+ * - Mostrare (opzionalmente) i veicoli realtime filtrati per route/direction.
  *
- * Creatore: Simone Bonuso, Andrea Brandolini, Alessandro Angeli
+ * Note di design:
+ * - Le fermate "di base" sono caricate una volta e mantenute in {@link #waypoints}.
+ * - In modalità zoom alto (più “lontano”), le fermate vengono raggruppate in cluster tramite {@link ClusterService}.
+ * - Per la UX lo zoom è “smooth”: la rotellina cambia {@link #targetZoom} e un timer applica step graduali.
+ * - La fermata evidenziata resta visibile anche quando la mappa è in modalità cluster.
+ *
+ * Aspetti UI:
+ * - Questo controller aggiorna direttamente {@link MapView} tramite {@link #refreshView()}.
+ * - In caso di OFFLINE, la mappa può passare a tile “offline only” e la layer realtime (veicoli) viene disattivata.
+ *
+ * Creatori: Simone Bonuso, Andrea Brandolini, Alessandro Angeli
  */
 public class MapController {
 
@@ -47,77 +58,123 @@ public class MapController {
     private final MapView view;
     private final String stopsCsvPath;
 
+    /** Waypoint “base” delle fermate caricate dal CSV. */
     private final Set<StopWaypoint> waypoints = new HashSet<>();
+
+    /** Cluster calcolati dinamicamente quando lo zoom è alto. */
     private Set<ClusterModel> clusters = new HashSet<>();
 
-    private double targetZoom; // zoom "smooth target"
+    /** Zoom target usato per lo smooth-zoom (valore continuo). */
+    private double targetZoom;
+
+    /** Timer che applica gradualmente lo zoom (effetto smooth). */
     private final Timer zoomTimer;
 
-    private Point dragPrev = null; // punto precedente per drag
+    /** Punto precedente durante il drag (per calcolare dx/dy). */
+    private Point dragPrev = null;
 
+    /** Painter delle shape (linee) evidenziate. */
     private final ShapePainter shapePainter;
+
+    // Percorsi GTFS statico (nel progetto sono hardcoded perché legati alle risorse locali).
     final String shapesPath = "src/main/resources/rome_static_gtfs/shapes.csv";
     final String routesPath = "src/main/resources/rome_static_gtfs/routes.csv";
     final String tripsPath = "src/main/resources/rome_static_gtfs/trips.csv";
 
-    // 👉 nuova: posizione della fermata evidenziata (marker speciale)
+    /** Posizione (lat/lon) della fermata evidenziata, usata dalla View per disegnare un marker speciale. */
     private GeoPosition highlightedPosition = null;
 
+    /** Service realtime da cui leggere i vehicle positions (già cacheati internamente). */
     private final VehiclePositionsService vehiclePositionsService;
+
+    /** Veicoli attualmente visibili in mappa (filtrati su route/direction). */
     private List<VehicleInfo> visibleVehicles = List.of();
+
+    /** Route selezionata per la layer veicoli (null = layer spenta). */
     private volatile String selectedRouteId = null;
+
+    /** Direzione selezionata per la layer veicoli (null/-1 = tutte). */
     private volatile Integer selectedDirectionId = null;
+
+    /** Timer che aggiorna periodicamente la layer veicoli (se attiva). */
     private final Timer vehiclesRefreshTimer;
+
+    /** Waypoint speciale della fermata evidenziata (manteniamo un marker singolo sempre visibile). */
     private StopWaypoint highlightedStopWaypoint = null;
 
-
+    /**
+     * Crea il controller mappa e inizializza:
+     * - timer di smooth-zoom,
+     * - timer refresh veicoli (se attivo),
+     * - caricamento fermate,
+     * - binding interazioni,
+     * - prima renderizzazione.
+     *
+     * @param model modello mappa (center/zoom/markers)
+     * @param view vista mappa (contiene JXMapViewer e layer)
+     * @param stopsCsvPath path del file stops.csv usato per caricare le fermate
+     * @param vehiclePositionsService service realtime che fornisce i veicoli (cache)
+     */
     public MapController(MapModel model, MapView view, String stopsCsvPath, VehiclePositionsService vehiclePositionsService) {
         this.model = model;
         this.view = view;
         this.stopsCsvPath = stopsCsvPath;
         this.vehiclePositionsService = vehiclePositionsService;
+
         this.shapePainter = new ShapePainter(routesPath, tripsPath);
+
         this.targetZoom = model.getZoom();
 
+        // Smooth zoom: timer molto rapido per “inseguire” targetZoom.
         zoomTimer = new Timer(10, e -> smoothZoomStep());
         zoomTimer.start();
 
-        vehiclesRefreshTimer = new Timer(30_000, e -> {
-            refreshVehiclesLayerIfNeeded();
-        });
+        // Layer veicoli: refresh lento (i veicoli vengono già fetchati dal service; qui aggiorniamo solo la vista).
+        vehiclesRefreshTimer = new Timer(30_000, e -> refreshVehiclesLayerIfNeeded());
         vehiclesRefreshTimer.start();
-
 
         loadStops(stopsCsvPath);
         setupInteractions();
         refreshView();
     }
 
-    // ===== CARICAMENTO FERMATE =====
+    // ========================= Caricamento fermate =========================
 
     /**
-     * Legge tutte le fermate dal CSV tramite StopService,
-     * crea i relativi StopWaypoint e li aggiunge al modello.
+     * Legge tutte le fermate dal CSV tramite {@link StopService} e crea i relativi {@link StopWaypoint}.
+     * Questo popolamento rappresenta lo stato “base” della mappa prima di eventuali filtri (es. ricerca linea).
+     *
+     * @param filePath path del file stops.csv
      */
     private void loadStops(String filePath) {
         List<StopModel> stops = getAllStops(filePath);
+
         model.getMarkers().clear();
         waypoints.clear();
+
         for (StopModel stop : stops) {
             GeoPosition pos = stop.getGeoPosition();
             if (pos != null) {
                 model.addMarker(pos);
-                StopWaypoint wp = new StopWaypoint(stop);
-                waypoints.add(wp);
+                waypoints.add(new StopWaypoint(stop));
             }
         }
     }
 
-    // ===== INTERAZIONI CON LA MAPPA =====
+    // ========================= Interazioni con la mappa =========================
+
+    /**
+     * Registra tutti i listener di input su {@link JXMapViewer}:
+     * - drag per spostare il centro,
+     * - rotellina per smooth-zoom,
+     * - click per debug (stop/cluster più vicino),
+     * - click su marker (selezione fermata),
+     * - sync del centro quando cambia dal viewer.
+     */
     private void setupInteractions() {
         JXMapViewer map = view.getMapViewer();
 
-        // Drag mappa
+        // Drag mappa: ricavo delta in pixel, lo converto in nuovo centro geograﬁco.
         MouseAdapter dragAdapter = new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
@@ -146,21 +203,21 @@ public class MapController {
         map.addMouseListener(dragAdapter);
         map.addMouseMotionListener(dragAdapter);
 
-        // Zoom con rotella (smooth)
+        // Zoom con rotella (smooth): non tocchiamo subito model.setZoom, aggiorniamo solo targetZoom.
         map.addMouseWheelListener(e -> {
             double delta = -e.getPreciseWheelRotation() * 0.5;
             targetZoom += delta;
             targetZoom = model.clampZoom(targetZoom);
         });
 
-        // Click mappa: fermata più vicina e cluster piu vicino
+        // Click mappa: logica “debug” per stop/cluster vicino + click diretto su marker.
         map.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
                 GeoPosition clicked = map.convertPointToGeoPosition(e.getPoint());
-
                 int currentZoom = model.getZoomInt();
 
+                // Raggio di ricerca (km) scelto empiricamente per zoom: serve a evitare selezioni troppo lontane.
                 double radiusKm;
                 switch (currentZoom) {
                     case 2:
@@ -186,30 +243,25 @@ public class MapController {
                         radiusKm = 0;
                 }
 
-                StopModel nearestStop;
-                ClusterModel nearestCluster;
-
                 if (currentZoom > 1 && currentZoom <= 3) {
-                    nearestStop = findNearestStop(clicked, radiusKm);
+                    StopModel nearestStop = findNearestStop(clicked, radiusKm);
                     if (nearestStop != null) {
                         System.out.println("--- Fermata più vicina: ID=" + nearestStop.getId()
                                 + ", Nome=" + nearestStop.getName());
                     }
                 } else if (currentZoom > 3) {
-                    nearestCluster = findNearestCluster(clicked, radiusKm);
+                    ClusterModel nearestCluster = findNearestCluster(clicked, radiusKm);
                     if (nearestCluster != null) {
                         System.out.println("--- Cluster con centro" + nearestCluster.getPosition()
                                 + ", con: " + nearestCluster.getSize() + " fermate");
-
                         centerMapOnCluster(nearestCluster);
                     }
                 }
-
             }
 
             @Override
             public void mousePressed(MouseEvent e) {
-                // Click diretto sui marker
+                // Click diretto sui marker: controllo “pixel hitbox” semplice (6px) per evitare geometrie complesse.
                 for (StopWaypoint wp : waypoints) {
                     Point2D p = map.getTileFactory().geoToPixel(wp.getPosition(), model.getZoomInt());
                     if (Math.abs(p.getX() - e.getX()) < 6 && Math.abs(p.getY() - e.getY()) < 6) {
@@ -220,7 +272,7 @@ public class MapController {
             }
         });
 
-        // Aggiorna centro se cambia dal JXMapViewer
+        // Se il viewer cambia centro (es. drag interno), sincronizzo il model e ridisegno.
         map.addPropertyChangeListener("centerPosition", evt -> {
             GeoPosition pos = (GeoPosition) evt.getNewValue();
             model.setCenter(pos);
@@ -228,6 +280,10 @@ public class MapController {
         });
     }
 
+    /**
+     * Applica uno step di zoom verso {@link #targetZoom}.
+     * Scelta: interpolazione 0.2 per avere un effetto morbido ma reattivo.
+     */
     private void smoothZoomStep() {
         double current = model.getZoom();
         if (Math.abs(current - targetZoom) < 0.01) return;
@@ -237,6 +293,10 @@ public class MapController {
         refreshView();
     }
 
+    /**
+     * Handler click su marker: per ora logga informazioni (utile in fase demo/esame).
+     * Se in futuro servirà aprire pannello dettagli, questo è il punto giusto.
+     */
     private void onMarkerClick(StopWaypoint wp) {
         StopModel stop = wp.getStop();
         if (stop != null) {
@@ -245,6 +305,16 @@ public class MapController {
         }
     }
 
+    /**
+     * Cerca la fermata più vicina a una posizione, entro un raggio massimo.
+     *
+     * Nota: qui rilegge dal CSV per semplicità e coerenza con il modello StopService.
+     * Se dovesse diventare un collo di bottiglia, si può ottimizzare usando la lista già in memoria.
+     *
+     * @param pos posizione di riferimento
+     * @param radiusKm raggio massimo (km)
+     * @return fermata più vicina oppure null se nessuna entro raggio
+     */
     private StopModel findNearestStop(GeoPosition pos, double radiusKm) {
         List<StopModel> stops = getAllStops(stopsCsvPath);
         StopModel nearest = null;
@@ -253,6 +323,7 @@ public class MapController {
         for (StopModel stop : stops) {
             GeoPosition stopPos = stop.getGeoPosition();
             if (stopPos == null) continue;
+
             double dist = StopService.calculateDistance(pos, stopPos);
             if (dist <= minDist) {
                 minDist = dist;
@@ -262,15 +333,22 @@ public class MapController {
         return nearest;
     }
 
-    //clusters è di classe
+    /**
+     * Cerca il cluster più vicino tra quelli calcolati per lo zoom corrente.
+     *
+     * @param pos posizione di riferimento
+     * @param radiusKm raggio massimo (km)
+     * @return cluster più vicino oppure null se nessuno entro raggio
+     */
     private ClusterModel findNearestCluster(GeoPosition pos, double radiusKm) {
         ClusterModel nearest = null;
         double minDist = radiusKm;
 
         for (ClusterModel clusterX : clusters) {
-            GeoPosition clusterXPositionpPos = clusterX.getPosition();
-            if (clusterXPositionpPos == null) continue;
-            double dist = StopService.calculateDistance(pos, clusterXPositionpPos);
+            GeoPosition clusterPos = clusterX.getPosition();
+            if (clusterPos == null) continue;
+
+            double dist = StopService.calculateDistance(pos, clusterPos);
             if (dist <= minDist) {
                 minDist = dist;
                 nearest = clusterX;
@@ -279,27 +357,25 @@ public class MapController {
         return nearest;
     }
 
-    // ===== METODI USATI DALLA RICERCA =====
+    // ========================= Metodi usati dalla ricerca =========================
 
     /**
-     * Centra la mappa sulla fermata specificata (Model.Points.StopModel)
-     * e applica uno zoom ravvicinato.
+     * Centra la mappa su una fermata e imposta uno zoom ravvicinato.
+     * Inoltre salva la fermata come “evidenziata” così rimane visibile anche in modalità cluster.
+     *
+     * @param stop fermata da centrare (deve avere GeoPosition valida)
      */
     public void centerMapOnStop(StopModel stop) {
         if (stop == null || stop.getGeoPosition() == null) return;
 
         GeoPosition pos = stop.getGeoPosition();
 
-        // Centro mappa
         model.setCenter(pos);
-
-        // Salvo posizione per evidenziazione (se la usi nel painter)
         highlightedPosition = pos;
 
-        // ✅ NUOVO: salvo anche il waypoint reale della fermata
+        // Manteniamo un marker dedicato (utile se poi la mappa passa a cluster-mode).
         highlightedStopWaypoint = new StopWaypoint(stop);
 
-        // Zoom ravvicinato
         double desiredZoom = 2.0;
         targetZoom = model.clampZoom(desiredZoom);
         model.setZoom(targetZoom);
@@ -307,10 +383,11 @@ public class MapController {
         refreshView();
     }
 
-
     /**
-     * 👉 NUOVO: centra la mappa su una fermata GTFS (Model.Parsing.StopModel)
-     * usando lat/lon del CSV.
+     * Variante “robusta” che costruisce la {@link GeoPosition} da lat/lon.
+     * Usata quando i dati stop arrivano da parsing/ricerca e non hanno già una GeoPosition pronta.
+     *
+     * @param stop fermata GTFS (lat/lon devono essere validi)
      */
     public void centerMapOnGtfsStop(StopModel stop) {
         if (stop == null) return;
@@ -322,8 +399,6 @@ public class MapController {
 
             model.setCenter(pos);
             highlightedPosition = pos;
-
-            // ✅ anche qui
             highlightedStopWaypoint = new StopWaypoint(stop);
 
             double desiredZoom = 2.0;
@@ -337,8 +412,12 @@ public class MapController {
         }
     }
 
-
-    // java
+    /**
+     * Centra la mappa su un cluster e riduce lo zoom di 1 livello (per “aprire” il cluster).
+     * Qui aggiorniamo subito anche il viewer per rendere stabile il ricalcolo clustering.
+     *
+     * @param cluster cluster selezionato
+     */
     public void centerMapOnCluster(ClusterModel cluster) {
         if (cluster == null || cluster.getPosition() == null) return;
 
@@ -350,7 +429,7 @@ public class MapController {
         targetZoom = newZoom;
         model.setZoom(newZoom);
 
-        // Immediately update the viewer so clustering uses the new zoom/center
+        // Update immediato del viewer: serve perché ClusterService usa map + zoom corrente.
         JXMapViewer map = view.getMapViewer();
         map.setZoom(model.getZoomInt());
         map.setCenterPosition(pos);
@@ -358,6 +437,16 @@ public class MapController {
         refreshView();
     }
 
+    /**
+     * Ridisegna la mappa applicando:
+     * - center e zoom attuali del model,
+     * - modalità stops o modalità clusters in base allo zoom,
+     * - shapes evidenziate,
+     * - fermata evidenziata (se presente),
+     * - layer veicoli filtrata (se attiva).
+     *
+     * Nota: la scelta stop/cluster è volutamente semplice (soglia su zoomInt) perché è facile da spiegare all’orale.
+     */
     public void refreshView() {
         int zoomInt = (int) Math.round(model.getZoom());
 
@@ -369,8 +458,7 @@ public class MapController {
         map.setCenterPosition(model.getCenter());
 
         if (zoomInt <= 3) {
-            // ✅ In modalità "stops", mostro i waypoint normali
-            // ma GARANTISCO che la fermata evidenziata resti sempre visibile
+            // Modalità "stops": mostro tutti i waypoint, ma garantisco che l’evidenziato resti presente.
             Set<StopWaypoint> tmp = new HashSet<>(waypoints);
             if (highlightedStopWaypoint != null) {
                 tmp.add(highlightedStopWaypoint);
@@ -378,19 +466,13 @@ public class MapController {
 
             stopsToDisplay = tmp;
             clustersToDisplay = Set.of();
-
         } else {
-            // ✅ In modalità "cluster", creo i cluster dai waypoint correnti
+            // Modalità "clusters": raggruppo i waypoint base in cluster (griglia dipendente dallo zoom).
             int gridSizePx = getGridSizeForZoom(zoomInt);
             clusters = ClusterService.createClusters(List.copyOf(waypoints), map, gridSizePx);
 
-            // ✅ Mostro comunque la fermata evidenziata come marker singolo (se presente)
-            if (highlightedStopWaypoint != null) {
-                stopsToDisplay = Set.of(highlightedStopWaypoint);
-            } else {
-                stopsToDisplay = Set.of();
-            }
-
+            // In cluster-mode mostro comunque la fermata evidenziata come marker singolo (se esiste).
+            stopsToDisplay = (highlightedStopWaypoint != null) ? Set.of(highlightedStopWaypoint) : Set.of();
             clustersToDisplay = clusters;
         }
 
@@ -405,7 +487,13 @@ public class MapController {
         );
     }
 
-
+    /**
+     * Dimensione griglia (px) usata dal clustering in base allo zoom.
+     * Valori empirici: più zoom alto (più vicino) → griglia più grande → meno clustering.
+     *
+     * @param zoom zoom intero attuale
+     * @return grid size in pixel
+     */
     private int getGridSizeForZoom(int zoom) {
         if (zoom >= 8) return 240;
         if (zoom >= 6) return 160;
@@ -413,25 +501,29 @@ public class MapController {
         return 0;
     }
 
+    /**
+     * Rimuove l’evidenziazione delle linee (shape) e ridisegna.
+     */
     public void clearRouteHighlight() {
         shapePainter.setHighlightedShapes(List.of());
         refreshView();
     }
 
     /**
-     * Mostra SOLO le fermate passate in input, nascondendo tutte le altre.
-     * Usa gli ID GTFS delle fermate (stop_id) per filtrare quelle già caricate dal CSV.
+     * Mostra solo le fermate passate in input, nascondendo tutte le altre.
+     * Usa gli ID GTFS (stop_id) per filtrare le fermate già caricate da CSV.
      *
-     * @param stops lista di fermate GTFS (Model.Parsing.StopModel) da mantenere visibili
+     * Nota: se la lista è vuota non facciamo nulla per evitare di “svuotare” completamente la mappa.
+     *
+     * @param stops lista di fermate da mantenere visibili
      */
     public void hideUselessStops(List<StopModel> stops) {
         if (stops == null || stops.isEmpty()) {
-            // se lista vuota, non faccio nulla per evitare di svuotare completamente la mappa
             System.out.println("[MapController] hideUselessStops chiamato con lista vuota.");
             return;
         }
 
-        // 1) Costruisco l'insieme degli stop_id da TENERE
+        // 1) Insieme degli stop_id da tenere.
         Set<String> allowedIds = new HashSet<>();
         for (StopModel s : stops) {
             if (s != null && s.getId() != null) {
@@ -439,19 +531,16 @@ public class MapController {
             }
         }
 
-        // 2) Rileggo tutte le fermate (Model.Points.StopModel) dal CSV
-        //    e filtro solo quelle con id contenuto in allowedIds
+        // 2) Rileggo tutte le fermate dal CSV e filtro.
         List<StopModel> allStops = getAllStops(stopsCsvPath);
 
-        // 3) Svuoto i marker e i waypoint correnti
+        // 3) Reset marker/waypoints correnti.
         model.getMarkers().clear();
         waypoints.clear();
 
-        // 4) Aggiungo SOLO le fermate che voglio tenere
+        // 4) Aggiungo solo fermate consentite.
         for (StopModel stop : allStops) {
-            if (!allowedIds.contains(stop.getId())) {
-                continue;
-            }
+            if (!allowedIds.contains(stop.getId())) continue;
 
             GeoPosition pos = stop.getGeoPosition();
             if (pos != null) {
@@ -461,22 +550,27 @@ public class MapController {
         }
 
         System.out.println("[MapController] hideUselessStops → fermate visibili: " + waypoints.size());
-
-        // 5) Ridisegno la mappa con i nuovi waypoint
         refreshView();
     }
 
-    // ✅ AGGIUNTA MINIMA: ripristina tutte le fermate dopo un filtro linea
+    /**
+     * Ripristina tutte le fermate dopo un filtro (es. line-search) e ridisegna.
+     */
     public void showAllStops() {
         loadStops(stopsCsvPath);
         refreshView();
     }
 
+    // ========================= Evidenziazione route (shapes) =========================
 
+    /**
+     * Evidenzia tutte le shape associate a una route, includendo entrambe le direzioni.
+     *
+     * @param routeId id della route GTFS
+     */
     public void highlightRouteAllDirections(String routeId) {
         if (routeId == null || routeId.isBlank()) return;
 
-        // Tutti gli shape_id associati alla route (entrambe le direzioni)
         List<String> shapeIds = TripsService.getAllTrips(tripsPath).stream()
                 .filter(trip -> routeId.equals(trip.getRoute_id()))
                 .map(TripsModel::getShape_id)
@@ -484,17 +578,20 @@ public class MapController {
                 .distinct()
                 .toList();
 
-        // Punti shapes
         List<ShapesModel> shapesToDraw = ShapesService.getAllShapes(shapesPath).stream()
                 .filter(shape -> shapeIds.contains(shape.getShape_id()))
                 .toList();
 
         shapePainter.setHighlightedShapes(shapesToDraw);
-
         refreshView();
     }
 
-    // ✅ LINE-SEARCH: evidenzia e fa fit-zoom sulla shape
+    /**
+     * Evidenzia una route e adatta (fit) centro/zoom per includere tutta la linea (utile per line-search).
+     *
+     * @param routeId id route
+     * @param directionId id direzione (come stringa per match con i model)
+     */
     public void highlightRouteFitLine(String routeId, String directionId) {
         if (routeId == null || routeId.isBlank() || directionId == null) return;
 
@@ -512,13 +609,18 @@ public class MapController {
 
         shapePainter.setHighlightedShapes(shapesToDraw);
 
-        // ✅ dinamico: fit sull'interità linea
+        // Fit dinamico: porta in vista l’intera linea con padding.
         fitMapToShapes(shapesToDraw, /*paddingPx*/ 60);
 
         refreshView();
     }
 
-    // ✅ STOP-SEARCH: evidenzia SOLO colore, NON tocca zoom/centro
+    /**
+     * Evidenzia una route mantenendo centro/zoom invariati (utile per stop-search: non vogliamo “spostare” l’utente).
+     *
+     * @param routeId id route
+     * @param directionId id direzione
+     */
     public void highlightRouteKeepStopView(String routeId, String directionId) {
         if (routeId == null || routeId.isBlank() || directionId == null) return;
 
@@ -535,17 +637,23 @@ public class MapController {
                 .toList();
 
         shapePainter.setHighlightedShapes(shapesToDraw);
-
-        // ✅ niente zoom!
         refreshView();
     }
 
+    /**
+     * Fit della mappa su una lista di shape:
+     * - calcola bounds lat/lon,
+     * - setta il centro,
+     * - trova lo zoom più alto che fa stare tutto nella viewport + padding.
+     *
+     * @param shapes punti della shape (lista non vuota)
+     * @param paddingPx padding in pixel per non attaccare la linea ai bordi
+     */
     private void fitMapToShapes(List<ShapesModel> shapes, int paddingPx) {
         if (shapes == null || shapes.isEmpty()) return;
 
         JXMapViewer map = view.getMapViewer();
 
-        // bounds in GeoPosition
         double minLat = Double.POSITIVE_INFINITY, maxLat = Double.NEGATIVE_INFINITY;
         double minLon = Double.POSITIVE_INFINITY, maxLon = Double.NEGATIVE_INFINITY;
 
@@ -560,14 +668,14 @@ public class MapController {
 
         GeoPosition center = new GeoPosition((minLat + maxLat) / 2.0, (minLon + maxLon) / 2.0);
 
-        // metti il centro prima, così il calcolo zoom è stabile
+        // Metto il centro prima: il calcolo zoom è più stabile.
         map.setCenterPosition(center);
         model.setCenter(center);
 
-        // calcolo zoom: trova il massimo zoom che fa stare tutto nei bounds + padding
         int bestZoom = findBestZoomForBounds(map, minLat, maxLat, minLon, maxLon, paddingPx);
 
-        int minAllowedZoom = 10; // scegli tu (10-12)
+        // Clamp finale: evitiamo zoom troppo “lontani” per non perdere il contesto.
+        int minAllowedZoom = 10;
         int finalZoom = Math.max(minAllowedZoom, bestZoom);
 
         map.setZoom(finalZoom);
@@ -579,27 +687,36 @@ public class MapController {
                 + " bestZoom=" + bestZoom);
     }
 
-
+    /**
+     * Trova lo zoom più alto (più vicino) che permette ai bounds di rientrare nella viewport.
+     * Applica un “boost” per avvicinare leggermente rispetto al fit conservativo.
+     *
+     * @param map viewer usato per convertire geo→pixel ai vari livelli di zoom
+     * @param minLat latitudine minima bounds
+     * @param maxLat latitudine massima bounds
+     * @param minLon longitudine minima bounds
+     * @param maxLon longitudine massima bounds
+     * @param paddingPx padding da rispettare (px)
+     * @return zoom consigliato
+     */
     private int findBestZoomForBounds(JXMapViewer map,
                                       double minLat, double maxLat,
                                       double minLon, double maxLon,
                                       int paddingPx) {
 
-        // Range tipico JXMapViewer (dipende dal TileFactory, ma 1..15 va bene nel tuo progetto)
         final int MIN_ZOOM = 1;
         final int MAX_ZOOM = 15;
 
-        // ✅ Impedisci zoom troppo lontani (metti 10/11/12 a seconda di quanto vuoi vicino)
+        // Non andare mai troppo lontano: scelta UX (linea sempre ben visibile).
         final int MIN_ALLOWED_ZOOM = 11;
 
-        // ✅ Avvicina rispetto al fit "conservativo" (0 = nessun boost, 1-3 = più vicino)
+        // Avvicina rispetto al fit “conservativo”: 1-3 rende l’inquadratura più piacevole.
         final int ZOOM_BOOST = 2;
 
-        // 1) Dimensioni utili del componente (più affidabili del viewport all’avvio)
         int viewW = map.getWidth();
         int viewH = map.getHeight();
 
-        // Fallback su viewportBounds se width/height non sono ancora pronti
+        // Fallback su viewportBounds se width/height non sono ancora pronti.
         if (viewW <= 1 || viewH <= 1) {
             Rectangle vb = map.getViewportBounds();
             if (vb != null) {
@@ -608,18 +725,16 @@ public class MapController {
             }
         }
 
-        // Se ancora non ho una size decente, ritorno un valore sensato (vicino)
+        // Se ancora non abbiamo dimensioni affidabili, ritorniamo uno zoom “vicino” e stabile.
         if (viewW <= 1 || viewH <= 1) {
             return MIN_ALLOWED_ZOOM;
         }
 
-        // 2) Area utilizzabile considerando padding (mai negativa)
         int usableW = Math.max(1, viewW - 2 * paddingPx);
         int usableH = Math.max(1, viewH - 2 * paddingPx);
 
-        // 3) Cerco lo zoom più alto (più vicino) che fa entrare i bounds
+        // Cerco lo zoom più alto che fa entrare i bounds.
         int best = MIN_ZOOM;
-
         for (int z = MAX_ZOOM; z >= MIN_ZOOM; z--) {
             Point2D p1 = map.getTileFactory().geoToPixel(new GeoPosition(maxLat, minLon), z);
             Point2D p2 = map.getTileFactory().geoToPixel(new GeoPosition(minLat, maxLon), z);
@@ -633,17 +748,18 @@ public class MapController {
             }
         }
 
-        // 4) Applico boost e clamp finale
         int finalZoom = best + ZOOM_BOOST;
         finalZoom = Math.min(MAX_ZOOM, finalZoom);
-
-        // 5) Non andare mai troppo lontano
         finalZoom = Math.max(MIN_ALLOWED_ZOOM, finalZoom);
 
         return finalZoom;
     }
 
-    // ✅ STOP-MODE: tutte le direzioni, SOLO colore, nessun cambio zoom/centro
+    /**
+     * Evidenzia tutte le direzioni di una route mantenendo centro/zoom invariati (stop-mode).
+     *
+     * @param routeId id route
+     */
     public void highlightRouteAllDirectionsKeepStopView(String routeId) {
         if (routeId == null || routeId.isBlank()) return;
 
@@ -659,11 +775,15 @@ public class MapController {
                 .toList();
 
         shapePainter.setHighlightedShapes(shapesToDraw);
-
-        // ✅ NON zoommare
         refreshView();
     }
 
+    // ========================= Layer veicoli realtime =========================
+
+    /**
+     * Aggiorna {@link #visibleVehicles} in base a route e direction selezionate.
+     * Filtra anche le coordinate nulle per evitare marker invalidi.
+     */
     private void updateVisibleVehiclesForSelectedRoute() {
         String routeId = selectedRouteId;
         Integer dir = selectedDirectionId;
@@ -680,13 +800,21 @@ public class MapController {
                 .toList();
     }
 
+    /**
+     * Attiva (o aggiorna) la visualizzazione dei veicoli per una route/direction.
+     *
+     * @param routeId route da filtrare
+     * @param directionId direction da filtrare (-1 = tutte)
+     */
     public void showVehiclesForRoute(String routeId, int directionId) {
         this.selectedRouteId = routeId;
         this.selectedDirectionId = directionId;
         refreshVehiclesLayerIfNeeded();
     }
 
-
+    /**
+     * Disattiva la layer veicoli e ridisegna.
+     */
     public void clearVehicles() {
         selectedRouteId = null;
         selectedDirectionId = null;
@@ -694,18 +822,36 @@ public class MapController {
         refreshView();
     }
 
+    /**
+     * Aggiorna la layer veicoli solo se è attiva (route selezionata).
+     * Nota: qui non fetchiamo la rete; leggiamo la cache del service.
+     */
     public void refreshVehiclesLayerIfNeeded() {
         if (selectedRouteId == null) return;
         updateVisibleVehiclesForSelectedRoute();
         refreshView();
     }
 
+    /**
+     * Rimuove l’evidenziazione della fermata (marker speciale) e ridisegna.
+     */
     public void clearHighlightedStop() {
         highlightedPosition = null;
         highlightedStopWaypoint = null;
         refreshView();
     }
 
+    // ========================= Online/Offline binding =========================
+
+    /**
+     * Collega il controller a un {@link ConnectionStatusProvider} per reagire a ONLINE/OFFLINE.
+     *
+     * Comportamento:
+     * - OFFLINE: tile solo offline, layer veicoli disattivata e stop del timer refresh veicoli.
+     * - ONLINE: tile normali, riavvio timer refresh e aggiornamento layer se attiva.
+     *
+     * @param provider provider stato connessione
+     */
     public void bindConnectionStatus(ConnectionStatusProvider provider) {
         if (provider == null) return;
 

@@ -1,6 +1,5 @@
 package TestParsing.TestController;
 
-import Controller.Parsing.TripsController;
 import Model.Parsing.Static.TripsModel;
 import org.junit.Test;
 

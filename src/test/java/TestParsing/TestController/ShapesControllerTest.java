@@ -1,6 +1,5 @@
 package TestParsing.TestController;
 
-import Controller.Parsing.ShapesController;
 import Model.Parsing.Static.ShapesModel;
 import org.junit.Test;
 
