@@ -1,4 +1,5 @@
 package View;
+
 import java.util.Locale;
 import java.lang.reflect.*;
 
@@ -17,23 +18,24 @@ import java.awt.event.*;
 import java.awt.geom.RoundRectangle2D;
 
 /**
- * Dashboard:
- * - SearchBarView sempre visibile (compact=true)
- * - Pill Fermata/Linea come floating button (visibile quando l'overlay è "aperto")
- * - Card bianca dei risultati (Dettagli) visibile SOLO quando ci sono elementi
- * - Filtri bus/tram/metro visibili solo in modalità LINE (come floating buttons)
- * - ★ sempre visibile (floating)
- *
- * ✅ FIX anti-riapertura preferiti:
- *   - RIMOSSO qualsiasi forcing di doClick() dal listener globale (AWTEventListener)
- *   - RIMOSSO il mousePressed "bypass" sul bottone ★ preferiti (doClick forzato)
- *   -> la finestra preferiti può aprirsi SOLO tramite ActionListener del bottone.
+ * Vista principale dell'applicazione.
+ * <p>
+ * La schermata è composta da una mappa come layer di base e da un overlay per la ricerca.
+ * L’overlay include:
+ * - barra di ricerca sempre visibile (modalità compatta)
+ * - toggle flottante “Fermata/Linea”
+ * - card “Dettagli” mostrata solo quando ci sono risultati o una selezione valida
+ * - filtri Bus/Tram/Metro visibili solo in modalità LINE
+ * - stella per aggiungere/rimuovere preferiti e pulsante Preferiti in basso a destra
+ * <p>
+ * Il comportamento “click-away” chiude l’overlay solo quando si clicca fuori dai componenti
+ * dell’overlay e non forza mai azioni sul pulsante Preferiti.
  */
 public class DashboardView extends JPanel {
 
     private final MapView mapView;
 
-    // searchbar reale (backend invariato) - compact: mostra solo barra
+    // Barra di ricerca in modalità compatta: mostra solo l'input, la logica resta nel componente.
     private final SearchBarView searchBarView;
 
     private final LineStopsView lineStopsView;
@@ -43,70 +45,69 @@ public class DashboardView extends JPanel {
 
     private boolean overlayVisible = false;
 
-    // Card bianca con ombra: deve comparire SOLO quando ci sono risultati
+    // Card "Dettagli": pannello in overlay con contenuto (lista) o placeholder.
     private final JPanel overlayCard;
     private final JPanel resultsBody;
-    // contenitore per mostrare placeholder finché non arrivano elementi
+    // Container a CardLayout: switch tra placeholder e lista risultati.
     private final JPanel detailsContainer;
     private final JLabel detailsPlaceholder;
-    // header moderno per la card Dettagli
+    // Header della card: titolo e sottotitolo contestuale.
     private final JPanel detailsHeader;
     private final JLabel detailsTitleLabel;
     private final JLabel detailsSubtitleLabel;
 
-    // ✅ pill Fermata/Linea FLOATING (non dentro la card)
+    // Toggle flottante per cambiare modalità di ricerca (Fermata/Linea).
     private final JToggleButton floatingModeToggle;
 
-    // filtri (floating) OFF/ON (solo in LINE)
+    // Filtri flottanti (Bus/Tram/Metro), visibili solo in modalità LINE.
     private final IconToggleButton busBtn;
     private final IconToggleButton tramBtn;
     private final IconToggleButton metroBtn;
 
-    // ★ floating
+    // Pulsante stella (preferito) mostrato nell'overlay.
     private final JButton overlayStarBtn;
     private final JButton floatingStarBtn;
 
     private final JLayeredPane layeredPane;
     private boolean clickAwayInstalled = false;
 
-    // Barra informativa scorrevole in basso
+    // Barra informativa scorrevole nella parte inferiore della finestra.
     private final ScrollingInfoBar infoBar;
 
-    // Callback per richiedere login (apre AuthDialog). Viene impostato dal Main.
+    // Callback impostata dal Main: richiesta di autenticazione (apertura AuthDialog).
     private Runnable onRequireAuth;
 
-    // Callback per aprire la finestra Preferiti (★ in basso a destra). Viene impostato dal Main.
+    // Callback impostata dal Main: apertura finestra Preferiti (pulsante in basso a destra).
     private Runnable onOpenFavorites;
 
-    // Sync ★ stato (abilitata solo se c'è un elemento selezionato)
+    // Timer di sincronizzazione UI: abilita/disabilita la stella in base alla selezione corrente.
     private final Timer starSyncTimer;
 
     public DashboardView() {
         setLayout(new BorderLayout());
         setBackground(ThemeColors.bg());
 
-        // ===================== MAPPA =====================
+        // --- Layer base: mappa ---
         mapView = new MapView();
         mapView.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
-        // ===================== COMPONENTI (backend invariato) =====================
+        // --- Componenti UI principali ---
         searchBarView = new SearchBarView(true); // compact=true => solo barra visibile
         lineStopsView = new LineStopsView();
 
-        // LineStopsView ha un suo header interno ("Dettagli", "Linee che passano per..."):
-        // qui lo nascondiamo perché usiamo l'header moderno della card.
+        // LineStopsView espone un header interno: viene nascosto perché la card usa un header dedicato.
         stripInternalHeaderFromLineStopsView();
 
-        // quando clicchi la X rossa nella searchbar, resetta "Dettagli"
+        // Alla cancellazione della ricerca si resetta lo stato "Dettagli".
         searchBarView.setOnClear(() -> {
             lineStopsView.clear();
             syncDetailsVisibilityFromContent();
         });
 
-        // ===================== FLOATING BUTTON (preferiti in basso a dx) =====================
+        // --- Pulsante flottante Preferiti (in basso a destra) ---
         favoritesButton = createFloatingFavoritesButton();
 
-        // ===================== PILL (floating) Fermata/Linea =====================
+        // --- Toggle flottante Fermata/Linea ---
         floatingModeToggle = new PillToggleButton("Fermata");
         floatingModeToggle.setToolTipText("Clicca per passare a ricerca per LINEA");
         floatingModeToggle.addActionListener(e -> {
@@ -117,10 +118,10 @@ public class DashboardView extends JPanel {
             searchBarView.setMode(next);
             syncOverlayFromSearchBar();
         });
-        // per default è nascosto finché non apro overlay (click sulla searchbar)
+        // Di default resta nascosto: viene mostrato quando l'overlay è aperto.
         floatingModeToggle.setVisible(false);
 
-        // ===================== FILTRI (floating) + STAR (floating) =====================
+        // --- Filtri di linea e stella (componenti flottanti) ---
         int floatBtnSize = 54;
         Dimension toggleSize = new Dimension(floatBtnSize, floatBtnSize);
 
@@ -142,15 +143,15 @@ public class DashboardView extends JPanel {
         floatingStarBtn.setPreferredSize(new Dimension(floatBtnSize, floatBtnSize));
         floatingStarBtn.setMinimumSize(new Dimension(floatBtnSize, floatBtnSize));
         floatingStarBtn.setMaximumSize(new Dimension(floatBtnSize, floatBtnSize));
-        // di default nascosta finché non apro overlay (click sulla searchbar)
+        // La stella compare solo quando l'overlay è aperto.
         floatingStarBtn.setVisible(false);
 
-        // ===================== OVERLAY CARD (SOLO risultati) =====================
+        // --- Card overlay "Dettagli" ---
         overlayCard = new RoundedShadowPanel();
         overlayCard.setLayout(new BorderLayout());
         overlayCard.setOpaque(false);
 
-        // ===================== HEADER MODERNO (Dettagli) =====================
+        // Header della card: titolo e sottotitolo contestuale.
         detailsTitleLabel = new JLabel("Dettagli");
         detailsTitleLabel.setOpaque(false);
         detailsTitleLabel.setForeground(ThemeColors.text());
@@ -198,7 +199,7 @@ public class DashboardView extends JPanel {
         overlayCard.add(resultsBody, BorderLayout.CENTER);
         overlayCard.setVisible(false);
 
-        // ===================== LAYERED PANE =====================
+        // --- Gestione layout: mappa + componenti flottanti ---
         layeredPane = new JLayeredPane() {
             @Override
             public void doLayout() {
@@ -207,14 +208,14 @@ public class DashboardView extends JPanel {
 
                 mapView.setBounds(0, 0, w, h);
 
-                // searchbar fissa
+                // Barra di ricerca: posizione fissa in alto a sinistra.
                 int barW = Math.min(520, Math.max(320, (int) (w * 0.36)));
                 int barH = 70;
                 int x = 24;
                 int y = 24;
                 searchBarView.setBounds(x, y, barW, barH);
 
-                // ===== Floating: Switch (pill) tra searchbar e ★ + ★ + filtri =====
+                // Componenti flottanti: toggle modalità, stella e filtri (allineati alla searchbar).
                 int gap = 10;
                 int btnSize = 54;
 
@@ -248,7 +249,7 @@ public class DashboardView extends JPanel {
                     metroBtn.setLocation(starX - shift, gridY);
                 }
 
-                // ===== Card risultati sotto la pill (altezza dinamica) =====
+                // Card dettagli: posizionata sotto la searchbar, altezza calcolata in base al contenuto.
                 if (overlayCard.isVisible()) {
                     int ogap = 12;
                     int cardW = barW;
@@ -270,7 +271,7 @@ public class DashboardView extends JPanel {
                     overlayCard.setBounds(x, topY, cardW, cardH);
                 }
 
-                // bottone preferiti in basso a destra
+                // Pulsante Preferiti: ancorato in basso a destra e scalato in base alla finestra.
                 int baseSize = 76;
                 int minSide = Math.min(w, h);
                 double scaleFactor = minSide / 900.0;
@@ -302,16 +303,15 @@ public class DashboardView extends JPanel {
 
         add(layeredPane, BorderLayout.CENTER);
 
-        // ===== Barra informativa scorrevole (bottom ticker) =====
+        // Barra informativa scorrevole (ticker) nella parte bassa.
         infoBar = new ScrollingInfoBar();
-
 
         add(infoBar, BorderLayout.SOUTH);
 
         installExpandOnClick(searchBarView);
         installShowDetailsOnEnter();
 
-        // ✅ Click-away SAFE: non forza MAI click sul bottone preferiti
+        // Installazione del click-away: chiude l'overlay solo quando si clicca fuori dai componenti overlay.
         installGlobalClickAwayOnce();
 
         syncOverlayFromSearchBar();
@@ -330,10 +330,14 @@ public class DashboardView extends JPanel {
         starSyncTimer.start();
     }
 
-    // ============================================================
-    // REGOLE DI VISIBILITÀ
-    // ============================================================
+    // --- Regole di visibilità dell'overlay e della card Dettagli ---
 
+    /**
+     * Aggiorna la visibilità della card "Dettagli" in base allo stato corrente.
+     * <p>
+     * La card viene mostrata solo quando l'overlay è aperto e c'è almeno un risultato
+     * oppure una selezione valida. Inoltre gestisce lo switch tra placeholder e lista.
+     */
     private void syncDetailsVisibilityFromContent() {
         boolean hasItems = getLineStopsItemCount() > 0;
         boolean hasSelection = hasCurrentSearchSelection();
@@ -355,6 +359,14 @@ public class DashboardView extends JPanel {
         layeredPane.repaint();
     }
 
+    /**
+     * Stima il numero di elementi mostrati in {@link LineStopsView}.
+     * <p>
+     * Il componente non espone un'API unica per il conteggio, quindi si prova prima con
+     * metodi noti via reflection e, in fallback, si cerca il primo {@link JList} nel subtree.
+     *
+     * @return numero di righe stimato (0 se non disponibile)
+     */
     private int getLineStopsItemCount() {
         if (lineStopsView == null) return 0;
 
@@ -411,6 +423,14 @@ public class DashboardView extends JPanel {
 
     // ===================== STATE =====================
 
+    /**
+     * Apre o chiude l'overlay della ricerca.
+     * <p>
+     * Quando l'overlay viene chiuso, vengono nascosti i componenti flottanti e la card Dettagli.
+     * Quando viene aperto, viene riallineata la UI allo stato della {@link SearchBarView}.
+     *
+     * @param visible true per mostrare l'overlay, false per chiuderlo
+     */
     private void setOverlayVisible(boolean visible) {
         if (this.overlayVisible == visible) return;
         this.overlayVisible = visible;
@@ -431,6 +451,12 @@ public class DashboardView extends JPanel {
         repaint();
     }
 
+    /**
+     * Sincronizza i componenti flottanti con lo stato della {@link SearchBarView}.
+     * <p>
+     * Aggiorna testo/tooltip del toggle, visibilità dei filtri, stato della stella e
+     * contenuto dell'header "Dettagli".
+     */
     private void syncOverlayFromSearchBar() {
         boolean isLine = (searchBarView.getCurrentMode() == SearchMode.LINE);
 
@@ -638,10 +664,12 @@ public class DashboardView extends JPanel {
     }
 
     /**
-     * ✅ VERSIONE SAFE:
-     * - NON fa doClick() sul bottone preferiti
-     * - NON consuma eventi
-     * - chiude solo overlay quando clicchi fuori dai componenti overlay
+     * Installa un listener globale per chiudere l'overlay quando si clicca fuori.
+     * <p>
+     * La logica è volutamente conservativa:
+     * - non forza mai azioni (nessun doClick su Preferiti)
+     * - non consuma l'evento
+     * - ignora click provenienti da finestre diverse (dialog/popup)
      */
     private void installGlobalClickAwayOnce() {
         if (clickAwayInstalled) return;
@@ -654,7 +682,7 @@ public class DashboardView extends JPanel {
             Object src = me.getSource();
             if (!(src instanceof Component srcComp)) return;
 
-            // Ignora click che arrivano da ALTRE finestre (JDialog, popup, ecc.)
+            // Ignora click che arrivano da altre finestre (dialog, popup, ecc.).
             Window srcWin = SwingUtilities.getWindowAncestor(srcComp);
             Window myWin  = SwingUtilities.getWindowAncestor(DashboardView.this);
             if (srcWin == null || myWin == null || srcWin != myWin) return;
@@ -669,7 +697,7 @@ public class DashboardView extends JPanel {
                 return;
             }
 
-            // Se click su uno dei componenti overlay → non chiudere
+            // Se il click avviene su un componente dell'overlay, non chiudere.
             if (SwingUtilities.isDescendingFrom(at, searchBarView)) return;
             if (SwingUtilities.isDescendingFrom(at, floatingModeToggle)) return;
             if (SwingUtilities.isDescendingFrom(at, overlayCard)) return;
@@ -681,7 +709,7 @@ public class DashboardView extends JPanel {
 
             if (SwingUtilities.isDescendingFrom(at, favoritesButton)) return;
 
-            // Click fuori → chiudi overlay
+            // Click fuori dall'overlay: chiudi.
             setOverlayVisible(false);
 
         }, AWTEvent.MOUSE_EVENT_MASK);
@@ -710,6 +738,14 @@ public class DashboardView extends JPanel {
 
     // ===================== UI HELPERS =====================
 
+    /**
+     * Crea il pulsante "stella" mostrato nell'overlay.
+     * <p>
+     * Se non c'è una selezione valida il pulsante è disabilitato. Se l'utente non è loggato,
+     * delega al callback di autenticazione.
+     *
+     * @return bottone personalizzato per aggiunta/rimozione dai preferiti
+     */
     private JButton createOverlayStarButton() {
         return new JButton() {
             private boolean hover = false;
@@ -779,7 +815,14 @@ public class DashboardView extends JPanel {
         };
     }
 
-    /** True se c'è una selezione valida (lista risultati oppure selezione interna SearchBarView). */
+    /**
+     * Verifica se esiste una selezione valida su cui poter agire.
+     * <p>
+     * La selezione può provenire dalla lista Dettagli ({@link LineStopsView}) oppure
+     * dallo stato interno della {@link SearchBarView}.
+     *
+     * @return true se esiste una selezione attiva, false altrimenti
+     */
     private boolean hasAnyCurrentSelection() {
         if (lineStopsView != null && lineStopsView.hasSelection()) return true;
         return hasCurrentSearchSelection();
@@ -842,8 +885,13 @@ public class DashboardView extends JPanel {
     }
 
     /**
-     * ✅ FIX: rimosso il mousePressed che forzava doClick().
-     * Il bottone deve aprire preferiti SOLO tramite ActionListener normale.
+     * Crea il pulsante flottante per aprire la finestra dei Preferiti.
+     * <p>
+     * Il pulsante espone solo un {@link java.awt.event.ActionListener}: l'apertura dei preferiti
+     * avviene esclusivamente tramite click normale, senza forzature da listener globali.
+     * Se l'utente non è autenticato, viene richiesto il login tramite callback.
+     *
+     * @return bottone personalizzato con animazione hover e badge conteggio
      */
     private JButton createFloatingFavoritesButton() {
         return new JButton("★") {
@@ -865,7 +913,6 @@ public class DashboardView extends JPanel {
                 setPreferredSize(new Dimension(76, 76));
                 setToolTipText("Apri preferiti");
 
-                // ✅ SOLO ActionListener (niente doClick forzati)
                 addActionListener(e -> {
                     if (!Session.isLoggedIn()) {
                         if (onRequireAuth != null) onRequireAuth.run();
@@ -976,20 +1023,20 @@ public class DashboardView extends JPanel {
         };
     }
 
-    // ========= GETTERS =========
+    // --- Accesso ai componenti principali (usato da Controller/Main) ---
 
     public MapView getMapView() { return mapView; }
     public SearchBarView getSearchBarView() { return searchBarView; }
     public LineStopsView getLineStopsView() { return lineStopsView; }
     public JButton getFavoritesButton() { return favoritesButton; }
-    public ScrollingInfoBar getInfoBar() {return infoBar;}
+    public ScrollingInfoBar getInfoBar() { return infoBar; }
 
     public void setFavoritesCount(int count) {
         this.favoritesCount = Math.max(0, count);
         if (favoritesButton != null) favoritesButton.repaint();
     }
 
-    // ===================== SUPPORT PANELS / BUTTONS =====================
+    // --- Componenti UI interni (renderer e pannelli di supporto) ---
 
     private static class RoundedShadowPanel extends JPanel {
         @Override public boolean isOpaque() { return false; }
@@ -1063,7 +1110,7 @@ public class DashboardView extends JPanel {
         }
 
         @Override
-       	protected void paintComponent(Graphics g) {
+        protected void paintComponent(Graphics g) {
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
@@ -1171,7 +1218,7 @@ public class DashboardView extends JPanel {
         }
     }
 
-    // ===================== CALLBACKS DAL MAIN =====================
+    // --- Callback impostate dal Main ---
 
     public void setOnRequireAuth(Runnable onRequireAuth) {
         this.onRequireAuth = onRequireAuth;
@@ -1181,7 +1228,7 @@ public class DashboardView extends JPanel {
         this.onOpenFavorites = onOpenFavorites;
     }
 
-    // ===================== HEADER / RENDERER =====================
+    // --- Header card e renderer lista Dettagli ---
 
     private static class DetailsHeaderPanel extends JPanel {
         private final JLabel title;
@@ -1233,7 +1280,7 @@ public class DashboardView extends JPanel {
         private final JLabel sub;
         private boolean selected = false;
 
-        // true = realtime ("tra X min"), false = static ("HH:mm"), null = unknown
+        // true = realtime ("tra X min"), false = static ("HH:mm"), null = informazione non disponibile
         private Boolean realtimeDot = null;
 
         ModernListCellRenderer() {
@@ -1267,7 +1314,7 @@ public class DashboardView extends JPanel {
                                                       boolean isSelected, boolean cellHasFocus) {
             this.selected = isSelected;
 
-            // 1) Se un domani passi direttamente ArrivalRow (meglio), lo gestiamo qui.
+            // Se in futuro il modello dovesse passare ArrivalRow direttamente, viene gestito qui.
             if (value instanceof Model.ArrivalRow r) {
 
                 String title = (r.line != null ? r.line.trim() : "");
@@ -1280,7 +1327,6 @@ public class DashboardView extends JPanel {
                     subtitle = "Prossimo: tra " + r.minutes + " min";
                     realtimeDot = true;
                 } else if (!r.realtime && r.time != null) {
-                    // static: HH:mm
                     String hhmm = r.time.toString();
                     if (hhmm.length() >= 5) hhmm = hhmm.substring(0, 5);
                     subtitle = "Prossimo: " + hhmm;
@@ -1295,7 +1341,7 @@ public class DashboardView extends JPanel {
                 return this;
             }
 
-            // 2) Caso attuale: value è una String con "\n"
+            // Caso attuale: la riga è una stringa con titolo e sottotitolo separati da newline.
             String s = (value == null) ? "" : value.toString();
 
             String title = s.trim();
@@ -1307,14 +1353,12 @@ public class DashboardView extends JPanel {
                 subtitle = s.substring(nl + 1).trim();
             }
 
-            // 3) Se la riga non ha orario (tu metti "Prossimo: —"), mostriamo "Non più corse per oggi"
+            // Se non c'è un orario, mostriamo un messaggio più leggibile.
             if (subtitle.equalsIgnoreCase("Prossimo: —") || subtitle.equalsIgnoreCase("Prossimo: -")) {
                 subtitle = "Non più corse per oggi";
             }
 
-            // Dot color inference:
-            // - realtime: "Prossimo: tra X min"
-            // - static:   "Prossimo: HH:mm"
+            // Inferenza semplice per distinguere realtime (\"tra X min\") da orario statico (\"HH:mm\").
             String subLow = subtitle.toLowerCase(Locale.ROOT);
             if (subLow.contains("prossimo") && subLow.contains("tra") && subLow.contains("min")) {
                 realtimeDot = true;
@@ -1354,7 +1398,8 @@ public class DashboardView extends JPanel {
             int ascent = tfm.getAscent();
             int topPad = 12;
             int dy = topPad + Math.max(0, (ascent - dot) / 2);
-            // realtime = green, static = theme primary (default), unknown = gray
+
+            // Colore indicatore: realtime / statico / sconosciuto.
             Color dotColor;
             if (Boolean.TRUE.equals(realtimeDot)) {
                 dotColor = new Color(0, 140, 0);
@@ -1371,7 +1416,8 @@ public class DashboardView extends JPanel {
             super.paintComponent(g);
         }
     }
-    // ===================== THEME (safe via reflection) =====================
+
+    // --- Accesso ai colori tema (fallback + lettura via reflection) ---
 
     private static final class ThemeColors {
 
@@ -1399,8 +1445,7 @@ public class DashboardView extends JPanel {
         }
 
         static Color primaryHover() {
-            // Se il tema non espone primaryHover, NON usare un fallback arancione.
-            // Deriviamo invece un hover dal primary corrente (così il tema resta coerente).
+            // Se il tema non espone primaryHover, deriva un colore di hover a partire dal primary.
             Color c = fromThemeField("primaryHover");
             if (c != null) return c;
 
@@ -1468,9 +1513,14 @@ public class DashboardView extends JPanel {
         }
 
         /**
-         * Prova a leggere un campo pubblico (Color) dall'oggetto Theme corrente:
-         * View.Theme.ThemeManager.get() -> Theme, poi fieldName.
-         * Se il sistema temi non è ancora presente, ritorna null e restano i fallback.
+         * Legge un campo pubblico di tipo {@link Color} dal tema corrente.
+         * <p>
+         * Si tenta di accedere a `View.Theme.ThemeManager.get()` e, sul Theme restituito,
+         * al campo `fieldName`. In assenza del sistema temi o del campo richiesto
+         * viene restituito null e rimangono attivi i valori di fallback.
+         *
+         * @param fieldName nome del campo colore nel Theme
+         * @return colore letto dal tema oppure null se non disponibile
          */
         private static Color fromThemeField(String fieldName) {
             try {
@@ -1484,7 +1534,6 @@ public class DashboardView extends JPanel {
                     Object v = f.get(theme);
                     return (v instanceof Color col) ? col : null;
                 } catch (NoSuchFieldException nf) {
-                    // ok, campo non presente
                     return null;
                 }
             } catch (Exception ignored) {
