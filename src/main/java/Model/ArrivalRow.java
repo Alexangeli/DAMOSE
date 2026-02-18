@@ -2,16 +2,69 @@ package Model;
 
 import java.time.LocalTime;
 
+/**
+ * Rappresenta una singola riga nella tabella degli arrivi
+ * mostrata all’utente.
+ *
+ * Questa classe unisce informazioni provenienti
+ * dalla schedule statica e dal realtime, in modo
+ * da fornire un formato uniforme alla GUI.
+ *
+ * È un modello di presentazione: contiene solo i dati
+ * necessari per visualizzare correttamente una previsione.
+ */
 public class ArrivalRow {
-    public final String tripId;        // ✅ NEW: match preciso col veicolo
-    public final String routeId;       // ✅ serve per mappa/shape/bus
-    public final Integer directionId;  // ✅ 0/1 oppure -1 merged (circolare)
-    public final String line;          // es "905"
-    public final String headsign;      // es "CORNELIA"
-    public final Integer minutes;      // es 4 (solo RT)
-    public final LocalTime time;       // orario previsto (RT o static)
-    public final boolean realtime;     // true se da GTFS-RT
 
+    /**
+     * Identificativo della corsa.
+     * Serve per collegare la riga al veicolo sulla mappa.
+     */
+    public final String tripId;
+
+    /**
+     * Identificativo della linea.
+     * Utilizzato per recuperare shape o informazioni grafiche.
+     */
+    public final String routeId;
+
+    /**
+     * Direzione della linea (0 o 1).
+     * Può valere -1 in caso di linea circolare o unificazione.
+     */
+    public final Integer directionId;
+
+    /**
+     * Nome breve della linea (es. "905").
+     */
+    public final String line;
+
+    /**
+     * Destinazione mostrata all’utente (es. "CORNELIA").
+     */
+    public final String headsign;
+
+    /**
+     * Minuti mancanti all’arrivo.
+     * Valorizzato principalmente in modalità realtime.
+     */
+    public final Integer minutes;
+
+    /**
+     * Orario previsto di arrivo.
+     * Può derivare da dati statici o realtime.
+     */
+    public final LocalTime time;
+
+    /**
+     * Indica se la previsione proviene dal feed GTFS Realtime.
+     * false significa modalità statica (offline).
+     */
+    public final boolean realtime;
+
+    /**
+     * Costruisce una riga di arrivo pronta per essere
+     * mostrata nella GUI.
+     */
     public ArrivalRow(String tripId,
                       String routeId,
                       Integer directionId,

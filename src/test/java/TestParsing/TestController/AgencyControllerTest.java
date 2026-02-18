@@ -1,7 +1,5 @@
 package TestParsing.TestController;
 
-import Controller.Parsing.AgencyController;
-import Model.Parsing.Static.AgencyModel;
 import org.junit.Test;
 import static org.junit.Assert.*;
 import java.util.List;

@@ -1,21 +1,37 @@
 package Model.User;
 
 /**
- * Simple in-memory session holder for desktop MVC apps.
+ * Gestisce la sessione utente corrente nell’applicazione desktop.
  *
- * NOTE: This is NOT a web session. It just keeps track of the currently
- * authenticated user while the application is running.
+ * Non si tratta di una sessione web, ma di un semplice
+ * contenitore statico che mantiene l’utente autenticato
+ * per tutta la durata dell’esecuzione del programma.
+ *
+ * Viene utilizzata dai controller e dalla GUI
+ * per verificare se un utente è loggato
+ * e per accedere ai suoi dati.
  */
 public final class Session {
 
+    /**
+     * Utente attualmente autenticato.
+     * È volatile per garantire visibilità tra thread.
+     */
     private static volatile User currentUser;
 
+    /**
+     * Costruttore privato per evitare istanziazione.
+     * La classe è pensata come utility statica.
+     */
     private Session() {
         throw new UnsupportedOperationException("Utility class, cannot be instantiated");
     }
 
     /**
-     * Marks the user as logged in for the current app runtime.
+     * Imposta l’utente come autenticato
+     * per la sessione corrente dell’applicazione.
+     *
+     * @param user utente da autenticare
      */
     public static void login(User user) {
         if (user == null) {
@@ -25,29 +41,32 @@ public final class Session {
     }
 
     /**
-     * Clears the current session (logout).
+     * Termina la sessione corrente (logout).
      */
     public static void logout() {
         currentUser = null;
     }
 
     /**
-     * @return true if there is a logged-in user.
+     * Indica se è presente un utente autenticato.
      */
     public static boolean isLoggedIn() {
         return currentUser != null;
     }
 
     /**
-     * @return the currently logged-in user, or null if nobody is logged in.
+     * Restituisce l’utente attualmente autenticato.
+     *
+     * @return utente loggato oppure null se nessuno è autenticato
      */
     public static User getCurrentUser() {
         return currentUser;
     }
 
     /**
-     * Convenience method.
-     * @return the logged-in user id, or -1 if not logged in.
+     * Metodo di utilità per ottenere rapidamente l’id dell’utente.
+     *
+     * @return id dell’utente loggato, oppure -1 se nessun utente è autenticato
      */
     public static int getCurrentUserId() {
         return currentUser != null ? currentUser.getId() : -1;

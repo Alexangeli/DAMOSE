@@ -1,21 +1,74 @@
 package Model.Parsing.Static;
-// Creatore: Alessandro Angeli
 
-// Classe che rappresenta le informazioni sulle fermate di un viaggio (file stop_times.csv nel formato GTFS)
+/**
+ * Modello che rappresenta una riga del file stop_times.txt
+ * nel dataset GTFS statico.
+ *
+ * Ogni istanza descrive il passaggio di una specifica corsa
+ * (trip) in una determinata fermata, con i relativi orari.
+ *
+ * Questa classe è fondamentale per la predizione arrivi
+ * in modalità offline, basata esclusivamente sulla schedule statica.
+ */
 public class StopTimesModel {
 
-    private String trip_id;               // Identificativo del viaggio
-    private String arrival_time;          // Orario di arrivo alla fermata (HH:MM:SS)
-    private String departure_time;        // Orario di partenza dalla fermata (HH:MM:SS)
-    private String stop_id;               // Identificativo della fermata
-    private String stop_sequence;         // Ordine della fermata nel viaggio
-    private String stop_headsign;         // Nome della destinazione mostrata sul mezzo
-    private String pickup_type;           // Tipo di possibilità di salita (0 = normale)
-    private String drop_off_type;         // Tipo di possibilità di discesa (0 = normale)
-    private String shape_dist_traveled;   // Distanza percorsa lungo la shape associata
-    private String timepoint;             // Indica se l’orario è preciso (1) o stimato (0)
+    /**
+     * Identificativo della corsa.
+     */
+    private String trip_id;
 
-    // Costruttore vuoto
+    /**
+     * Orario di arrivo alla fermata (formato HH:MM:SS).
+     */
+    private String arrival_time;
+
+    /**
+     * Orario di partenza dalla fermata (formato HH:MM:SS).
+     */
+    private String departure_time;
+
+    /**
+     * Identificativo della fermata.
+     */
+    private String stop_id;
+
+    /**
+     * Ordine della fermata all’interno della corsa.
+     * I valori sono crescenti.
+     */
+    private String stop_sequence;
+
+    /**
+     * Destinazione mostrata sul mezzo per questa fermata.
+     */
+    private String stop_headsign;
+
+    /**
+     * Indica se è consentita la salita.
+     * 0 = normale, altri valori indicano restrizioni.
+     */
+    private String pickup_type;
+
+    /**
+     * Indica se è consentita la discesa.
+     * 0 = normale, altri valori indicano restrizioni.
+     */
+    private String drop_off_type;
+
+    /**
+     * Distanza percorsa lungo la shape associata.
+     */
+    private String shape_dist_traveled;
+
+    /**
+     * Indica se l’orario è preciso (1) o stimato (0).
+     */
+    private String timepoint;
+
+    /**
+     * Costruttore vuoto richiesto per il parsing
+     * del file GTFS.
+     */
     public StopTimesModel() {}
 
     public String getArrival_time() {
@@ -97,5 +150,4 @@ public class StopTimesModel {
     public void setTimepoint(String timepoint) {
         this.timepoint = timepoint;
     }
-
 }

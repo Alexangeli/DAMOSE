@@ -1,24 +1,65 @@
 package Model.Parsing.Static;
 
-// Creatore: Alessandro Angeli
-
 /**
- * Modello che rappresenta una linea o rotta di trasporto nel dataset GTFS.
- * Ogni record descrive una rotta (bus, metro, treno, ecc.) con i suoi dettagli identificativi e grafici.
+ * Modello che rappresenta una linea (route) nel dataset GTFS statico.
+ *
+ * Ogni istanza corrisponde a una riga del file routes.txt
+ * e descrive una linea di trasporto (bus, metro, tram, ecc.)
+ * con le sue informazioni identificative e grafiche.
+ *
+ * Questa classe è un semplice data holder utilizzato
+ * durante il parsing dei file GTFS.
  */
 public class RoutesModel {
 
-    private String route_id;          // Identificatore univoco della rotta
-    private String agency_id;         // Identificatore dell'agenzia che gestisce la rotta
-    private String route_short_name;  // Nome breve della rotta (es. numero della linea)
-    private String route_long_name;   // Nome completo o descrizione della rotta
-    private String route_type;        // Tipo di servizio (0 = tram, 1 = metro, 2 = treno, 3 = bus, ecc.)
-    private String route_url;         // URL con informazioni dettagliate sulla rotta
-    private String route_color;       // Colore utilizzato per rappresentare la rotta (in formato esadecimale)
-    private String route_text_color;  // Colore del testo da usare sullo sfondo del colore della rotta
+    /**
+     * Identificatore univoco della linea.
+     */
+    private String route_id;
 
     /**
-     * Costruttore vuoto richiesto per l'inizializzazione del modello.
+     * Identificatore dell’agenzia che gestisce la linea.
+     */
+    private String agency_id;
+
+    /**
+     * Nome breve della linea (es. numero o codice).
+     */
+    private String route_short_name;
+
+    /**
+     * Nome completo o descrizione della linea.
+     */
+    private String route_long_name;
+
+    /**
+     * Tipo di servizio secondo lo standard GTFS.
+     * Esempi:
+     * 0 = tram
+     * 1 = metro
+     * 2 = treno
+     * 3 = bus
+     */
+    private String route_type;
+
+    /**
+     * URL con informazioni aggiuntive sulla linea.
+     */
+    private String route_url;
+
+    /**
+     * Colore associato alla linea (formato esadecimale).
+     */
+    private String route_color;
+
+    /**
+     * Colore del testo da utilizzare sopra route_color.
+     */
+    private String route_text_color;
+
+    /**
+     * Costruttore vuoto richiesto per il parsing
+     * o per eventuale deserializzazione.
      */
     public RoutesModel() {}
 

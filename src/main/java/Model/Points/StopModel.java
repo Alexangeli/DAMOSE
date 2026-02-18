@@ -1,38 +1,82 @@
 package Model.Points;
 
-// Creatore: Alessandro Angeli
-
 import org.jxmapviewer.viewer.GeoPosition;
 
 /**
- * Classe che rappresenta una fermata di un mezzo di trasporto (ad esempio bus, tram o metro).
- * Ogni oggetto di questa classe contiene tutte le informazioni associate a una singola fermata,
- * come l’identificativo univoco, il nome, le coordinate geografiche e le caratteristiche
- * specifiche (ad esempio l’accessibilità per sedie a rotelle).
- * Questa classe è parte del package Model e serve principalmente come struttura dati
- * per mappare i campi letti dal file CSV delle fermate (stops.csv nel formato GTFS).
+ * Modello che rappresenta una fermata nel dataset GTFS statico.
+ *
+ * Ogni istanza corrisponde a una riga del file stops.txt
+ * e contiene le informazioni identificative e geografiche
+ * di una singola fermata.
+ *
+ * Questa classe viene utilizzata sia per la modalità offline
+ * sia per la visualizzazione sulla mappa.
  */
+public class StopModel {
 
-public class StopModel {  // Classe che rappresenta una fermata di un mezzo di trasporto (bus, tram, metro, ecc.)
+    /**
+     * Identificativo univoco della fermata.
+     */
+    private String id;
 
-    private String id; // Identificativo univoco della fermata.
+    /**
+     * Codice breve della fermata (se disponibile).
+     */
     private String code;
-    private String name;   // Nome della fermata.
+
+    /**
+     * Nome della fermata.
+     */
+    private String name;
+
+    /**
+     * Descrizione aggiuntiva della fermata.
+     */
     private String description;
-    private Double latitude;    // Latitudine della fermata (coordinate geografiche).
-    private Double longitude;   // Longitudine della fermata.
+
+    /**
+     * Latitudine della fermata (in gradi decimali).
+     */
+    private Double latitude;
+
+    /**
+     * Longitudine della fermata (in gradi decimali).
+     */
+    private Double longitude;
+
+    /**
+     * URL con eventuali informazioni aggiuntive.
+     */
     private String url;
+
+    /**
+     * Indica se la fermata è accessibile a persone
+     * con disabilità.
+     */
     private String wheelchair_boarding;
+
+    /**
+     * Fuso orario della fermata.
+     */
     private String timezone;
+
+    /**
+     * Tipo di location secondo lo standard GTFS.
+     * 0 = fermata normale
+     * 1 = stazione
+     */
     private String location_type;
-    // Tipo di fermata. Valori previsti:
-    // 0 = fermata di superficie (bus, tram)
-    // 1 = fermata sotterranea (metro)
-    // Dichiarato come final e inizializzato a null: non può essere modificato dopo la creazione dell’oggetto.
+
+    /**
+     * Identificativo della stazione madre (se presente).
+     */
     private String parent_station;
 
+    /**
+     * Costruttore vuoto richiesto per il parsing
+     * del file GTFS.
+     */
     public StopModel() {}
-
 
     public String getName() {
         return name;
@@ -118,18 +162,23 @@ public class StopModel {  // Classe che rappresenta una fermata di un mezzo di t
         return parent_station;
     }
 
-    public void setParent_station(String parent_location) {
-        this.parent_station = parent_location;
+    public void setParent_station(String parent_station) {
+        this.parent_station = parent_station;
     }
 
+    /**
+     * Restituisce la posizione geografica della fermata
+     * come oggetto GeoPosition.
+     *
+     * Se le coordinate non sono valide, restituisce null.
+     */
     public GeoPosition getGeoPosition() {
         try {
             double lat = this.latitude;
             double lon = this.longitude;
             return new GeoPosition(lat, lon);
-        } catch (NumberFormatException e) {
-            return null; // oppure lancia un'eccezione custom se vuoi essere più rigoroso
+        } catch (Exception e) {
+            return null;
         }
     }
-
 }

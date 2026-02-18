@@ -1,22 +1,75 @@
 package Model.Parsing.Static;
 
-// Creatore: Alessandro Angeli
-
-// Classe che rappresenta un singolo viaggio (trip) nel dataset GTFS.
-// Ogni viaggio è una singola corsa su una determinata linea (route) in un certo giorno.
+/**
+ * Modello che rappresenta una corsa (trip) nel dataset GTFS statico.
+ *
+ * Ogni trip è una singola esecuzione di una linea (route)
+ * in una determinata giornata di servizio.
+ *
+ * Questa classe collega:
+ * - la linea (route_id)
+ * - il calendario di validità (service_id)
+ * - il percorso geometrico (shape_id)
+ *
+ * È centrale per la modalità offline e per il collegamento
+ * tra routes, stop_times e shapes.
+ */
 public class TripsModel {
-    private String route_id;               // Identificativo della linea (collega il viaggio alla route)
-    private String service_id;             // Identificativo del servizio (collega al calendario)
-    private String trip_id;                // Identificativo univoco del viaggio
-    private String trip_headsign;          // Destinazione mostrata al passeggero (es. "Termini")
-    private String trip_short_name;        // Nome breve del viaggio (facoltativo)
-    private String direction_id;           // Direzione del viaggio (0 o 1)
-    private String block_id;               // Identifica un gruppo di viaggi eseguiti dallo stesso veicolo
-    private String shape_id;               // Collega il viaggio al tracciato geometrico (shape)
-    private String wheelchair_accessible;  // Indica se il viaggio è accessibile a persone in sedia a rotelle
-    private String exceptional;            // Indica eventuali eccezioni o corse speciali
 
-    // Costruttore vuoto
+    /**
+     * Identificativo della linea associata alla corsa.
+     */
+    private String route_id;
+
+    /**
+     * Identificativo del servizio (collegato al calendario).
+     */
+    private String service_id;
+
+    /**
+     * Identificativo univoco della corsa.
+     */
+    private String trip_id;
+
+    /**
+     * Destinazione mostrata al passeggero (es. "Termini").
+     */
+    private String trip_headsign;
+
+    /**
+     * Nome breve della corsa (facoltativo).
+     */
+    private String trip_short_name;
+
+    /**
+     * Direzione della corsa (0 o 1).
+     */
+    private String direction_id;
+
+    /**
+     * Identifica un gruppo di corse effettuate dallo stesso veicolo.
+     */
+    private String block_id;
+
+    /**
+     * Identificativo della shape che descrive il percorso geometrico.
+     */
+    private String shape_id;
+
+    /**
+     * Indica se la corsa è accessibile a persone con disabilità.
+     */
+    private String wheelchair_accessible;
+
+    /**
+     * Campo opzionale per eventuali corse speciali o eccezioni.
+     */
+    private String exceptional;
+
+    /**
+     * Costruttore vuoto richiesto per il parsing
+     * del file GTFS.
+     */
     public TripsModel() {
     }
 
@@ -99,5 +152,4 @@ public class TripsModel {
     public void setExceptional(String exceptional) {
         this.exceptional = exceptional;
     }
-
 }

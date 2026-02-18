@@ -1,20 +1,51 @@
 package Model.Parsing.Static;
 
-// Creatore: Alessandro Angeli
-
 /**
- * Modello che rappresenta i punti geografici (shape) che definiscono il percorso effettivo di una rotta GTFS.
- * Ogni shape è composta da una sequenza ordinata di coordinate latitudine/longitudine che descrivono il tragitto seguito da un veicolo.
+ * Modello che rappresenta un punto geografico appartenente
+ * a una shape nel dataset GTFS statico.
+ *
+ * Una shape descrive il percorso reale seguito da un veicolo
+ * attraverso una sequenza ordinata di coordinate.
+ *
+ * Ogni istanza di questa classe corrisponde a una riga
+ * del file shapes.txt.
+ *
+ * Questa classe è un semplice contenitore dati utilizzato
+ * durante il parsing del GTFS.
  */
 public class ShapesModel {
-    private String shape_id;             // Identificatore univoco della shape (collega i punti a una specifica rotta o trip)
-    private String shape_pt_lat;         // Latitudine del punto (in gradi decimali)
-    private String shape_pt_lon;         // Longitudine del punto (in gradi decimali)
-    private String shape_pt_sequence;    // Posizione sequenziale del punto lungo la shape (valore crescente)
-    private String shape_dist_traveled;  // Distanza cumulativa percorsa dal punto iniziale (in unità coerenti al dataset)
 
     /**
-     * Costruttore vuoto richiesto per l'inizializzazione del modello.
+     * Identificatore della shape.
+     * Collega i punti a una specifica corsa o linea.
+     */
+    private String shape_id;
+
+    /**
+     * Latitudine del punto (in gradi decimali).
+     */
+    private String shape_pt_lat;
+
+    /**
+     * Longitudine del punto (in gradi decimali).
+     */
+    private String shape_pt_lon;
+
+    /**
+     * Posizione del punto lungo la shape.
+     * I valori sono ordinati in modo crescente.
+     */
+    private String shape_pt_sequence;
+
+    /**
+     * Distanza cumulativa percorsa dal punto iniziale.
+     * L’unità dipende dal dataset (tipicamente metri o chilometri).
+     */
+    private String shape_dist_traveled;
+
+    /**
+     * Costruttore vuoto richiesto per il parsing
+     * o per eventuale deserializzazione.
      */
     public ShapesModel() {}
 
@@ -58,4 +89,3 @@ public class ShapesModel {
         this.shape_dist_traveled = shape_dist_traveled;
     }
 }
-
