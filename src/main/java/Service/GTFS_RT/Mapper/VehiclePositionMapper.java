@@ -5,8 +5,21 @@ import Model.GTFS_RT.Enums.OccupancyStatus;
 import Model.GTFS_RT.Enums.VehicleCurrentStatus;
 import com.google.transit.realtime.GtfsRealtime;
 
+/**
+ * Mapper che converte oggetti GTFS Realtime {@link GtfsRealtime.VehiclePosition}
+ * in modelli interni {@link VehicleInfo}.
+ * Gestisce l'estrazione di informazioni principali del veicolo come posizione,
+ * velocità, direzione, stato corrente e livello di occupazione.
+ */
 public class VehiclePositionMapper {
 
+    /**
+     * Converte un VehiclePosition del feed GTFS Realtime in un oggetto VehicleInfo interno.
+     *
+     * @param entityId identificativo univoco dell'entità del feed
+     * @param v oggetto GTFS Realtime VehiclePosition da mappare
+     * @return VehicleInfo contenente tutte le informazioni rilevanti
+     */
     public static VehicleInfo map(String entityId, GtfsRealtime.VehiclePosition v) {
 
         String vehicleId = (v.hasVehicle() && v.getVehicle().hasId()) ? v.getVehicle().getId() : null;
@@ -47,6 +60,13 @@ public class VehiclePositionMapper {
         );
     }
 
+    /**
+     * Converte lo stato corrente del veicolo dal feed GTFS Realtime
+     * al corrispondente enum interno {@link VehicleCurrentStatus}.
+     *
+     * @param v VehiclePosition del feed GTFS Realtime
+     * @return VehicleCurrentStatus interno
+     */
     private static VehicleCurrentStatus mapCurrentStatus(GtfsRealtime.VehiclePosition v) {
         if (!v.hasCurrentStatus()) return VehicleCurrentStatus.UNKNOWN;
         return switch (v.getCurrentStatus()) {
@@ -57,6 +77,13 @@ public class VehiclePositionMapper {
         };
     }
 
+    /**
+     * Converte lo stato di occupazione del veicolo dal feed GTFS Realtime
+     * al corrispondente enum interno {@link OccupancyStatus}.
+     *
+     * @param v VehiclePosition del feed GTFS Realtime
+     * @return OccupancyStatus interno
+     */
     private static OccupancyStatus mapOccupancy(GtfsRealtime.VehiclePosition v) {
         if (!v.hasOccupancyStatus()) return OccupancyStatus.UNKNOWN;
         return switch (v.getOccupancyStatus()) {

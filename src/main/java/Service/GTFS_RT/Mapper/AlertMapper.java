@@ -2,18 +2,32 @@ package Service.GTFS_RT.Mapper;
 
 import Model.GTFS_RT.AlertInfo;
 import Model.GTFS_RT.InformedEntityInfo;
-
 import Model.GTFS_RT.Enums.AlertCause;
 import Model.GTFS_RT.Enums.AlertEffect;
 import Model.GTFS_RT.Enums.AlertSeverityLevel;
-
 import com.google.transit.realtime.GtfsRealtime;
 
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Mapper che converte oggetti GTFS Realtime {@link GtfsRealtime.Alert} in
+ * modelli interni {@link AlertInfo}.
+ * Gestisce la mappatura di:
+ * - Cause dell'alert ({@link AlertCause})
+ * - Effetti dell'alert ({@link AlertEffect})
+ * - Livello di severità ({@link AlertSeverityLevel})
+ * Estrae inoltre periodi attivi, testi e entità informate associate all'alert.
+ */
 public class AlertMapper {
 
+    /**
+     * Converte un oggetto GTFS Realtime Alert in un modello interno AlertInfo.
+     *
+     * @param id identificativo univoco dell'alert
+     * @param alert oggetto GTFS Realtime Alert da mappare
+     * @return AlertInfo corrispondente al feed GTFS Realtime
+     */
     public static AlertInfo map(String id, GtfsRealtime.Alert alert) {
 
         AlertCause cause = mapCause(alert);
@@ -43,6 +57,12 @@ public class AlertMapper {
         return new AlertInfo(id, cause, effect, severity, start, end, headers, descriptions, informed);
     }
 
+    /**
+     * Mappa la causa dell'alert da GTFS Realtime a {@link AlertCause}.
+     *
+     * @param alert oggetto GTFS Realtime Alert
+     * @return causa corrispondente
+     */
     private static AlertCause mapCause(GtfsRealtime.Alert alert) {
         if (!alert.hasCause()) return AlertCause.UNKNOWN;
         return switch (alert.getCause()) {
@@ -62,6 +82,12 @@ public class AlertMapper {
         };
     }
 
+    /**
+     * Mappa l'effetto dell'alert da GTFS Realtime a {@link AlertEffect}.
+     *
+     * @param alert oggetto GTFS Realtime Alert
+     * @return effetto corrispondente
+     */
     private static AlertEffect mapEffect(GtfsRealtime.Alert alert) {
         if (!alert.hasEffect()) return AlertEffect.UNKNOWN;
         return switch (alert.getEffect()) {
@@ -80,6 +106,12 @@ public class AlertMapper {
         };
     }
 
+    /**
+     * Mappa il livello di severità dell'alert da GTFS Realtime a {@link AlertSeverityLevel}.
+     *
+     * @param alert oggetto GTFS Realtime Alert
+     * @return livello di severità corrispondente
+     */
     private static AlertSeverityLevel mapSeverity(GtfsRealtime.Alert alert) {
         if (!alert.hasSeverityLevel()) return AlertSeverityLevel.UNKNOWN;
         return switch (alert.getSeverityLevel()) {
@@ -91,6 +123,12 @@ public class AlertMapper {
         };
     }
 
+    /**
+     * Estrae i testi da un oggetto TranslatedString del feed GTFS Realtime.
+     *
+     * @param ts oggetto TranslatedString (header o description)
+     * @return lista di testi estratti
+     */
     private static List<String> extract(GtfsRealtime.TranslatedString ts) {
         List<String> out = new ArrayList<>();
         if (ts == null) return out;
