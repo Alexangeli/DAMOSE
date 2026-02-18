@@ -9,9 +9,18 @@
     <version>1.0-SNAPSHOT</version>
 
     <properties>
-        <maven.compiler.source>25</maven.compiler.source>
-        <maven.compiler.target>25</maven.compiler.target>
+        <!-- Consigliato per consegna (Java 17+) -->
+        <maven.compiler.release>17</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!-- Versioni test -->
+        <junit4.version>4.13.2</junit4.version>
+        <testng.version>7.10.2</testng.version>
+        <mockito.version>5.14.2</mockito.version>
+
+        <!-- IMPORTANTISSIMO: metti qui la tua main con package -->
+        <main.class>Main</main.class>
+        <!-- esempio: <main.class>View.Main</main.class> -->
     </properties>
 
     <dependencies>
@@ -20,20 +29,6 @@
             <groupId>com.opencsv</groupId>
             <artifactId>opencsv</artifactId>
             <version>5.12.0</version>
-        </dependency>
-
-        <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>RELEASE</version>
-            <scope>test</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>org.testng</groupId>
-            <artifactId>testng</artifactId>
-            <version>RELEASE</version>
-            <scope>compile</scope>
         </dependency>
 
         <dependency>
@@ -51,16 +46,14 @@
         <dependency>
             <groupId>org.jetbrains</groupId>
             <artifactId>annotations</artifactId>
-            <version>RELEASE</version>
+            <version>24.1.0</version>
             <scope>compile</scope>
         </dependency>
 
-        <!-- Source: https://mvnrepository.com/artifact/at.favre.lib/bcrypt -->
         <dependency>
             <groupId>at.favre.lib</groupId>
             <artifactId>bcrypt</artifactId>
             <version>0.10.2</version>
-            <scope>compile</scope>
         </dependency>
 
         <dependency>
@@ -69,46 +62,45 @@
             <version>0.0.8</version>
         </dependency>
 
+        <!-- ====== TEST ====== -->
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <version>${junit4.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.testng</groupId>
+            <artifactId>testng</artifactId>
+            <version>${testng.version}</version>
+            <scope>test</scope>
+        </dependency>
+
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
-            <version>5.14.2</version>
+            <version>${mockito.version}</version>
             <scope>test</scope>
         </dependency>
 
     </dependencies>
 
-    <!-- ✅ build per creare JAR eseguibile (fat jar) -->
     <build>
         <plugins>
 
-            <!-- Compilazione con la versione Java del progetto -->
+            <!-- Compilazione -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.11.0</version>
                 <configuration>
-                    <source>25</source>
-                    <target>25</target>
+                    <release>${maven.compiler.release}</release>
                     <encoding>${project.build.sourceEncoding}</encoding>
                 </configuration>
             </plugin>
 
-            <!-- ✅ (UNICA AGGIUNTA) Scrive Main-Class nel MANIFEST -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-jar-plugin</artifactId>
-                <version>3.3.0</version>
-                <configuration>
-                    <archive>
-                        <manifest>
-                            <mainClass>Main</mainClass>
-                        </manifest>
-                    </archive>
-                </configuration>
-            </plugin>
-
-            <!-- Fat JAR eseguibile con tutte le dipendenze incluse -->
+            <!-- Fat JAR eseguibile -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
@@ -122,10 +114,29 @@
                         <configuration>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
 
+                            <!-- nome finale del jar "tutto incluso" -->
+                            <finalName>DAMOSE</finalName>
+
+                            <!-- ✅ rimuove firme che rompono il fat-jar (Invalid signature file digest) -->
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+
                             <transformers>
+                                <!-- Scrive il Main-Class corretto -->
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>Main</mainClass>
+                                    <mainClass>${main.class}</mainClass>
                                 </transformer>
+
+                                <!-- Unisce eventuali META-INF/services -->
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                             </transformers>
                         </configuration>
                     </execution>

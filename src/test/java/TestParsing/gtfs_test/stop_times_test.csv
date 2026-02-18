@@ -1,5 +1,0 @@
-trip_id,arrival_time,departure_time,stop_id,stop_sequence,stop_headsign,pickup_type,drop_off_type,shape_dist_traveled,timepoint
-1#1-2,08:00:00,08:00:00,83131,1,,,,0,1
-1#1-2,08:02:40,08:02:40,70031,2,,,,557,0
-1#1-2,08:08:54,08:08:54,70604,3,,,,1853,0
-1#1-2,08:10:56,08:10:56,71321,4,,,,2281,0

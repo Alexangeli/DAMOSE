@@ -1,5 +1,0 @@
-route_id,service_id,trip_id,trip_headsign,trip_short_name,direction_id,block_id,shape_id,wheelchair_accessible,exceptional
-CINE,1#52,1#1-2,"DE COUBERTIN/AUDITORIUM","25505123",0,"",66065,0,0
-CINE,1#52,1#1-3,"TERMINI (MA-MB-FS)","25505124",1,"",66066,0,0
-CINE,1#52,1#1-4,"DE COUBERTIN/AUDITORIUM","25505125",0,"",66065,0,0
-CINE,1#52,1#1-5,"TERMINI (MA-MB-FS)","25505126",1,"",66066,0,0
