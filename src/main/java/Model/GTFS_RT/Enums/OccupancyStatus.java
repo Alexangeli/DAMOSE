@@ -1,6 +1,15 @@
 package Model.GTFS_RT.Enums;
 
+/**
+ * Indica il livello di occupazione di un mezzo,
+ * secondo quanto riportato dal feed GTFS Realtime.
+ *
+ * Questa informazione può essere mostrata nella GUI
+ * per dare all’utente un’idea della disponibilità
+ * di posti a bordo.
+ */
 public enum OccupancyStatus {
+
     EMPTY,
     MANY_SEATS_AVAILABLE,
     FEW_SEATS_AVAILABLE,
@@ -12,6 +21,13 @@ public enum OccupancyStatus {
     NOT_BOARDABLE,
     UNKNOWN;
 
+    /**
+     * Restituisce una descrizione leggibile in italiano
+     * dello stato di occupazione.
+     *
+     * Questo metodo viene usato direttamente nella GUI
+     * per mostrare un testo comprensibile all’utente.
+     */
     public String toHumanIt() {
         return switch (this) {
             case EMPTY -> "Vuoto";
@@ -26,6 +42,12 @@ public enum OccupancyStatus {
         };
     }
 
+    /**
+     * Indica se lo stato contiene informazioni effettivamente utilizzabili.
+     *
+     * Restituisce false se il dato è sconosciuto o non disponibile.
+     * Utile per decidere se mostrare o meno l’informazione nella GUI.
+     */
     public boolean isAvailable() {
         return this != null && this != UNKNOWN && this != NO_DATA_AVAILABLE;
     }
