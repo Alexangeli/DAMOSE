@@ -191,12 +191,8 @@ public class AppController {
 
                         @Override
                         public void onPickTheme(String themeKey) {
-                            JOptionPane.showMessageDialog(
-                                    frame,
-                                    "Tema selezionato: " + themeKey + " (placeholder)",
-                                    "Tema",
-                                    JOptionPane.INFORMATION_MESSAGE
-                            );
+                            // Applica il tema senza popup (solo colori)
+                            applyTheme(themeKey);
                         }
 
                         @Override
@@ -389,20 +385,8 @@ public class AppController {
         myFrame.setSize(AppConfig.DEFAULT_WIDTH, AppConfig.DEFAULT_HEIGHT);
         myFrame.getContentPane().setBackground(AppConfig.BACKGROUND_COLOR);
 
-        try {
-            java.net.URL iconUrl = AppController.class.getResource("/icons/logo.png");
-            if (iconUrl != null) {
-                Image icon = new ImageIcon(iconUrl).getImage();
-                myFrame.setIconImage(icon);
-                try {
-                    Taskbar.getTaskbar().setIconImage(icon);
-                } catch (Exception ignored) {}
-            } else {
-                System.err.println("[AppController] Icon not found: /icons/logo.png");
-            }
-        } catch (Exception ex) {
-            System.err.println("[AppController] Failed to set app icon: " + ex.getMessage());
-        }
+        // Icona iniziale coerente col tema corrente
+        updateAppIcon(myFrame, getCurrentThemeKeySafe());
 
         return myFrame;
     }
@@ -513,5 +497,165 @@ public class AppController {
             if (!s.isBlank()) return TransportGuess.BUS;
         } catch (Exception ignored) {}
         return TransportGuess.UNKNOWN;
+    }
+    /**
+     * Applica il tema corrente senza mostrare popup.
+     * Usa reflection per restare compatibile anche se ThemeManager/Theme cambiano firma.
+     */
+    private void applyTheme(String themeKey) {
+        try {
+            // 1) prova ThemeManager.set(String)
+            Class<?> tm = Class.forName("View.Theme.ThemeManager");
+            boolean applied = false;
+
+            try {
+                java.lang.reflect.Method set = tm.getMethod("set", String.class);
+                set.invoke(null, themeKey);
+                applied = true;
+            } catch (NoSuchMethodException ignored) {
+                // 2) prova ThemeManager.setTheme(String)
+                try {
+                    java.lang.reflect.Method set = tm.getMethod("setTheme", String.class);
+                    set.invoke(null, themeKey);
+                    applied = true;
+                } catch (NoSuchMethodException ignored2) {
+                    // 3) prova ThemeManager.apply(String)
+                    try {
+                        java.lang.reflect.Method apply = tm.getMethod("apply", String.class);
+                        apply.invoke(null, themeKey);
+                        applied = true;
+                    } catch (NoSuchMethodException ignored3) {
+                        // niente
+                    }
+                }
+            }
+
+            // 4) Se esiste ThemeManager.apply(Component) / apply(JFrame), aggiorna la UI
+            try {
+                java.lang.reflect.Method applyTo = tm.getMethod("apply", java.awt.Component.class);
+                applyTo.invoke(null, frame);
+                applied = true;
+            } catch (NoSuchMethodException ignored) {
+                // niente
+            }
+
+            // aggiorna anche l'icona dell'app in base al tema
+            if (frame != null) updateAppIcon(frame, themeKey);
+
+            // 5) In ogni caso, forza update UI per repaint completo
+            if (frame != null) {
+                SwingUtilities.updateComponentTreeUI(frame);
+                frame.invalidate();
+                frame.validate();
+                frame.repaint();
+            }
+
+            // 6) Refresh anche bottone auth (hover/colore) se presente
+            AppShellView shell = shellRef.get();
+            if (shell != null) {
+                shell.refreshAuthButton();
+            }
+
+        } catch (Exception ignored) {
+            // fallback: solo repaint
+            if (frame != null) updateAppIcon(frame, themeKey);
+            if (frame != null) {
+                SwingUtilities.updateComponentTreeUI(frame);
+                frame.invalidate();
+                frame.validate();
+                frame.repaint();
+            }
+        }
+    }
+
+    // ===================== ICON THEME =====================
+
+    /**
+     * Aggiorna l'icona (finestra + dock/taskbar) in base al tema.
+     * Usa risorse:
+     *  - /icons/logoarancione.png
+     *  - /icons/logorosso.png
+     */
+    private void updateAppIcon(JFrame targetFrame, String themeKey) {
+        if (targetFrame == null) return;
+
+        String iconPath = resolveIconPath(themeKey);
+
+        try {
+            java.net.URL iconUrl = AppController.class.getResource(iconPath);
+            if (iconUrl == null) {
+                // fallback extra: prova il vecchio logo se manca
+                iconUrl = AppController.class.getResource("/icons/logo.png");
+            }
+            if (iconUrl != null) {
+                Image icon = new ImageIcon(iconUrl).getImage();
+                targetFrame.setIconImage(icon);
+                try {
+                    Taskbar.getTaskbar().setIconImage(icon);
+                } catch (Exception ignored) {}
+            } else {
+                System.err.println("[AppController] Icon not found: " + iconPath);
+            }
+        } catch (Exception ex) {
+            System.err.println("[AppController] Failed to update icon: " + ex.getMessage());
+        }
+    }
+
+    private String resolveIconPath(String themeKey) {
+        // default arancione
+        if (themeKey == null) return "/icons/logoarancione.png";
+
+        String k = themeKey.trim().toLowerCase();
+
+        // euristiche: qualunque tema che contenga 'rosso' o 'atac' -> rosso
+        if (k.contains("rosso") || k.contains("atac") || k.contains("pompeiano") || k.contains("red")) {
+            return "/icons/logorosso.png";
+        }
+        return "/icons/logoarancione.png";
+    }
+
+    /**
+     * Prova a leggere la key del tema corrente via reflection:
+     * - ThemeManager.getKey() / getCurrentKey() / getThemeKey()
+     * - altrimenti tenta ThemeManager.get() e legge field 'key'/'name'
+     * Se fallisce ritorna null.
+     */
+    private String getCurrentThemeKeySafe() {
+        try {
+            Class<?> tm = Class.forName("View.Theme.ThemeManager");
+
+            // 1) metodi diretti
+            for (String mName : new String[]{"getKey", "getCurrentKey", "getThemeKey"}) {
+                try {
+                    java.lang.reflect.Method m = tm.getMethod(mName);
+                    Object out = m.invoke(null);
+                    if (out != null) {
+                        String s = String.valueOf(out).trim();
+                        if (!s.isEmpty()) return s;
+                    }
+                } catch (NoSuchMethodException ignored) {}
+            }
+
+            // 2) ThemeManager.get() -> theme
+            try {
+                java.lang.reflect.Method get = tm.getMethod("get");
+                Object theme = get.invoke(null);
+                if (theme == null) return null;
+
+                // field 'key' o 'name'
+                for (String fName : new String[]{"key", "name", "themeKey"}) {
+                    try {
+                        java.lang.reflect.Field f = theme.getClass().getField(fName);
+                        Object v = f.get(theme);
+                        if (v != null) {
+                            String s = String.valueOf(v).trim();
+                            if (!s.isEmpty()) return s;
+                        }
+                    } catch (NoSuchFieldException ignored) {}
+                }
+            } catch (NoSuchMethodException ignored) {}
+
+        } catch (Exception ignored) {}
+        return null;
     }
 }

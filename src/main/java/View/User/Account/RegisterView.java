@@ -24,10 +24,13 @@ public class RegisterView extends JPanel {
     private JPasswordField pass2;
     private JLabel msg;
 
-    private static final Color BG = new Color(245, 245, 245);
-    private static final Color ORANGE = new Color(0xFF, 0x7A, 0x00);
-    private static final Color ORANGE_HOVER = new Color(0xFF, 0x8F, 0x33);
-    private static final Color MUTED = new Color(120, 120, 120);
+    // Fallback (se ThemeManager non è presente)
+    private static final Color FALLBACK_BG = new Color(245, 245, 245);
+    private static final Color FALLBACK_CARD = Color.WHITE;
+    private static final Color FALLBACK_PRIMARY = new Color(0xFF, 0x7A, 0x00);
+    private static final Color FALLBACK_PRIMARY_HOVER = new Color(0xFF, 0x8F, 0x33);
+    private static final Color FALLBACK_MUTED = new Color(120, 120, 120);
+    private static final Color FALLBACK_BORDER = new Color(220, 220, 220);
     private static final Color ERROR = new Color(176, 0, 32);
 
     private static final int FIELD_W = 320;
@@ -53,26 +56,26 @@ public class RegisterView extends JPanel {
 
     private void buildUI() {
         setLayout(new BorderLayout());
-        setBackground(BG);
+        setBackground(ThemeColors.bg());
 
         // ✅ finestra piccola ma più alta del login
         setPreferredSize(new Dimension(430, 560));
 
         JPanel card = new JPanel();
         card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
-        card.setBackground(Color.WHITE);
+        card.setBackground(ThemeColors.card());
         card.setOpaque(true);
         card.setBorder(new EmptyBorder(22, 30, 22, 30));
 
         JLabel title = new JLabel("Welcome");
         title.setAlignmentX(Component.CENTER_ALIGNMENT);
         title.setFont(new Font("SansSerif", Font.BOLD, 40));
-        title.setForeground(new Color(15, 15, 15));
+        title.setForeground(ThemeColors.text());
 
         JLabel subtitle = new JLabel("Crea un nuovo account");
         subtitle.setAlignmentX(Component.CENTER_ALIGNMENT);
         subtitle.setFont(new Font("SansSerif", Font.PLAIN, 16));
-        subtitle.setForeground(MUTED);
+        subtitle.setForeground(ThemeColors.textMuted());
 
         card.add(title);
         card.add(Box.createVerticalStrut(6));
@@ -112,7 +115,7 @@ public class RegisterView extends JPanel {
 
         card.add(Box.createVerticalStrut(10));
 
-        HoverScaleFillButton registerBtn = new HoverScaleFillButton("Crea account", ORANGE, ORANGE_HOVER);
+        HoverScaleFillButton registerBtn = new HoverScaleFillButton("Crea account");
         registerBtn.setAlignmentX(Component.CENTER_ALIGNMENT);
         registerBtn.setPreferredSize(new Dimension(BTN_W, BTN_H));
         registerBtn.setMaximumSize(new Dimension(BTN_W, BTN_H));
@@ -125,7 +128,7 @@ public class RegisterView extends JPanel {
         goLoginBtn.setBorderPainted(false);
         goLoginBtn.setContentAreaFilled(false);
         goLoginBtn.setFocusPainted(false);
-        goLoginBtn.setForeground(ORANGE);
+        goLoginBtn.setForeground(ThemeColors.primary());
         goLoginBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         goLoginBtn.setFont(new Font("SansSerif", Font.PLAIN, 13));
         card.add(goLoginBtn);
@@ -194,7 +197,7 @@ public class RegisterView extends JPanel {
     private JComponent labelAlignedLeft(String text) {
         JLabel l = new JLabel(text);
         l.setFont(new Font("SansSerif", Font.PLAIN, 14));
-        l.setForeground(MUTED);
+        l.setForeground(ThemeColors.textMuted());
 
         JPanel box = new JPanel(new BorderLayout());
         box.setOpaque(false);
@@ -209,7 +212,7 @@ public class RegisterView extends JPanel {
         field.setOpaque(true);
         field.setBackground(Color.WHITE);
         field.setFont(new Font("SansSerif", Font.PLAIN, 14));
-        field.setBorder(new RoundedBorder(new Color(220, 220, 220), 1, 12, new Insets(9, 12, 9, 12)));
+        field.setBorder(new ThemedRoundedBorder(1, 12, new Insets(9, 12, 9, 12)));
         field.setPreferredSize(new Dimension(FIELD_W, FIELD_H));
         field.setMaximumSize(new Dimension(FIELD_W, FIELD_H));
         field.setMinimumSize(new Dimension(FIELD_W, FIELD_H));
@@ -229,13 +232,8 @@ public class RegisterView extends JPanel {
         private double targetScale = 1.0;
         private final Timer anim;
 
-        private final Color base;
-        private final Color over;
-
-        HoverScaleFillButton(String text, Color base, Color over) {
+        HoverScaleFillButton(String text) {
             super(text);
-            this.base = base;
-            this.over = over;
 
             setFocusPainted(false);
             setBorderPainted(false);
@@ -278,7 +276,7 @@ public class RegisterView extends JPanel {
             g2.translate(-cx, -cy);
 
             int arc = 14;
-            g2.setColor(hover ? over : base);
+            g2.setColor(hover ? ThemeColors.primaryHover() : ThemeColors.primary());
             g2.fillRoundRect(0, 0, w, h, arc, arc);
 
             g2.dispose();
@@ -286,14 +284,12 @@ public class RegisterView extends JPanel {
         }
     }
 
-    private static class RoundedBorder implements javax.swing.border.Border {
-        private final Color color;
+    private static class ThemedRoundedBorder implements javax.swing.border.Border {
         private final int thickness;
         private final int arc;
         private final Insets insets;
 
-        RoundedBorder(Color color, int thickness, int arc, Insets insets) {
-            this.color = color;
+        ThemedRoundedBorder(int thickness, int arc, Insets insets) {
             this.thickness = thickness;
             this.arc = arc;
             this.insets = insets;
@@ -306,10 +302,80 @@ public class RegisterView extends JPanel {
         public void paintBorder(Component c, Graphics g, int x, int y, int width, int height) {
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g2.setColor(color);
+            g2.setColor(ThemeColors.borderStrong());
             g2.setStroke(new BasicStroke(thickness));
             g2.drawRoundRect(x, y, width - 1, height - 1, arc, arc);
             g2.dispose();
+        }
+    }
+
+    // ===================== THEME (safe via reflection) =====================
+    private static final class ThemeColors {
+        private ThemeColors() {}
+
+        static Color bg() {
+            Color c = fromThemeField("bg");
+            return (c != null) ? c : FALLBACK_BG;
+        }
+
+        static Color card() {
+            Color c = fromThemeField("card");
+            return (c != null) ? c : FALLBACK_CARD;
+        }
+
+        static Color primary() {
+            Color c = fromThemeField("primary");
+            return (c != null) ? c : FALLBACK_PRIMARY;
+        }
+
+        static Color primaryHover() {
+            Color c = fromThemeField("primaryHover");
+            if (c != null) return c;
+
+            // Se il tema non definisce primaryHover, deriviamo una versione più chiara del primary
+            Color base = primary();
+
+            int r = Math.min(255, (int) (base.getRed() * 1.1));
+            int g = Math.min(255, (int) (base.getGreen() * 1.1));
+            int b = Math.min(255, (int) (base.getBlue() * 1.1));
+
+            return new Color(r, g, b);
+        }
+
+        static Color text() {
+            Color c = fromThemeField("text");
+            return (c != null) ? c : new Color(15, 15, 15);
+        }
+
+        static Color textMuted() {
+            Color c = fromThemeField("textMuted");
+            return (c != null) ? c : FALLBACK_MUTED;
+        }
+
+        static Color borderStrong() {
+            Color c = fromThemeField("borderStrong");
+            if (c != null) return c;
+            c = fromThemeField("border");
+            return (c != null) ? c : FALLBACK_BORDER;
+        }
+
+        private static Color fromThemeField(String fieldName) {
+            try {
+                Class<?> tm = Class.forName("View.Theme.ThemeManager");
+                java.lang.reflect.Method get = tm.getMethod("get");
+                Object theme = get.invoke(null);
+                if (theme == null) return null;
+
+                try {
+                    java.lang.reflect.Field f = theme.getClass().getField(fieldName);
+                    Object v = f.get(theme);
+                    return (v instanceof Color col) ? col : null;
+                } catch (NoSuchFieldException nf) {
+                    return null;
+                }
+            } catch (Exception ignored) {
+                return null;
+            }
         }
     }
 }

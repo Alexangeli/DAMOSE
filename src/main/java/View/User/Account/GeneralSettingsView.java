@@ -10,10 +10,11 @@ public class GeneralSettingsView extends JPanel {
         void save(String username, String email, String newPassword);
     }
 
-    private static final Color ORANGE = new Color(0xFF, 0x7A, 0x00);
-    private static final Color ORANGE_HOVER = new Color(0xFF, 0x8F, 0x33);
-    private static final Color MUTED = new Color(120, 120, 120);
-    private static final Color BORDER = new Color(220, 220, 220);
+    // Fallback (se ThemeManager non è presente)
+    private static final Color FALLBACK_PRIMARY = new Color(0xFF, 0x7A, 0x00);
+    private static final Color FALLBACK_PRIMARY_HOVER = new Color(0xFF, 0x8F, 0x33);
+    private static final Color FALLBACK_MUTED = new Color(120, 120, 120);
+    private static final Color FALLBACK_BORDER = new Color(220, 220, 220);
     private static final Color ERROR = new Color(176, 0, 32);
 
     private static final int FIELD_W = 360;
@@ -49,11 +50,11 @@ public class GeneralSettingsView extends JPanel {
 
         JLabel title = new JLabel("Generali");
         title.setFont(new Font("SansSerif", Font.BOLD, 22));
-        title.setForeground(new Color(15, 15, 15));
+        title.setForeground(ThemeColors.text());
 
         JLabel subtitle = new JLabel("Modifica username, email e password");
         subtitle.setFont(new Font("SansSerif", Font.PLAIN, 13));
-        subtitle.setForeground(MUTED);
+        subtitle.setForeground(ThemeColors.textMuted());
 
         card.add(title);
         card.add(Box.createVerticalStrut(4));
@@ -90,7 +91,7 @@ public class GeneralSettingsView extends JPanel {
 
         card.add(Box.createVerticalStrut(10));
 
-        primaryBtn = new HoverScaleFillButton("Modifica", ORANGE, ORANGE_HOVER);
+        primaryBtn = new HoverScaleFillButton("Modifica");
         primaryBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
         primaryBtn.setPreferredSize(new Dimension(FIELD_W, 46));
         primaryBtn.setMaximumSize(new Dimension(FIELD_W, 46));
@@ -115,7 +116,7 @@ public class GeneralSettingsView extends JPanel {
         // Se siamo in view mode → entra in edit mode
         if (!editMode) {
             setEditMode(true);
-            msg.setForeground(MUTED);
+            msg.setForeground(ThemeColors.textMuted());
             msg.setText(" ");
             return;
         }
@@ -274,7 +275,7 @@ public class GeneralSettingsView extends JPanel {
     private JComponent labelLeft(String text) {
         JLabel l = new JLabel(text);
         l.setFont(new Font("SansSerif", Font.PLAIN, 14));
-        l.setForeground(MUTED);
+        l.setForeground(ThemeColors.textMuted());
 
         JPanel box = new JPanel(new BorderLayout());
         box.setOpaque(false);
@@ -288,9 +289,9 @@ public class GeneralSettingsView extends JPanel {
 
     private JComponent roundedField(JTextField field) {
         field.setOpaque(true);
-        field.setBackground(Color.WHITE);
+        field.setBackground(Color.WHITE); // resta bianco per leggibilità (tema attuale modifica solo accent/border)
         field.setFont(new Font("SansSerif", Font.PLAIN, 14));
-        field.setBorder(new RoundedBorder(BORDER, 1, 12, new Insets(9, 12, 9, 12)));
+        field.setBorder(new ThemedRoundedBorder(1, 12, new Insets(9, 12, 9, 12)));
         field.setPreferredSize(new Dimension(FIELD_W, FIELD_H));
         field.setMaximumSize(new Dimension(FIELD_W, FIELD_H));
         field.setMinimumSize(new Dimension(FIELD_W, FIELD_H));
@@ -312,13 +313,8 @@ public class GeneralSettingsView extends JPanel {
         private double targetScale = 1.0;
         private final Timer anim;
 
-        private final Color base;
-        private final Color over;
-
-        HoverScaleFillButton(String text, Color base, Color over) {
+        HoverScaleFillButton(String text) {
             super(text);
-            this.base = base;
-            this.over = over;
 
             setFocusPainted(false);
             setBorderPainted(false);
@@ -361,7 +357,7 @@ public class GeneralSettingsView extends JPanel {
             g2.translate(-cx, -cy);
 
             int arc = 14;
-            g2.setColor(hover ? over : base);
+            g2.setColor(hover ? ThemeColors.primaryHover() : ThemeColors.primary());
             g2.fillRoundRect(0, 0, w, h, arc, arc);
 
             g2.dispose();
@@ -369,14 +365,12 @@ public class GeneralSettingsView extends JPanel {
         }
     }
 
-    private static class RoundedBorder implements javax.swing.border.Border {
-        private final Color color;
+    private static class ThemedRoundedBorder implements javax.swing.border.Border {
         private final int thickness;
         private final int arc;
         private final Insets insets;
 
-        RoundedBorder(Color color, int thickness, int arc, Insets insets) {
-            this.color = color;
+        ThemedRoundedBorder(int thickness, int arc, Insets insets) {
             this.thickness = thickness;
             this.arc = arc;
             this.insets = insets;
@@ -389,10 +383,88 @@ public class GeneralSettingsView extends JPanel {
         public void paintBorder(Component c, Graphics g, int x, int y, int width, int height) {
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g2.setColor(color);
+            g2.setColor(ThemeColors.borderStrong());
             g2.setStroke(new BasicStroke(thickness));
             g2.drawRoundRect(x, y, width - 1, height - 1, arc, arc);
             g2.dispose();
+        }
+    }
+
+    // ===================== THEME (safe via reflection) =====================
+    private static final class ThemeColors {
+
+        private ThemeColors() {}
+
+        static Color primary() {
+            Color c = fromThemeField("primary");
+            return (c != null) ? c : FALLBACK_PRIMARY;
+        }
+
+        static Color primaryHover() {
+            Color c = fromThemeField("primaryHover");
+            if (c != null) return c;
+
+            // Se il tema non espone primaryHover, deriviamolo dal primary corrente
+            // (così non ricadiamo sul fallback arancione quando primary è rosso, ecc.)
+            return deriveHover(primary());
+        }
+
+        private static Color deriveHover(Color base) {
+            if (base == null) return FALLBACK_PRIMARY_HOVER;
+
+            // schiarisci leggermente senza cambiare alpha
+            int a = base.getAlpha();
+            int r = base.getRed();
+            int g = base.getGreen();
+            int b = base.getBlue();
+
+            // +10% verso il bianco
+            r = (int) Math.round(r + (255 - r) * 0.10);
+            g = (int) Math.round(g + (255 - g) * 0.10);
+            b = (int) Math.round(b + (255 - b) * 0.10);
+
+            r = Math.max(0, Math.min(255, r));
+            g = Math.max(0, Math.min(255, g));
+            b = Math.max(0, Math.min(255, b));
+
+            return new Color(r, g, b, a);
+        }
+
+        static Color text() {
+            // se il tema non espone "text" usiamo un nero standard
+            Color c = fromThemeField("text");
+            return (c != null) ? c : new Color(15, 15, 15);
+        }
+
+        static Color textMuted() {
+            Color c = fromThemeField("textMuted");
+            return (c != null) ? c : FALLBACK_MUTED;
+        }
+
+        static Color borderStrong() {
+            Color c = fromThemeField("borderStrong");
+            if (c != null) return c;
+            c = fromThemeField("border");
+            return (c != null) ? c : FALLBACK_BORDER;
+        }
+
+        private static Color fromThemeField(String fieldName) {
+            try {
+                Class<?> tm = Class.forName("View.Theme.ThemeManager");
+                java.lang.reflect.Method get = tm.getMethod("get");
+                Object theme = get.invoke(null);
+                if (theme == null) return null;
+
+                try {
+                    java.lang.reflect.Field f = theme.getClass().getField(fieldName);
+                    Object v = f.get(theme);
+                    return (v instanceof Color col) ? col : null;
+                } catch (NoSuchFieldException nf) {
+                    return null;
+                }
+            } catch (Exception ignored) {
+                return null;
+            }
         }
     }
 }

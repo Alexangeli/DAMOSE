@@ -4,54 +4,103 @@ import javax.swing.*;
 import java.awt.*;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.util.function.IntSupplier;
 
 public class ScrollingInfoBar extends JPanel {
 
-    private static final Color BG = new Color(0xFF, 0x7A, 0x00);
+    // Colori: prendiamo il PRIMARY dal tema corrente (fallback arancione)
+    private static final Color FALLBACK_PRIMARY = new Color(0xFF, 0x7A, 0x00);
     private static final Color TEXT = Color.WHITE;
 
+    // Font usato sia per calcolare larghezza che per disegnare
     private final Font drawFont = new Font("SansSerif", Font.BOLD, 15);
+
     private static final int REPEAT_GAP_PX = 80;
 
+    // Velocità costante (px/sec). 1px ogni 16ms ≈ 62.5 px/s: qui la rendiamo più veloce.
+    private static final double SCROLL_SPEED_PX_PER_SEC = 120.0;
+
     private String message = "";
+
+    // offset usato nel paint (int) + accumulatore double per scorrimento time-based
     private int xOffset = 0;
+    private double xOffsetD = 0.0;
+
     private int messageWidth = 0;
+
+    // fallback locale (usato solo se NON bindato)
+    private int countdown = 30;
 
     private int totalCorse = 0;
 
     private final Timer scrollTimer;
+    private final Timer countdownTimer;
     private final Timer clockTimer;
 
     private final DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss");
 
-    private java.util.function.IntSupplier secondsToRefreshSupplier = () -> -1;
+    // se ritorna <0 => usa countdown locale
+    private IntSupplier secondsToRefreshSupplier = () -> -1;
 
     public ScrollingInfoBar() {
         setPreferredSize(new Dimension(0, 44));
-        setBackground(BG);
         setOpaque(true);
+        applyTheme();
 
         updateMessage();
 
-        // Scroll (~60 FPS)
+        // Scroll (~60 FPS) - time-based: velocità costante anche se l'EDT lagga
+        final long[] lastNanos = { System.nanoTime() };
         scrollTimer = new Timer(16, e -> {
-            xOffset -= 1;
+            long nowN = System.nanoTime();
+            long prev = lastNanos[0];
+            lastNanos[0] = nowN;
+
+            double dtSec = (nowN - prev) / 1_000_000_000.0;
+            if (dtSec < 0) dtSec = 0;
+            // clamp per evitare salti enormi dopo pause/debug
+            if (dtSec > 0.2) dtSec = 0.2;
+
+            xOffsetD -= SCROLL_SPEED_PX_PER_SEC * dtSec;
 
             int cycle = messageWidth + REPEAT_GAP_PX;
-            if (cycle > 0 && xOffset <= -cycle) {
-                xOffset += cycle;
+            if (cycle > 0) {
+                // mantieni xOffsetD in range [-cycle, 0)
+                while (xOffsetD <= -cycle) xOffsetD += cycle;
+                while (xOffsetD > 0) xOffsetD -= cycle;
+                xOffset = (int) Math.round(xOffsetD);
+            } else {
+                xOffset = (int) Math.round(xOffsetD);
             }
+
             repaint();
         });
         scrollTimer.start();
 
-        // 1s: aggiorna testo (ora + countdown + corse)
+        // 1s: aggiorna countdown interno (solo se non bindato) + testo
+        countdownTimer = new Timer(1000, e -> {
+            if (secondsToRefreshSupplier == null || secondsToRefreshSupplier.getAsInt() < 0) {
+                countdown--;
+                if (countdown <= 0) countdown = 30;
+            }
+            updateMessage();
+        });
+        countdownTimer.start();
+
+        // 1s: aggiorna anche l’ora
         clockTimer = new Timer(1000, e -> updateMessage());
         clockTimer.start();
     }
 
-    public void bindCountdown(java.util.function.IntSupplier supplier) {
+    // Collega il countdown reale dal backend (es. rtController::getSecondsToNextFetch)
+    public void bindCountdown(IntSupplier supplier) {
         this.secondsToRefreshSupplier = (supplier != null) ? supplier : () -> -1;
+        updateMessage();
+    }
+
+    // Compatibilità: se lo usi ancora altrove
+    public void setSecondsToNextRefresh(int seconds) {
+        this.countdown = Math.max(0, seconds);
         updateMessage();
     }
 
@@ -63,25 +112,36 @@ public class ScrollingInfoBar extends JPanel {
     private void updateMessage() {
         String now = LocalTime.now().format(timeFormatter);
 
-        int secs = secondsToRefreshSupplier.getAsInt();
-        String refreshText = (secs >= 0) ? (secs + " s") : "—";
+        int secs = (secondsToRefreshSupplier != null) ? secondsToRefreshSupplier.getAsInt() : -1;
+        String refreshText = (secs >= 0) ? (secs + " s") : (countdown + " s");
 
         String sep = "   ✦   ";
 
         String newMsg =
                 "✦   Benvenuti su eNnamo" + sep +
-                        "Prossimo refresh tra:  " + refreshText + sep +
-                        "Ora attuale:  " + now + sep +
-                        "Totale corse in questo momento:  " + totalCorse + sep;
+                "Prossimo refresh tra:  " + refreshText + sep +
+                "Ora attuale:  " + now + sep +
+                "Totale corse in questo momento:  " + totalCorse + sep;
 
-        // aggiorna solo se cambia (riduce lavoro EDT)
         if (!newMsg.equals(message)) {
             message = newMsg;
             messageWidth = getMessageWidth();
         }
 
-        // NON normalizzare xOffset qui: evita micro-scatti
+        // se cambia la lunghezza del ciclo, riallinea l'offset per evitare salti
+        int cycle = messageWidth + REPEAT_GAP_PX;
+        if (cycle > 0) {
+            while (xOffsetD <= -cycle) xOffsetD += cycle;
+            while (xOffsetD > 0) xOffsetD -= cycle;
+            xOffset = (int) Math.round(xOffsetD);
+        }
+
+        applyTheme();
         repaint();
+    }
+
+    private void applyTheme() {
+        setBackground(ThemeColors.primary());
     }
 
     private int getMessageWidth() {
@@ -91,6 +151,8 @@ public class ScrollingInfoBar extends JPanel {
 
     @Override
     protected void paintComponent(Graphics g) {
+        // assicura che lo sfondo segua sempre il tema
+        setBackground(ThemeColors.primary());
         super.paintComponent(g);
 
         Graphics2D g2 = (Graphics2D) g.create();
@@ -113,10 +175,40 @@ public class ScrollingInfoBar extends JPanel {
         for (int x = xOffset; x < getWidth(); x += cycle) {
             g2.drawString(message, x, y);
         }
+
         for (int x = xOffset - cycle; x + messageWidth > 0; x -= cycle) {
             g2.drawString(message, x, y);
         }
 
         g2.dispose();
+    }
+
+    // ===================== THEME (safe via reflection) =====================
+    private static final class ThemeColors {
+        private ThemeColors() {}
+
+        static Color primary() {
+            Color c = fromThemeField("primary");
+            return (c != null) ? c : FALLBACK_PRIMARY;
+        }
+
+        private static Color fromThemeField(String fieldName) {
+            try {
+                Class<?> tm = Class.forName("View.Theme.ThemeManager");
+                java.lang.reflect.Method get = tm.getMethod("get");
+                Object theme = get.invoke(null);
+                if (theme == null) return null;
+
+                try {
+                    java.lang.reflect.Field f = theme.getClass().getField(fieldName);
+                    Object v = f.get(theme);
+                    return (v instanceof Color col) ? col : null;
+                } catch (NoSuchFieldException nf) {
+                    return null;
+                }
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
     }
 }

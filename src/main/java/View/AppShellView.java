@@ -237,8 +237,8 @@ public class AppShellView extends JPanel {
                     int arc = (int) (Math.min(iw, ih) * 0.45);
                     arc = Math.max(16, Math.min(arc, 26));
 
-                    Color base = new Color(0xFF, 0x7A, 0x00);
-                    Color hoverColor = new Color(0xFF, 0x8F, 0x33);
+                    Color base = ThemeColors.primary();
+                    Color hoverColor = ThemeColors.primaryHover();
 
                     g2.setColor(hover ? hoverColor : base);
                     g2.fillRoundRect(pad, pad, iw, ih, arc, arc);
@@ -288,6 +288,65 @@ public class AppShellView extends JPanel {
             return SwingUtilities.convertRectangle(parent, r, layer);
         } catch (Exception ignored) {
             return null;
+        }
+    }
+    // ===================== THEME (safe via reflection) =====================
+    private static final class ThemeColors {
+        private ThemeColors() {}
+
+        private static final Color FALLBACK_PRIMARY = new Color(0xFF, 0x7A, 0x00);
+        private static final Color FALLBACK_PRIMARY_HOVER = new Color(0xFF, 0x8F, 0x33);
+
+        static Color primary() {
+            Color c = fromThemeField("primary");
+            return (c != null) ? c : FALLBACK_PRIMARY;
+        }
+
+        static Color primaryHover() {
+            Color c = fromThemeField("primaryHover");
+            if (c != null) return c;
+
+            // se non esiste primaryHover nel tema, genera un hover leggermente più chiaro del primary
+            Color p = primary();
+            return lighten(p, 0.10f);
+        }
+
+        private static Color fromThemeField(String fieldName) {
+            try {
+                Class<?> tm = Class.forName("View.Theme.ThemeManager");
+                java.lang.reflect.Method get = tm.getMethod("get");
+                Object theme = get.invoke(null);
+                if (theme == null) return null;
+
+                try {
+                    java.lang.reflect.Field f = theme.getClass().getField(fieldName);
+                    Object v = f.get(theme);
+                    return (v instanceof Color col) ? col : null;
+                } catch (NoSuchFieldException nf) {
+                    return null;
+                }
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
+
+        private static Color lighten(Color c, float amount) {
+            if (c == null) return FALLBACK_PRIMARY_HOVER;
+            amount = Math.max(0f, Math.min(1f, amount));
+            int r = c.getRed();
+            int g = c.getGreen();
+            int b = c.getBlue();
+            int a = c.getAlpha();
+
+            int nr = (int) Math.round(r + (255 - r) * amount);
+            int ng = (int) Math.round(g + (255 - g) * amount);
+            int nb = (int) Math.round(b + (255 - b) * amount);
+
+            nr = Math.max(0, Math.min(255, nr));
+            ng = Math.max(0, Math.min(255, ng));
+            nb = Math.max(0, Math.min(255, nb));
+
+            return new Color(nr, ng, nb, a);
         }
     }
 }
