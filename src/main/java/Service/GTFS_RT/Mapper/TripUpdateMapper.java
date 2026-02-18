@@ -8,8 +8,21 @@ import com.google.transit.realtime.GtfsRealtime;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Mapper che converte oggetti GTFS Realtime {@link GtfsRealtime.TripUpdate}
+ * in modelli interni {@link TripUpdateInfo} e {@link StopTimeUpdateInfo}.
+ * Gestisce l'estrazione di informazioni principali come tripId, routeId,
+ * direzione, timestamp, ritardi e aggiornamenti per singole fermate.
+ */
 public class TripUpdateMapper {
 
+    /**
+     * Converte un TripUpdate del feed GTFS Realtime in un oggetto TripUpdateInfo interno.
+     *
+     * @param entityId identificativo univoco dell'entità del feed
+     * @param tu oggetto GTFS Realtime TripUpdate da mappare
+     * @return TripUpdateInfo contenente tutte le informazioni rilevanti
+     */
     public static TripUpdateInfo map(String entityId, GtfsRealtime.TripUpdate tu) {
 
         String tripId = (tu.hasTrip() && tu.getTrip().hasTripId()) ? tu.getTrip().getTripId() : null;
@@ -22,6 +35,7 @@ public class TripUpdateMapper {
         Integer delay = tu.hasDelay() ? tu.getDelay() : null;
         Long timestamp = tu.hasTimestamp() ? tu.getTimestamp() : null;
 
+        // Mappa gli StopTimeUpdate interni
         List<StopTimeUpdateInfo> stopUpdates = new ArrayList<>();
         for (GtfsRealtime.TripUpdate.StopTimeUpdate stu : tu.getStopTimeUpdateList()) {
             stopUpdates.add(mapStopTimeUpdate(stu));
@@ -40,6 +54,12 @@ public class TripUpdateMapper {
         );
     }
 
+    /**
+     * Converte uno StopTimeUpdate del feed GTFS Realtime in un oggetto interno StopTimeUpdateInfo.
+     *
+     * @param stu oggetto GTFS Realtime StopTimeUpdate da mappare
+     * @return StopTimeUpdateInfo con informazioni su orari, ritardi e sequenza
+     */
     private static StopTimeUpdateInfo mapStopTimeUpdate(GtfsRealtime.TripUpdate.StopTimeUpdate stu) {
 
         String stopId = stu.hasStopId() ? stu.getStopId() : null;
@@ -56,6 +76,12 @@ public class TripUpdateMapper {
         return new StopTimeUpdateInfo(stopId, stopSeq, arrTime, arrDelay, depTime, depDelay, rel);
     }
 
+    /**
+     * Converte la ScheduleRelationship del feed GTFS Realtime nel corrispondente enum interno.
+     *
+     * @param stu StopTimeUpdate del feed GTFS Realtime
+     * @return ScheduleRelationship interno corrispondente
+     */
     private static ScheduleRelationship mapRelationship(GtfsRealtime.TripUpdate.StopTimeUpdate stu) {
         if (!stu.hasScheduleRelationship()) return ScheduleRelationship.UNKNOWN;
         return switch (stu.getScheduleRelationship()) {

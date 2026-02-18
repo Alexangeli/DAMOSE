@@ -25,59 +25,116 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
+/**
+ * Barra di ricerca principale della dashboard.
+ *
+ * Responsabilità:
+ * - gestisce due modalità di ricerca: per fermata (STOP) e per linea (LINE)
+ * - mostra suggerimenti in tempo reale con debounce e navigazione da tastiera
+ * - permette di filtrare i risultati in modalità LINE (bus/tram/metro)
+ * - gestisce il bottone preferiti (stella) con integrazione login e FavoritesService
+ *
+ * Note di progetto:
+ * - la richiesta suggerimenti parte solo dopo 3 caratteri e con debounce (500 ms)
+ * - in modalità compact i suggerimenti vengono mostrati in un popup sotto la search bar
+ */
 public class SearchBarView extends JPanel {
 
     // ========================== UI COMPONENTS ==========================
 
-    private final JToggleButton modeToggle;   // pill custom (come prima)
-    private final JTextField searchField;     // PlaceholderTextField
-    private final JButton searchButton;       // MagnifierButton
+    /** Toggle pill per cambiare modalità (Fermata/Linea). */
+    private final JToggleButton modeToggle;
 
+    /** Campo di input con placeholder custom. */
+    private final JTextField searchField;
+
+    /** Bottone lente per avviare ricerca o confermare suggerimento. */
+    private final JButton searchButton;
+
+    /** View che contiene lista suggerimenti e logica di selezione. */
     private final SuggestionsView suggestions;
 
-    private final JButton clearButton;       // ❌ X rossa (compare solo con testo)
+    /** Bottone X per pulire testo (visibile solo quando c'è input). */
+    private final JButton clearButton;
 
-    // ★ preferiti (come prima)
+    /** Bottone stella per aggiungere/rimuovere preferiti. */
     private final JButton favStarBtn;
 
-    // filtri linee (come prima)
+    /** Pannello filtri (visibile solo in modalità LINE e non in compact). */
     private final JPanel lineFiltersPanel;
+
+    /** Filtro bus per suggerimenti linea. */
     private final IconToggleButton busBtn;
+
+    /** Filtro tram per suggerimenti linea. */
     private final IconToggleButton tramBtn;
+
+    /** Filtro metro per suggerimenti linea. */
     private final IconToggleButton metroBtn;
 
-    // preferiti service
+    /** Service locale per gestione preferiti. */
     private final FavoritesService favoritesService = new FavoritesService();
 
     // ============================ CALLBACKS ============================
 
+    /** Callback cambio modalità STOP/LINE. */
     private Consumer<SearchMode> onModeChanged;
+
+    /** Callback ricerca "manuale" (quando non si conferma un suggerimento). */
     private Consumer<String> onSearch;
+
+    /** Callback testo cambiato (debounced) per richiedere suggerimenti al controller. */
     private Consumer<String> onTextChanged;
+
+    /** Callback selezione suggerimento fermata. */
     private Consumer<StopModel> onSuggestionSelected;
+
+    /** Callback selezione suggerimento linea+direzione. */
     private Consumer<RouteDirectionOption> onRouteDirectionSelected;
 
     // ============================ STATE ===============================
 
+    /** Modalità corrente. */
     private SearchMode currentMode = SearchMode.STOP;
+
+    /** Oggetto attualmente "stellabile" (StopModel o RouteDirectionOption). */
     private Object currentStarTarget = null;
+
+    /**
+     * Flag per evitare eventi testo quando il campo viene aggiornato programmaticamente
+     * (es. quando si conferma un suggerimento e si scrive il testo nel field).
+     */
     private boolean suppressTextEvents = false;
+
+    /** Timer di debounce per chiamare onTextChanged con ritardo controllato. */
     private final Timer debounceTimer;
 
-    // cache locale ultime opzioni LINEA ricevute
+    /** Cache delle opzioni linea più recenti (serve per refilter/sort senza richiamare il controller). */
     private List<RouteDirectionOption> lastLineOptions = List.of();
 
-    // ✅ compact mode: mostra solo search row (ma logica identica)
+    /** Se true: mostra solo la riga di ricerca (suggerimenti in popup). */
     private final boolean compactOnlySearchRow;
 
-    // popup suggerimenti (solo in compact) ma CONTIENE SuggestionsView.getPanel()
+    // popup suggerimenti (solo compact)
+    /** Popup che contiene SuggestionsView quando la searchbar è in modalità compact. */
     private JPopupMenu suggestionsPopup;
-    private JComponent suggestionsPopupContainer;
-    private Component popupAnchor; // RoundedSearchPanel
 
-    // marker per non installare più listener
+    /** Container grafico arrotondato del popup suggerimenti. */
+    private JComponent suggestionsPopupContainer;
+
+    /** Componente usato come ancora per posizionare il popup (rounded search panel). */
+    private Component popupAnchor;
+
+    /**
+     * Marker usato per evitare di installare più volte lo stesso listener globale
+     * sulla finestra owner (click-away).
+     */
     private interface ClickAwayMarker extends MouseListener {}
 
+    /**
+     * Aggiorna la visibilità del bottone clear (X) in base al testo presente nel campo.
+     * Viene chiamato su ogni variazione del documento.
+     */
     private void updateClearButtonVisibility() {
         String t = searchField.getText();
         boolean show = (t != null && !t.isBlank());
@@ -88,10 +145,16 @@ public class SearchBarView extends JPanel {
         }
     }
 
+    /** Crea una search bar in modalità normale (non compact). */
     public SearchBarView() {
         this(false);
     }
 
+    /**
+     * Crea una search bar.
+     *
+     * @param compactOnlySearchRow se true, mostra solo la riga ricerca e usa popup per suggerimenti
+     */
     public SearchBarView(boolean compactOnlySearchRow) {
         this.compactOnlySearchRow = compactOnlySearchRow;
 
@@ -103,7 +166,7 @@ public class SearchBarView extends JPanel {
         topPanel.setLayout(new BoxLayout(topPanel, BoxLayout.Y_AXIS));
         topPanel.setOpaque(false);
 
-        // ===================== ROW MODALITÀ + FILTRI + STAR (COME PRIMA) =====================
+        // ===================== ROW MODALITÀ + FILTRI + STAR =====================
         JPanel modeRow = new JPanel(new BorderLayout());
         modeRow.setOpaque(false);
 
@@ -120,7 +183,7 @@ public class SearchBarView extends JPanel {
 
         Dimension toggleSize = new Dimension(40, 40);
 
-        // ✅ OFF = bianco, ON = colorato (come tua 2ª foto)
+        // OFF = bianco, ON = colorato
         busBtn   = new IconToggleButton("/icons/bus.png",   "/icons/busblu.png",     toggleSize, "Bus");
         tramBtn  = new IconToggleButton("/icons/tram.png",  "/icons/tramverde.png",  toggleSize, "Tram");
         metroBtn = new IconToggleButton("/icons/metro.png", "/icons/metrorossa.png", toggleSize, "Metro");
@@ -150,7 +213,7 @@ public class SearchBarView extends JPanel {
         modeRow.add(leftAndFilters, BorderLayout.WEST);
         modeRow.add(starRight, BorderLayout.EAST);
 
-        // ===================== ROW SEARCH (DEVE RIMANERE SEMPRE UGUALE) =====================
+        // ===================== ROW SEARCH =====================
         searchField = new PlaceholderTextField("Cerca...");
         searchField.setBorder(BorderFactory.createEmptyBorder(0, 12, 0, 12));
         searchField.setOpaque(false);
@@ -158,10 +221,10 @@ public class SearchBarView extends JPanel {
         searchButton = new MagnifierButton();
         searchButton.setToolTipText("Cerca");
 
-        // ✅ X rossa
+        // Bottone X
         clearButton = new ClearButton();
         clearButton.setToolTipText("Pulisci");
-        clearButton.setVisible(false); // parte nascosta
+        clearButton.setVisible(false);
         clearButton.addActionListener(e -> {
             suppressTextEvents = true;
             searchField.setText("");
@@ -180,7 +243,6 @@ public class SearchBarView extends JPanel {
         searchPanel.setOpaque(false);
         searchPanel.add(searchField, BorderLayout.CENTER);
 
-        // ✅ destra: X + lente
         JPanel rightButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
         rightButtons.setOpaque(false);
         rightButtons.add(clearButton);
@@ -188,7 +250,7 @@ public class SearchBarView extends JPanel {
 
         searchPanel.add(rightButtons, BorderLayout.EAST);
 
-        // ✅ Se NON compact: sopra c’è anche modeRow (come prima)
+        // Se non compact, mostriamo anche la riga modalità+filtri+stella.
         if (!this.compactOnlySearchRow) {
             topPanel.add(modeRow);
             topPanel.add(Box.createVerticalStrut(8));
@@ -197,22 +259,21 @@ public class SearchBarView extends JPanel {
 
         add(topPanel, BorderLayout.NORTH);
 
-        // ===================== SUGGESTIONSVIEW (SEMPRE LUI) =====================
+        // ===================== SUGGESTIONS VIEW =====================
         suggestions = new SuggestionsView();
 
         if (!this.compactOnlySearchRow) {
             add(suggestions.getPanel(), BorderLayout.CENTER);
         } else {
-            // in compact: SuggestionsView va in popup
             installSuggestionsPopup(searchPanel);
         }
 
-        // ✅ QUI (fuori dal costruttore) installo i keybindings su frecce/enter/esc
+        // Keybindings (frecce, enter, esc) sul campo testo.
         installSearchFieldKeyBindings();
 
         setStarTarget(null);
         updateLineFiltersVisibility();
-            
+
         // ====================== DEBOUNCE ======================
         debounceTimer = new Timer(500, e -> {
             if (onTextChanged == null) return;
@@ -237,6 +298,7 @@ public class SearchBarView extends JPanel {
 
         searchButton.addActionListener(e -> handleSearchButton());
 
+        // Selezione in SuggestionsView: aggiorna target stella e notifica controller in base alla modalità.
         suggestions.addListSelectionListener((ListSelectionListener) e -> {
             if (e.getValueIsAdjusting()) return;
             Object value = suggestions.getSelectedValue();
@@ -251,6 +313,7 @@ public class SearchBarView extends JPanel {
             }
         });
 
+        // Doppio click: conferma selezione suggerimento.
         suggestions.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
@@ -258,6 +321,7 @@ public class SearchBarView extends JPanel {
             }
         });
 
+        // Listener testo: gestisce clear button + debounce + condizioni minime (>= 3 char).
         searchField.getDocument().addDocumentListener(new DocumentListener() {
             @Override public void insertUpdate(DocumentEvent e) { onDocChanged(); }
             @Override public void removeUpdate(DocumentEvent e) { onDocChanged(); }
@@ -288,9 +352,15 @@ public class SearchBarView extends JPanel {
     }
 
     // ==================================================================
-    // ✅ KEYBINDINGS SU SEARCHFIELD (FRECCE + ENTER + ESC)
+    // KEYBINDINGS SU SEARCHFIELD (FRECCE + ENTER + ESC)
     // ==================================================================
 
+    /**
+     * Installa i comandi da tastiera sul campo di ricerca:
+     * - frecce su/giù per muovere la selezione nei suggerimenti
+     * - invio per confermare suggerimento o lanciare ricerca
+     * - esc per chiudere i suggerimenti
+     */
     private void installSearchFieldKeyBindings() {
         InputMap im = searchField.getInputMap(JComponent.WHEN_FOCUSED);
         ActionMap am = searchField.getActionMap();
@@ -342,6 +412,11 @@ public class SearchBarView extends JPanel {
         });
     }
 
+    /**
+     * Muove la selezione nella lista suggerimenti in modo ciclico.
+     *
+     * @param delta +1 avanti, -1 indietro
+     */
     private void moveSuggestionSelection(int delta) {
         int size = suggestions.size();
         if (size <= 0) return;
@@ -357,9 +432,13 @@ public class SearchBarView extends JPanel {
     }
 
     // ==================================================================
-    //                     MODE (come prima)
+    // MODE (toggle Fermata/Linea)
     // ==================================================================
 
+    /**
+     * Alterna la modalità di ricerca tra STOP e LINE e notifica il controller.
+     * Resetta suggerimenti e selezione stella per evitare incongruenze.
+     */
     private void toggleMode() {
         if (currentMode == SearchMode.STOP) {
             currentMode = SearchMode.LINE;
@@ -381,6 +460,10 @@ public class SearchBarView extends JPanel {
         modeToggle.repaint();
     }
 
+    /**
+     * Mostra/nasconde i filtri linea.
+     * In compact non vengono mostrati per mantenere la barra minimale.
+     */
     private void updateLineFiltersVisibility() {
         if (compactOnlySearchRow) {
             lineFiltersPanel.setVisible(false);
@@ -391,14 +474,22 @@ public class SearchBarView extends JPanel {
         repaint();
     }
 
+    /**
+     * @return modalità di ricerca corrente
+     */
     public SearchMode getCurrentMode() {
         return currentMode;
     }
 
     // ==================================================================
-    //                      SEARCH / CONFIRM
+    // SEARCH / CONFIRM
     // ==================================================================
 
+    /**
+     * Gestione click lente:
+     * - se ci sono suggerimenti visibili, conferma il selezionato
+     * - altrimenti esegue la ricerca sul testo attuale
+     */
     private void handleSearchButton() {
         if (suggestions.isVisible() && suggestions.hasSuggestions()) {
             if (suggestions.getSelectedIndex() < 0) suggestions.selectFirstIfNone();
@@ -408,6 +499,9 @@ public class SearchBarView extends JPanel {
         }
     }
 
+    /**
+     * Avvia la ricerca delegando al controller, usando il testo corrente del campo.
+     */
     private void triggerSearch() {
         if (onSearch == null) return;
         String text = searchField.getText();
@@ -415,6 +509,10 @@ public class SearchBarView extends JPanel {
         onSearch.accept(text.trim());
     }
 
+    /**
+     * Conferma il suggerimento selezionato e aggiorna il campo testo con un testo "canonico".
+     * In base alla modalità, invoca la callback corretta.
+     */
     private void confirmSelectedSuggestion() {
         Object value = suggestions.getSelectedValue();
         if (value == null) return;
@@ -453,9 +551,12 @@ public class SearchBarView extends JPanel {
     }
 
     // ==================================================================
-    //                     CONTROLLER -> VIEW
+    // CONTROLLER -> VIEW
     // ==================================================================
 
+    /**
+     * Nasconde i suggerimenti (e chiude il popup se siamo in modalità compact).
+     */
     public void hideSuggestions() {
         suggestions.hide();
         if (compactOnlySearchRow && suggestionsPopup != null) {
@@ -463,6 +564,11 @@ public class SearchBarView extends JPanel {
         }
     }
 
+    /**
+     * Mostra suggerimenti di fermate, rimuovendo duplicati locali.
+     *
+     * @param stops lista fermate suggerite dal controller
+     */
     public void showStopSuggestions(List<StopModel> stops) {
         List<StopModel> dedup = dedupStops(stops);
         suggestions.showStops(dedup);
@@ -470,6 +576,11 @@ public class SearchBarView extends JPanel {
         ensureSuggestionsVisibleIfAny();
     }
 
+    /**
+     * Mostra suggerimenti di linee, con dedup + filtri + ordinamento.
+     *
+     * @param options lista opzioni linea/direzione suggerite dal controller
+     */
     public void showLineSuggestions(List<RouteDirectionOption> options) {
         List<RouteDirectionOption> dedup = dedupLines(options);
         lastLineOptions = (dedup == null) ? List.of() : new ArrayList<>(dedup);
@@ -477,6 +588,10 @@ public class SearchBarView extends JPanel {
         ensureSuggestionsVisibleIfAny();
     }
 
+    /**
+     * Se ci sono suggerimenti, assicura la loro visibilità.
+     * In compact apre il popup sotto l'ancora, altrimenti aggiorna il layout.
+     */
     private void ensureSuggestionsVisibleIfAny() {
         if (!suggestions.hasSuggestions()) {
             hideSuggestions();
@@ -492,9 +607,15 @@ public class SearchBarView extends JPanel {
     }
 
     // ==================================================================
-    //                        DEDUP HELPERS
+    // DEDUP HELPERS
     // ==================================================================
 
+    /**
+     * Dedup fermate: preferisce una chiave stabile (code) se disponibile, altrimenti usa il nome normalizzato.
+     *
+     * @param in lista input
+     * @return lista deduplicata mantenendo l'ordine di prima occorrenza
+     */
     private List<StopModel> dedupStops(List<StopModel> in) {
         if (in == null || in.isEmpty()) return List.of();
 
@@ -511,6 +632,12 @@ public class SearchBarView extends JPanel {
         return new ArrayList<>(map.values());
     }
 
+    /**
+     * Dedup linee: usa routeId + directionId + headsign come chiave; se routeId manca usa routeShortName.
+     *
+     * @param in lista input
+     * @return lista deduplicata mantenendo l'ordine di prima occorrenza
+     */
     private List<RouteDirectionOption> dedupLines(List<RouteDirectionOption> in) {
         if (in == null || in.isEmpty()) return List.of();
 
@@ -534,15 +661,21 @@ public class SearchBarView extends JPanel {
     }
 
     // ==================================================================
-    //                     FILTRI + SORT LINEE (come tua versione)
+    // FILTRI + SORT LINEE
     // ==================================================================
 
+    /**
+     * Ricalcola i suggerimenti visibili in modalità LINE applicando i filtri selezionati.
+     */
     private void refilterVisibleLineSuggestions() {
         if (currentMode != SearchMode.LINE) return;
         applyLineFiltersAndSorting();
         ensureSuggestionsVisibleIfAny();
     }
 
+    /**
+     * Applica filtri bus/tram/metro e poi ordina i risultati con una strategia "smart" basata sulla query.
+     */
     private void applyLineFiltersAndSorting() {
         List<RouteDirectionOption> filtered = filterLineOptions(lastLineOptions);
 
@@ -554,11 +687,18 @@ public class SearchBarView extends JPanel {
         setStarTarget(suggestions.getSelectedValue());
     }
 
+    /** Tipologia linea derivata dal route_type GTFS. */
     private enum LineKind { BUS, TRAM, METRO, OTHER }
 
+    /**
+     * Classifica un'opzione linea in base al route_type (0 tram, 1 metro, 3 bus).
+     *
+     * @param opt opzione linea
+     * @return categoria linea
+     */
     private LineKind classify(RouteDirectionOption opt) {
         if (opt == null) return LineKind.OTHER;
-        int t = opt.getRouteType(); // 0 tram, 1 metro, 3 bus
+        int t = opt.getRouteType();
         return switch (t) {
             case 0 -> LineKind.TRAM;
             case 1 -> LineKind.METRO;
@@ -567,6 +707,13 @@ public class SearchBarView extends JPanel {
         };
     }
 
+    /**
+     * Applica i filtri selezionati alla lista di opzioni.
+     * Se nessun filtro è attivo, ritorna lista vuota.
+     *
+     * @param in lista opzioni
+     * @return lista filtrata
+     */
     private List<RouteDirectionOption> filterLineOptions(List<RouteDirectionOption> in) {
         if (in == null || in.isEmpty()) return List.of();
 
@@ -588,6 +735,16 @@ public class SearchBarView extends JPanel {
         return out;
     }
 
+    /**
+     * Comparator per ordinare suggerimenti linea in modo più utile quando la query è numerica.
+     * Priorità:
+     * - bucket "migliore match" (esatto, prefisso, ecc.)
+     * - poi numero iniziale della linea
+     * - poi short name e headsign per stabilità
+     *
+     * @param queryText testo ricerca
+     * @return comparator per RouteDirectionOption
+     */
     private Comparator<RouteDirectionOption> lineSmartComparator(String queryText) {
         final String q = (queryText == null) ? "" : queryText.trim();
         final Integer qNum = tryParseInt(q);
@@ -599,6 +756,12 @@ public class SearchBarView extends JPanel {
                 .thenComparing(o -> safe(o.getHeadsign()));
     }
 
+    /**
+     * Calcola un bucket di ordinamento per query numerica:
+     * - 0 match esatto (solo numeri)
+     * - 1/2/3 prefisso (più corto = più vicino)
+     * - 9/999 per casi non numerici o non matchabili
+     */
     private int bucketFor(RouteDirectionOption opt, String q, Integer qNum) {
         if (qNum == null) return 999;
         if (opt == null) return 999;
@@ -622,6 +785,12 @@ public class SearchBarView extends JPanel {
         return 9;
     }
 
+    /**
+     * Estrae l'intero iniziale da una stringa (es. "64 Express" -> 64).
+     *
+     * @param s stringa da analizzare
+     * @return intero iniziale oppure -1 se assente/non valido
+     */
     private int parseLeadingInt(String s) {
         if (s == null) return -1;
         s = s.trim();
@@ -638,6 +807,12 @@ public class SearchBarView extends JPanel {
         }
     }
 
+    /**
+     * Prova a interpretare una stringa come numero intero composto solo da cifre.
+     *
+     * @param s stringa input
+     * @return intero parsato o null se non è un numero puro
+     */
     private Integer tryParseInt(String s) {
         if (s == null) return null;
         s = s.trim();
@@ -649,14 +824,24 @@ public class SearchBarView extends JPanel {
         }
     }
 
+    /**
+     * @param s stringa (può essere null)
+     * @return stringa non nulla
+     */
     private static String safe(String s) {
         return (s == null) ? "" : s;
     }
 
     // ==================================================================
-    //                         ★ STAR BUTTON
+    // ★ STAR BUTTON
     // ==================================================================
 
+    /**
+     * Crea il bottone stella con animazione leggera (hover scale) e paint custom.
+     * La stella piena/vuota dipende da login e dalla presenza nei preferiti.
+     *
+     * @return bottone configurato
+     */
     private JButton createRoundedAnimatedStarButton() {
         return new JButton() {
 
@@ -748,6 +933,11 @@ public class SearchBarView extends JPanel {
                 g2.dispose();
             }
 
+            /**
+             * Determina quale glifo mostrare:
+             * - stella vuota se non c'è target o se non loggati
+             * - stella piena se il target è nei preferiti
+             */
             private String getStarGlyph() {
                 if (currentStarTarget == null) return "☆";
                 if (!Session.isLoggedIn()) return "☆";
@@ -756,12 +946,22 @@ public class SearchBarView extends JPanel {
         };
     }
 
+    /**
+     * Aggiorna il target su cui lavora la stella e abilita/disabilita il bottone.
+     *
+     * @param value target corrente (StopModel o RouteDirectionOption)
+     */
     private void setStarTarget(Object value) {
         currentStarTarget = value;
         favStarBtn.setEnabled(currentStarTarget != null);
         favStarBtn.repaint();
     }
 
+    /**
+     * Gestione click sulla stella:
+     * - se non loggati apre la dialog di autenticazione
+     * - se loggati, alterna presenza nei preferiti
+     */
     private void onStarClicked() {
         if (currentStarTarget == null) return;
 
@@ -776,6 +976,12 @@ public class SearchBarView extends JPanel {
         favStarBtn.repaint();
     }
 
+    /**
+     * Verifica se il target è presente nei preferiti, delegando a FavoritesService.
+     *
+     * @param value target (StopModel o RouteDirectionOption)
+     * @return true se presente nei preferiti
+     */
     private boolean isFavorite(Object value) {
         if (value instanceof StopModel stop) {
             String code = stop.getCode();
@@ -797,6 +1003,11 @@ public class SearchBarView extends JPanel {
         return false;
     }
 
+    /**
+     * Aggiunge o rimuove un elemento dai preferiti a seconda dello stato corrente.
+     *
+     * @param value target (StopModel o RouteDirectionOption)
+     */
     private void toggleFavorite(Object value) {
         if (value instanceof StopModel stop) {
             String code = stop.getCode();
@@ -815,25 +1026,42 @@ public class SearchBarView extends JPanel {
         }
     }
 
+    /**
+     * Confronto null-safe tra stringhe.
+     *
+     * @param a prima stringa
+     * @param b seconda stringa
+     * @return true se uguali (anche entrambe null)
+     */
     private static boolean safeEq(String a, String b) {
         if (a == null) return b == null;
         return a.equals(b);
     }
 
     // ==================================================================
-    //                         BRIDGE METHODS (Dashboard)
+    // BRIDGE METHODS (Dashboard)
     // ==================================================================
 
-    /** True se esiste una selezione (stop/linea) su cui la stella può lavorare. */
+    /**
+     * @return true se esiste una selezione (stop/linea) su cui la stella può lavorare
+     */
     public boolean hasCurrentSelection() {
         return currentStarTarget != null;
     }
 
-    /** True se la selezione corrente è già nei preferiti. */
+    /**
+     * @return true se la selezione corrente è già nei preferiti
+     */
     public boolean isCurrentSelectionFavorite() {
         return currentStarTarget != null && isFavorite(currentStarTarget);
     }
 
+    /**
+     * Imposta la modalità dall'esterno (es. ripristino stato dashboard).
+     * Esegue gli stessi reset del toggle manuale.
+     *
+     * @param mode modalità desiderata
+     */
     public void setMode(SearchMode mode) {
         if (mode == null) return;
         if (this.currentMode == mode) return;
@@ -858,6 +1086,13 @@ public class SearchBarView extends JPanel {
         modeToggle.repaint();
     }
 
+    /**
+     * Imposta lo stato dei filtri linee e aggiorna i suggerimenti visibili.
+     *
+     * @param bus filtro bus
+     * @param tram filtro tram
+     * @param metro filtro metro
+     */
     public void setLineFilters(boolean bus, boolean tram, boolean metro) {
         busBtn.setSelected(bus);
         tramBtn.setSelected(tram);
@@ -865,32 +1100,67 @@ public class SearchBarView extends JPanel {
         refilterVisibleLineSuggestions();
     }
 
+    /** @return true se filtro bus è attivo */
     public boolean isBusSelected() { return busBtn.isSelected(); }
+
+    /** @return true se filtro tram è attivo */
     public boolean isTramSelected() { return tramBtn.isSelected(); }
+
+    /** @return true se filtro metro è attivo */
     public boolean isMetroSelected() { return metroBtn.isSelected(); }
 
+    /**
+     * Forza un click sulla stella (usato dalla dashboard in alcune interazioni).
+     */
     public void clickStar() { favStarBtn.doClick(); }
 
+    /** @return riferimento al campo di testo (usato da controller per focus o test) */
     public JTextField getSearchField() { return searchField; }
+
+    /** @return riferimento al bottone cerca (usato da controller per test o binding) */
     public JButton getSearchButton() { return searchButton; }
 
     // ==================================================================
-    //                         CALLBACK SETTERS
+    // CALLBACK SETTERS
     // ==================================================================
 
+    /** @param onModeChanged callback cambio modalità */
     public void setOnModeChanged(Consumer<SearchMode> onModeChanged) { this.onModeChanged = onModeChanged; }
+
+    /** @param onSearch callback ricerca manuale */
     public void setOnSearch(Consumer<String> onSearch) { this.onSearch = onSearch; }
+
+    /** @param onTextChanged callback testo cambiato (debounced) */
     public void setOnTextChanged(Consumer<String> onTextChanged) { this.onTextChanged = onTextChanged; }
+
+    /** @param onSuggestionSelected callback selezione fermata */
     public void setOnSuggestionSelected(Consumer<StopModel> onSuggestionSelected) { this.onSuggestionSelected = onSuggestionSelected; }
+
+    /** @param onRouteDirectionSelected callback selezione linea+direzione */
     public void setOnRouteDirectionSelected(Consumer<RouteDirectionOption> onRouteDirectionSelected) { this.onRouteDirectionSelected = onRouteDirectionSelected; }
+
+    /** Callback invocata quando viene premuto il bottone clear (X). */
     private Runnable onClear;
+
+    /**
+     * Imposta callback sul clear (X).
+     *
+     * @param onClear azione da eseguire quando l'utente pulisce il campo
+     */
     public void setOnClear(Runnable onClear) {
         this.onClear = onClear;
     }
+
     // ==================================================================
-    //                 ✅ POPUP SUGGERIMENTI (solo compact, ma con SuggestionsView)
+    // POPUP SUGGERIMENTI (solo compact)
     // ==================================================================
 
+    /**
+     * Prepara un JPopupMenu che contiene la SuggestionsView.
+     * Usato solo quando la search bar è in modalità compact.
+     *
+     * @param anchor componente sotto cui posizionare il popup
+     */
     private void installSuggestionsPopup(Component anchor) {
         this.popupAnchor = anchor;
 
@@ -907,35 +1177,38 @@ public class SearchBarView extends JPanel {
         addGlobalClickAwayListener();
     }
 
+    /**
+     * Mostra il popup suggerimenti sotto l'ancora.
+     * La larghezza viene allineata alla searchbar per risultare "full width".
+     */
     private void showSuggestionsPopupUnderAnchor() {
         if (suggestionsPopup == null || popupAnchor == null) return;
 
         Dimension pref = suggestions.getPanel().getPreferredSize();
 
-        // ✅ LARGHEZZA: uguale alla searchbar (RoundedSearchPanel) per arrivare fino alla fine
         int w = (popupAnchor != null ? popupAnchor.getWidth() : 0);
         if (w <= 0) w = SearchBarView.this.getWidth();
-        // safety clamp solo per evitare casi estremi (ma resta "full width")
         w = Math.max(260, Math.min(900, w));
 
-        // ALTEZZA: come prima (clamp)
         int h = Math.max(180, Math.min(420, (pref.height > 0 ? pref.height : 260)));
 
         suggestionsPopupContainer.setPreferredSize(new Dimension(w, h));
         suggestionsPopup.pack();
 
-        // POSIZIONE: ancorata sotto il RoundedSearchPanel, ma mostrata nel coordinate space della SearchBarView
-        // così possiamo allargarla senza essere limitati dalla width dell'anchor.
         Point p = SwingUtilities.convertPoint(popupAnchor, 0, popupAnchor.getHeight(), SearchBarView.this);
 
-        // abbassa un po' di più rispetto a prima
         int gapY = 15;
         suggestionsPopup.show(SearchBarView.this, p.x, p.y + gapY);
         suggestionsPopup.setVisible(true);
 
-        searchField.requestFocusInWindow(); // ✅ IMPORTANTISSIMO: il focus resta al field
+        // Il focus resta nel campo, così frecce/enter continuano a funzionare.
+        searchField.requestFocusInWindow();
     }
 
+    /**
+     * Installa un listener "click-away" sulla finestra owner per chiudere il popup
+     * quando l'utente clicca fuori dalla SearchBarView e dal popup stesso.
+     */
     private void addGlobalClickAwayListener() {
         SwingUtilities.invokeLater(() -> {
             Window w = SwingUtilities.getWindowAncestor(this);
@@ -949,6 +1222,9 @@ public class SearchBarView extends JPanel {
         });
     }
 
+    /**
+     * Listener che chiude il popup suggerimenti se il click avviene fuori dalla search bar e dal popup.
+     */
     private class ClickAwayListener extends MouseAdapter implements ClickAwayMarker {
         @Override
         public void mousePressed(MouseEvent e) {
@@ -966,6 +1242,10 @@ public class SearchBarView extends JPanel {
         }
     }
 
+    /**
+     * Container grafico arrotondato per il popup suggerimenti.
+     * Gestisce ombra, sfondo e bordo con paint custom.
+     */
     private static class RoundedPopupContainer extends JComponent {
         @Override public boolean isOpaque() { return false; }
 
@@ -999,15 +1279,25 @@ public class SearchBarView extends JPanel {
     }
 
     // ==================================================================
-    //                 TOGGLE ICON (come tua UI originale)
+    // TOGGLE ICON (filtri bus/tram/metro)
     // ==================================================================
 
+    /**
+     * Toggle iconico per filtri linea (bus/tram/metro).
+     * Cambia immagine tra stato selezionato e non selezionato e mostra un bordo con hover.
+     */
     private static class IconToggleButton extends JToggleButton {
 
         private final Image iconOff;
         private final Image iconOn;
         private boolean hover = false;
 
+        /**
+         * @param iconOffPath path icona "spenta"
+         * @param iconOnPath path icona "accesa"
+         * @param size dimensione fissa del componente
+         * @param tooltip tooltip di descrizione
+         */
         IconToggleButton(String iconOffPath, String iconOnPath, Dimension size, String tooltip) {
             setToolTipText(tooltip);
 
@@ -1031,6 +1321,12 @@ public class SearchBarView extends JPanel {
             });
         }
 
+        /**
+         * Carica un'immagine dalle risorse.
+         *
+         * @param path path risorsa
+         * @return immagine o null se non trovata
+         */
         private Image load(String path) {
             try {
                 var url = SearchBarView.class.getResource(path);
@@ -1081,13 +1377,20 @@ public class SearchBarView extends JPanel {
     }
 
     // ==================================================================
-    //                    TOGGLE "PILL" (come prima)
+    // TOGGLE "PILL" (modalità Fermata/Linea)
     // ==================================================================
 
+    /**
+     * Toggle in stile "pill" per cambiare modalità di ricerca.
+     * Il testo viene gestito dalla view in base al mode corrente.
+     */
     private static class PillToggleButton extends JToggleButton {
 
         private boolean hover = false;
 
+        /**
+         * @param text testo iniziale del toggle
+         */
         PillToggleButton(String text) {
             super(text);
 
@@ -1146,56 +1449,64 @@ public class SearchBarView extends JPanel {
     }
 
     // ==================================================================
-    //             ✅ SEARCHBAR CUSTOM: placeholder + lente + rounded panel
+    // SEARCHBAR CUSTOM: placeholder + lente + rounded panel
     // ==================================================================
 
+    /**
+     * Bottone "clear" (X rossa) mostrato solo quando il campo contiene testo.
+     */
     private static class ClearButton extends JButton {
-    private boolean hover = false;
+        private boolean hover = false;
 
-    ClearButton() {
-        setOpaque(false);
-        setContentAreaFilled(false);
-        setBorderPainted(false);
-        setFocusPainted(false);
-        setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        setFocusable(false);
+        ClearButton() {
+            setOpaque(false);
+            setContentAreaFilled(false);
+            setBorderPainted(false);
+            setFocusPainted(false);
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            setFocusable(false);
 
-        setPreferredSize(new Dimension(46, 46));
+            setPreferredSize(new Dimension(46, 46));
 
-        addMouseListener(new MouseAdapter() {
-            @Override public void mouseEntered(MouseEvent e) { hover = true; repaint(); }
-            @Override public void mouseExited(MouseEvent e)  { hover = false; repaint(); }
-        });
-    }
-
-    @Override
-    protected void paintComponent(Graphics g) {
-        Graphics2D g2 = (Graphics2D) g.create();
-        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
-        int w = getWidth();
-        int h = getHeight();
-
-        if (hover) {
-            g2.setColor(new Color(240, 240, 240));
-            g2.fillRoundRect(6, 6, w - 12, h - 12, 14, 14);
+            addMouseListener(new MouseAdapter() {
+                @Override public void mouseEntered(MouseEvent e) { hover = true; repaint(); }
+                @Override public void mouseExited(MouseEvent e)  { hover = false; repaint(); }
+            });
         }
 
-        // X rossa
-        g2.setColor(new Color(220, 40, 40));
-        g2.setStroke(new BasicStroke(2.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-        int pad = 16;
-        g2.drawLine(pad, pad, w - pad, h - pad);
-        g2.drawLine(w - pad, pad, pad, h - pad);
+            int w = getWidth();
+            int h = getHeight();
 
-        g2.dispose();
+            if (hover) {
+                g2.setColor(new Color(240, 240, 240));
+                g2.fillRoundRect(6, 6, w - 12, h - 12, 14, 14);
+            }
+
+            g2.setColor(new Color(220, 40, 40));
+            g2.setStroke(new BasicStroke(2.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+
+            int pad = 16;
+            g2.drawLine(pad, pad, w - pad, h - pad);
+            g2.drawLine(w - pad, pad, pad, h - pad);
+
+            g2.dispose();
+        }
     }
-}
 
+    /**
+     * JTextField con placeholder disegnato manualmente quando il testo è vuoto.
+     */
     private static class PlaceholderTextField extends JTextField {
         private final String placeholder;
 
+        /**
+         * @param placeholder testo placeholder mostrato quando il campo è vuoto
+         */
         PlaceholderTextField(String placeholder) {
             this.placeholder = placeholder;
             setFont(getFont().deriveFont(Font.PLAIN, 16f));
@@ -1227,6 +1538,9 @@ public class SearchBarView extends JPanel {
         }
     }
 
+    /**
+     * Bottone lente con hover, usato per avviare la ricerca.
+     */
     private static class MagnifierButton extends JButton {
         private boolean hover = false;
 
@@ -1273,6 +1587,10 @@ public class SearchBarView extends JPanel {
         }
     }
 
+    /**
+     * Pannello arrotondato che contiene il campo di ricerca e i bottoni a destra.
+     * Gestisce disegno di background e bordo con paint custom.
+     */
     private static class RoundedSearchPanel extends JPanel {
         @Override public boolean isOpaque() { return false; }
 

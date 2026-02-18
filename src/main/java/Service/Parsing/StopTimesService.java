@@ -14,45 +14,74 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
-// Creatore: Alessandro Angeli (cache fix by path)
-
 /**
- * Lettura e utilità su stop_times GTFS (stop_times.csv).
+ * Service di lettura e utilità per {@code stop_times.csv} (GTFS static).
  *
- * ✅ FIX: cache PER PATH (prima era globale e rompeva test / cambi dataset).
+ * Responsabilità:
+ * - leggere {@code stop_times.csv} e convertirlo in {@link StopTimesModel}
+ * - mantenere una cache in memoria per evitare letture ripetute del file
+ * - fornire alcune query di utilità basate su stop_times (join con trips/routes quando serve)
+ *
+ * Note di progetto:
+ * - cache "per path": ogni filePath ha la sua lista (utile per test e per dataset diversi).
+ * - in caso di errori di lettura/parsing ritorna una lista vuota (fallback verso chiamanti/UI).
+ *
+ * Creatore: Alessandro Angeli (cache fix by path)
  */
 public class StopTimesService {
 
-    // ======= CACHE DATI (PER PATH) =======
+    /**
+     * Cache stop_times per path.
+     * Usando {@link ConcurrentHashMap} possiamo fare {@code computeIfAbsent} in modo sicuro.
+     */
     private static final Map<String, List<StopTimesModel>> cachedStopTimesByPath = new ConcurrentHashMap<>();
 
-    // ======= DATA ACCESS =======
+    // =========================
+    // Data access
+    // =========================
 
     /**
-     * Restituisce tutte le StopTimes usando cache per quello specifico path.
+     * Restituisce tutte le righe di stop_times per un determinato file (con cache per path).
+     *
+     * @param filePath path del file stop_times.csv
+     * @return lista di {@link StopTimesModel} (vuota se path non valido o in caso di errori)
      */
     public static List<StopTimesModel> getAllStopTimes(String filePath) {
-        if (filePath == null || filePath.isBlank()) return List.of();
+        if (filePath == null || filePath.isBlank()) {
+            return List.of();
+        }
         return cachedStopTimesByPath.computeIfAbsent(filePath, StopTimesService::readFromCSV);
     }
 
     /**
-     * Forza il ricaricamento della cache SOLO per quel file.
+     * Forza il ricaricamento della cache solo per un determinato path.
+     *
+     * @param filePath path del file stop_times.csv
      */
     public static void reloadStopTimes(String filePath) {
-        if (filePath == null || filePath.isBlank()) return;
+        if (filePath == null || filePath.isBlank()) {
+            return;
+        }
         cachedStopTimesByPath.put(filePath, readFromCSV(filePath));
     }
 
     /**
-     * ✅ Utile per i test: pulisce tutta la cache.
+     * Pulisce completamente la cache.
+     * Utile nei test o quando si cambia dataset durante l'esecuzione.
      */
     public static void clearCache() {
         cachedStopTimesByPath.clear();
     }
 
     /**
-     * Lettura diretta dal CSV (privato).
+     * Parsing diretto del CSV (senza cache).
+     *
+     * Assunzioni:
+     * - presenza dell'header in prima riga
+     * - layout minimo di 10 colonne (secondo il dataset usato nel progetto)
+     *
+     * @param filePath path del file stop_times.csv
+     * @return lista di {@link StopTimesModel} (mai null)
      */
     private static List<StopTimesModel> readFromCSV(String filePath) {
         List<StopTimesModel> stopsTimesList = new ArrayList<>();
@@ -61,10 +90,12 @@ public class StopTimesService {
                 new InputStreamReader(new FileInputStream(filePath), StandardCharsets.UTF_8)
         )) {
             String[] nextLine;
-            reader.readNext(); // Salta intestazione
+            reader.readNext(); // header
 
             while ((nextLine = reader.readNext()) != null) {
-                if (nextLine.length < 10) continue; // skip riga malformata
+                if (nextLine.length < 10) {
+                    continue; // riga malformata
+                }
 
                 StopTimesModel stopTimes = new StopTimesModel();
                 stopTimes.setTrip_id(safe(nextLine[0]));
@@ -87,16 +118,36 @@ public class StopTimesService {
         return stopsTimesList;
     }
 
+    /**
+     * Trim "sicuro": evita null.
+     *
+     * @param s stringa in input
+     * @return stringa trim()mata oppure vuota se null
+     */
     private static String safe(String s) {
         return (s == null) ? "" : s.trim();
     }
 
-    //============FILTRI=========
+    // =========================
+    // Query / utilità
+    // =========================
 
     /**
-     * ⚠️ ATTENZIONE:
-     * Questo metodo nel codice originale confronta routeIds con trip_id (routeId != tripId).
-     * Lo lascio invariato per non rompere le chiamate esistenti, ma NON è un join corretto GTFS.
+     * Restituisce le route che passano per una fermata.
+     *
+     * Strategia (join corretto GTFS):
+     * 1) stop_times: ricavo tutti i trip_id che passano per lo stop
+     * 2) trips: dai trip_id ricavo i route_id
+     * 3) routes: dai route_id ricavo i {@link RoutesModel}
+     *
+     * Nota:
+     * - questo metodo richiede {@code tripsPath} e {@code routesPath} per completare il join.
+     *
+     * @param stopId stop_id GTFS
+     * @param stopTimesPath path stop_times.csv
+     * @param tripsPath path trips.csv
+     * @param routesPath path routes.csv
+     * @return lista di {@link RoutesModel} che passano per la fermata (vuota se input non valido o nessun match)
      */
     public static List<RoutesModel> getRoutesForStop(
             String stopId,
@@ -104,69 +155,100 @@ public class StopTimesService {
             String tripsPath,
             String routesPath
     ) {
-        if (stopId == null || stopId.isBlank()) return List.of();
+        if (stopId == null || stopId.isBlank()) {
+            return List.of();
+        }
 
-        // 1) stop_times: prendo tutti i trip_id che passano per quello stop
+        // 1) trip_id che passano per lo stop
         List<String> tripIdsAtStop = StopTimesService.getAllStopTimes(stopTimesPath).stream()
                 .filter(st -> st != null && stopId.equals(st.getStop_id()))
                 .map(StopTimesModel::getTrip_id)
                 .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
                 .distinct()
                 .toList();
 
-        // 2) trips: dai trip_id ricavo i route_id
+        if (tripIdsAtStop.isEmpty()) {
+            return List.of();
+        }
+
+        // 2) route_id dei trip
         Set<String> routeIds = TripsService.getAllTrips(tripsPath).stream()
-                .filter(t -> t != null && tripIdsAtStop.contains(t.getTrip_id()))
+                .filter(t -> t != null && t.getTrip_id() != null && tripIdsAtStop.contains(t.getTrip_id().trim()))
                 .map(TripsModel::getRoute_id)
                 .filter(Objects::nonNull)
                 .map(String::trim)
                 .filter(s -> !s.isBlank())
                 .collect(Collectors.toCollection(LinkedHashSet::new)); // mantiene ordine
 
-        // 3) routes: prendo i RoutesModel per quei route_id
-        List<RoutesModel> allRoutes = RoutesService.getAllRoutes(routesPath);
-
-        List<RoutesModel> out = new ArrayList<>();
-        for (RoutesModel r : allRoutes) {
-            if (r == null) continue;
-            String rid = r.getRoute_id();
-            if (rid != null && routeIds.contains(rid.trim())) out.add(r);
+        if (routeIds.isEmpty()) {
+            return List.of();
         }
 
+        // 3) RoutesModel per quei route_id
+        List<RoutesModel> out = new ArrayList<>();
+        for (RoutesModel r : RoutesService.getAllRoutes(routesPath)) {
+            if (r == null) {
+                continue;
+            }
+            String rid = r.getRoute_id();
+            if (rid != null && routeIds.contains(rid.trim())) {
+                out.add(r);
+            }
+        }
         return out;
     }
 
-
     /**
-     * ✅ VERSIONE CORRETTA (opzionale):
-     * richiede tripsPath per fare join route_id -> trip_id -> stop_id.
+     * Restituisce gli stop_id toccati da un insieme di routes (join GTFS).
      *
-     * Se vuoi, sostituiamo gradualmente quella vecchia con questa.
+     * Join:
+     * route_id -> trips(trip_id) -> stop_times(stop_id)
+     *
+     * @param routes lista di routes
+     * @param tripsPath path trips.csv
+     * @param stopTimesPath path stop_times.csv
+     * @return lista di stop_id distinti (vuota se input non valido)
      */
     public static List<String> findStopIdsByRoutesGtfsJoin(
             List<RoutesModel> routes,
             String tripsPath,
             String stopTimesPath
     ) {
-        if (routes == null || routes.isEmpty()) return List.of();
-        if (tripsPath == null || tripsPath.isBlank()) return List.of();
-        if (stopTimesPath == null || stopTimesPath.isBlank()) return List.of();
+        if (routes == null || routes.isEmpty()) {
+            return List.of();
+        }
+        if (tripsPath == null || tripsPath.isBlank()) {
+            return List.of();
+        }
+        if (stopTimesPath == null || stopTimesPath.isBlank()) {
+            return List.of();
+        }
 
         // routeIds
-        var routeIds = routes.stream()
+        List<String> routeIds = routes.stream()
                 .filter(r -> r != null && r.getRoute_id() != null && !r.getRoute_id().isBlank())
                 .map(r -> r.getRoute_id().trim())
                 .distinct()
                 .toList();
 
-        // tripIds delle route (serve TripsService con cache per-path)
-        var tripIds = TripsService.getAllTrips(tripsPath).stream()
+        if (routeIds.isEmpty()) {
+            return List.of();
+        }
+
+        // tripIds delle route
+        List<String> tripIds = TripsService.getAllTrips(tripsPath).stream()
                 .filter(t -> t != null && t.getRoute_id() != null && routeIds.contains(t.getRoute_id().trim()))
-                .map(t -> t.getTrip_id())
+                .map(TripsModel::getTrip_id)
                 .filter(id -> id != null && !id.isBlank())
                 .map(String::trim)
                 .distinct()
                 .toList();
+
+        if (tripIds.isEmpty()) {
+            return List.of();
+        }
 
         // stopIds dagli stop_times filtrati per trip_id
         return getAllStopTimes(stopTimesPath).stream()

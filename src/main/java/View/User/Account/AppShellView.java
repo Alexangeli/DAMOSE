@@ -6,13 +6,36 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.geom.Ellipse2D;
 
+/**
+ * Contenitore principale dell'applicazione che gestisce:
+ * - il contenuto centrale (fornito dall'esterno)
+ * - un bottone flottante in alto a destra per autenticazione/profilo
+ *
+ * Comportamento:
+ * - se l'utente non è loggato, il bottone mostra "LOGIN" con stile accent
+ * - se l'utente è loggato, il bottone diventa un'icona profilo circolare
+ *
+ * Note di progetto:
+ * - si usa un JLayeredPane per sovrapporre il bottone al contenuto senza modificare i layout interni
+ * - la posizione e la dimensione del bottone vengono ricalcolate in doLayout, quindi seguono resize
+ */
 public class AppShellView extends JPanel {
 
+    /** Componente principale dell'app (dashboard o altro) mostrato al centro. */
     private final JComponent centerContent;
+
+    /** Bottone flottante: "LOGIN" oppure icona profilo in base allo stato della sessione. */
     private final JButton authFloatingButton;
 
+    /** Layered pane che permette la sovrapposizione del bottone sul contenuto centrale. */
     private final JLayeredPane layeredPane;
 
+    /**
+     * Crea la shell dell'app.
+     *
+     * @param centerContent contenuto principale da mostrare in background
+     * @param onUserClick azione da eseguire quando l'utente clicca sul bottone (login/account dropdown)
+     */
     public AppShellView(JComponent centerContent, Runnable onUserClick) {
         this.centerContent = centerContent;
         this.authFloatingButton = createFloatingAuthButton();
@@ -25,14 +48,18 @@ public class AppShellView extends JPanel {
                 int w = getWidth();
                 int h = getHeight();
 
+                // Il contenuto centrale occupa tutto lo spazio disponibile.
                 centerContent.setBounds(0, 0, w, h);
 
+                // Posizionamento in alto a destra con margine fisso.
                 int margin = 18;
-                int minSide = Math.min(w, h);
 
+                // Scala UI basata sul lato minore della finestra, con clamp per evitare estremi.
+                int minSide = Math.min(w, h);
                 double scaleFactor = minSide / 900.0;
                 scaleFactor = Math.max(0.75, Math.min(1.15, scaleFactor));
 
+                // Dimensioni diverse per bottone login vs avatar profilo.
                 if (!Session.isLoggedIn()) {
                     int baseW = 180;
                     int baseH = 52;
@@ -53,6 +80,7 @@ public class AppShellView extends JPanel {
         };
         layeredPane.setOpaque(false);
 
+        // Livelli: contenuto sotto, bottone sopra.
         layeredPane.add(centerContent, JLayeredPane.DEFAULT_LAYER);
         layeredPane.add(authFloatingButton, JLayeredPane.PALETTE_LAYER);
 
@@ -61,6 +89,10 @@ public class AppShellView extends JPanel {
         authFloatingButton.addActionListener(e -> onUserClick.run());
     }
 
+    /**
+     * Forza l'aggiornamento del bottone flottante e del layout.
+     * Da chiamare quando cambia lo stato login o dopo update grafici.
+     */
     public void refreshAuthButton() {
         authFloatingButton.repaint();
 
@@ -72,14 +104,36 @@ public class AppShellView extends JPanel {
         repaint();
     }
 
+    /**
+     * Espone il layer root utile per ancorare popup (es. dropdown account) sullo stesso coordinate space.
+     *
+     * @return layered pane usato come root visivo
+     */
     public JComponent getRootLayerForPopups() {
         return layeredPane;
     }
 
+    /**
+     * Restituisce i bounds del bottone flottante nel coordinate space del layered pane.
+     * Utile per posizionare un dropdown in modo consistente.
+     *
+     * @return bounds del bottone profilo/login
+     */
     public Rectangle getAuthButtonBoundsOnLayer() {
         return authFloatingButton.getBounds();
     }
 
+    /**
+     * Crea il bottone flottante con paint custom:
+     * - stato "non loggato": pill arancione con testo LOGIN
+     * - stato "loggato": avatar circolare con immagine profilo
+     *
+     * Dettagli:
+     * - animazione hover con scale (stesso approccio usato altrove, es. stella preferiti)
+     * - safe area per evitare clipping durante hover/scale
+     *
+     * @return JButton custom
+     */
     private JButton createFloatingAuthButton() {
         return new JButton() {
 
@@ -102,6 +156,7 @@ public class AppShellView extends JPanel {
                 setFocusable(false);
                 setToolTipText("Account");
 
+                // Carica immagine profilo dalle risorse (obbligatoria per UI profilo).
                 java.net.URL url = AppShellView.class.getResource("/immagini_profilo/immagine_profilo.png");
                 if (url == null) {
                     throw new IllegalStateException(
@@ -113,7 +168,7 @@ public class AppShellView extends JPanel {
                 imgW = ii.getIconWidth();
                 imgH = ii.getIconHeight();
 
-                // animazione IDENTICA alla stella
+                // Animazione hover: interpolazione verso targetScale.
                 animTimer = new Timer(16, e -> {
                     double diff = targetScale - scale;
                     if (Math.abs(diff) < 0.01) {
@@ -154,8 +209,9 @@ public class AppShellView extends JPanel {
                     return;
                 }
 
+                // ===================== STATO NON LOGGATO: bottone LOGIN =====================
                 if (!Session.isLoggedIn()) {
-                    // ===================== LOGIN (stile ★) =====================
+                    // Offset per safe area: evita clipping quando la pill viene scalata in hover.
                     int shadowOffsetX = 15;
                     int shadowOffsetY = 4;
 
@@ -204,9 +260,10 @@ public class AppShellView extends JPanel {
                     return;
                 }
 
-                // ===================== PROFILO (safe area come ★) =====================
+                // ===================== STATO LOGGATO: avatar circolare =====================
 
-                int shadowOffset = 7; // safe area anche qui (evita clipping su hover)
+                // Safe area per hover/scale: evita clipping del cerchio.
+                int shadowOffset = 7;
                 int size = Math.min(w - shadowOffset, h - shadowOffset);
                 if (size <= 0) {
                     g2.dispose();
@@ -223,16 +280,15 @@ public class AppShellView extends JPanel {
 
                 Ellipse2D circle = new Ellipse2D.Double(0, 0, size, size);
 
-                // bordo bianco
+                // Bordo chiaro esterno per staccare l'avatar dallo sfondo.
                 g2.setColor(new Color(255, 255, 255, 230));
                 g2.setStroke(new BasicStroke(Math.max(2f, size * 0.06f)));
                 g2.draw(circle);
 
-                // clip circolare
+                // Clip circolare e disegno immagine "cover" (riempie il cerchio).
                 Shape oldClip = g2.getClip();
                 g2.setClip(circle);
 
-                // cover (riempi il cerchio)
                 double s = Math.max((double) size / imgW, (double) size / imgH);
                 int drawW = (int) Math.round(imgW * s);
                 int drawH = (int) Math.round(imgH * s);

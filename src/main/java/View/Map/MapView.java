@@ -13,15 +13,29 @@ import java.awt.*;
 import java.util.Set;
 
 /**
- * Vista della mappa.
- * Contiene solo il JXMapViewer e il metodo updateView() e il costruttore StopPainter per permettere di evidenziare la fermata in questione
+ * Vista della mappa basata su JXMapViewer.
  *
- * Creatore: Simone Bonuso, Andrea Brandolini
+ * Contiene il componente grafico della mappa e fornisce un metodo
+ * per aggiornare la visualizzazione con:
+ * - centro e zoom
+ * - waypoint delle fermate
+ * - cluster di fermate
+ * - shape di una linea
+ * - veicoli in movimento
+ * - evidenziazione di una fermata specifica
+ *
+ * La classe non gestisce logica di business, ma solo la rappresentazione.
  */
 public class MapView extends JPanel {
 
+    /**
+     * Componente principale della mappa.
+     */
     private final JXMapViewer mapViewer;
 
+    /**
+     * Costruisce la vista della mappa e inizializza il TileFactory.
+     */
     public MapView() {
         setLayout(new BorderLayout());
 
@@ -32,7 +46,15 @@ public class MapView extends JPanel {
     }
 
     /**
-     * Aggiorna la mappa con il nuovo centro, zoom e insieme di waypoint.
+     * Aggiorna la mappa con nuovi dati.
+     *
+     * @param center posizione centrale della mappa
+     * @param zoom livello di zoom
+     * @param stops insieme dei waypoint delle fermate
+     * @param clusters cluster di fermate per il rendering aggregato
+     * @param shapePainter painter della shape da disegnare
+     * @param highlightedPosition posizione della fermata evidenziata
+     * @param vehicles lista dei veicoli da visualizzare
      */
     public void updateView(GeoPosition center,
                            int zoom,
@@ -57,7 +79,9 @@ public class MapView extends JPanel {
     }
 
     /**
-     * Restituisce il viewer della mappa.
+     * Restituisce il componente JXMapViewer sottostante.
+     *
+     * @return il viewer della mappa
      */
     public JXMapViewer getMapViewer() {
         return mapViewer;

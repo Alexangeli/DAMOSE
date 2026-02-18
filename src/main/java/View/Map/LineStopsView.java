@@ -41,25 +41,41 @@ public class LineStopsView extends JPanel {
 
     // ===== UI =====
     private final JLabel titleLabel;
+
+    /** Model per la lista visualizzata. */
     private final DefaultListModel<String> listModel;
+
+    /** Lista principale che mostra righe testuali (anche multi-linea). */
     private final JList<String> list;
 
     // ===== MODE: LINE_STOPS (linea -> fermate) =====
     private List<StopModel> currentStops = Collections.emptyList();
+
+    /** Controller mappa, usato per centrare e filtrare fermate visibili. */
     private MapController mapController;
+
+    /** Callback su doppio click di una fermata in modalità LINE. */
     private Consumer<StopModel> onStopDoubleClick;
 
     // ===== MODE: STOP_ROUTES (fermata -> linee) =====
     private List<RoutesModel> currentRoutes = Collections.emptyList();
+
+    /** Callback su selezione di una linea (RoutesModel) in modalità STOP. */
     private Consumer<RoutesModel> onRouteSelected;
 
     // ===== MODE: STOP_ROUTE_DIRECTIONS (fermata -> linee+direzioni) =====
     private List<RouteDirectionOption> currentRouteDirections = Collections.emptyList();
+
+    /** Callback su selezione di un'opzione linea+direzione. */
     private Consumer<RouteDirectionOption> onRouteDirectionSelected;
 
     // ===== MODE: STOP_ARRIVALS (fermata -> arrivi con orario) =====
     private List<ArrivalRow> currentArrivals = Collections.emptyList();
+
+    /** Callback su selezione singola di un arrivo. */
     private Consumer<ArrivalRow> onArrivalSelected;
+
+    /** Callback su doppio click di un arrivo (di solito apre dettagli linea/veicolo). */
     private Consumer<ArrivalRow> onArrivalDoubleClick;
 
     /** Service opzionale usato per arricchire le righe con occupazione (solo realtime). */
@@ -67,6 +83,8 @@ public class LineStopsView extends JPanel {
 
     /** Modalità corrente del pannello: guida la semantica di click e selezioni. */
     private enum PanelMode { NONE, LINE_STOPS, STOP_ROUTES, STOP_ROUTE_DIRECTIONS, STOP_ARRIVALS }
+
+    /** Modalità iniziale: nessun contenuto. */
     private PanelMode panelMode = PanelMode.NONE;
 
     /** Formatter orario (fallback quando non abbiamo minutes). */
@@ -405,6 +423,9 @@ public class LineStopsView extends JPanel {
     /**
      * @return true se la lista ha un elemento selezionato
      */
+    /**
+     * @return true se la lista ha un elemento selezionato
+     */
     public boolean hasSelection() { return list.getSelectedIndex() >= 0; }
 
     /**
@@ -419,6 +440,12 @@ public class LineStopsView extends JPanel {
      */
     public int getItemCount() { return listModel.getSize(); }
 
+    /**
+     * Normalizza una stringa per uso in UI.
+     *
+     * @param s stringa in input (può essere null)
+     * @return stringa non nulla e senza spazi laterali
+     */
     private static String safe(String s) { return s == null ? "" : s.trim(); }
 
     /**

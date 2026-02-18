@@ -12,50 +12,83 @@ import java.awt.event.MouseEvent;
 import java.awt.geom.RoundRectangle2D;
 
 /**
- * AccountDropdown (DAMOSE) - layout richiesto:
- *  - Stato in alto a destra (puntino verde/rosso)
- *  - Foto profilo (immagine) centrata nel riquadro bianco (clip circolare)
- *  - "Ciao, <username>" centrato e ben distanziato
- *  - Bottone "Gestisci il tuo account" (rettangolo arrotondato outline)
- *  - Bottone "Logout" (rettangolo arrotondato, hover rosso)
+ * Popup utente mostrato dalla dashboard quando si clicca l'icona profilo.
  *
- * Firma compatibile:
- *   AccountDropdown(JFrame owner, Runnable onManage, Runnable onLogout)
+ * Responsabilità:
+ * - mostra avatar, saluto con username e due azioni principali (gestione account e logout)
+ * - mostra lo stato di connessione (online/offline) tramite un indicatore grafico
+ * - gestisce apertura/chiusura e chiusura automatica al click fuori dal popup
+ *
+ * Note di progetto:
+ * - la finestra è una {@link JDialog} senza decorazioni, con forma arrotondata tramite {@link java.awt.Window#setShape}
+ * - il ridimensionamento (uiScale) viene applicato evitando di fare pack mentre il popup è visibile per ridurre flicker
  */
 public class AccountDropdown {
 
+    /** Finestra del popup (modello "tooltip": modale no, senza focus). */
     private final JDialog window;
+
+    /** Pannello principale con bordo arrotondato e layout verticale. */
     private final CardPanel card;
 
+    /** Scala generale della UI (usata per dimensioni, padding, font e spazi). */
     private double uiScale = 1.0;
-    // evita repack/pack continui (causano flicker su JWindow)
+
+    /** Soglia minima di variazione scala per evitare ricalcoli e pack inutili. */
     private static final double SCALE_EPS = 0.01;
-    // Distanza (gap) tra l'icona profilo (anchor) e il dropdown
-    // ✅ Aumentato: evita che la card tocchi/schiacci l'icona profilo
+
+    /** Distanza verticale tra punto di ancoraggio (icona profilo) e popup. */
     private static final int DROPDOWN_Y_GAP_PX = 20; // px @ uiScale=1.0
+
+    /** Ultima scala realmente applicata ai componenti (per throttling). */
     private double lastAppliedScale = -1.0;
-    // Se arriva una nuova scala mentre la window è visibile, la applichiamo solo alla prossima apertura
+
+    /**
+     * Scala richiesta mentre il popup è visibile.
+     * Viene applicata alla successiva apertura per evitare effetti grafici.
+     */
     private double pendingScale = -1.0;
 
+    /** Username visualizzato nel saluto (default di fallback). */
     private String username = "nome";
+
+    /** Stato logico della connessione, usato anche per ridisegnare lo stato in alto. */
     private boolean online = true;
 
-    // binding status provider (una sola volta)
+    /** Provider a cui siamo attualmente bindati (serve a prevenire doppi listener). */
     private ConnectionStatusProvider boundStatusProvider = null;
 
+    /** Componente di stato (puntino colorato + testo). */
     private final StatusRight statusRight = new StatusRight();
+
+    /** Componente avatar circolare. */
     private final AvatarCircle avatar = new AvatarCircle();
+
+    /** Label "Ciao, <username>". */
     private final JLabel helloLabel = new JLabel();
 
+    /** Bottone per l'azione di gestione account. */
     private final OutlineButton manageBtn;
+
+    /** Bottone per logout, con hover rosso. */
     private final HoverFillButton logoutBtn;
 
+    /** Callback eseguita quando l'utente sceglie "Gestisci il tuo account". */
     private final Runnable onManage;
+
+    /** Callback eseguita quando l'utente sceglie "Logout". */
     private final Runnable onLogout;
 
-    // Chiude il popup quando clicchi fuori (click outside)
+    /** Listener globale per chiudere il popup al click fuori dalla finestra. */
     private final AWTEventListener outsideClickListener;
 
+    /**
+     * Costruisce il popup account e prepara layout, azioni e listener di chiusura.
+     *
+     * @param owner finestra owner della dialog (serve per posizionamento e z-order)
+     * @param onManage callback associata al bottone "Gestisci il tuo account"
+     * @param onLogout callback associata al bottone "Logout"
+     */
     public AccountDropdown(JFrame owner, Runnable onManage, Runnable onLogout) {
         this.onManage = onManage;
         this.onLogout = onLogout;
@@ -63,28 +96,24 @@ public class AccountDropdown {
         window = new JDialog(owner);
         window.setUndecorated(true);
         window.setModalityType(Dialog.ModalityType.MODELESS);
-        // Evita flicker su macOS: niente trasparenza della window, usiamo una shape arrotondata
         window.setBackground(Color.WHITE);
         window.setFocusableWindowState(false);
 
         card = new CardPanel();
-        // Ora la window è opaca: anche la card può essere opaca
         card.setOpaque(true);
         card.setBackground(Color.WHITE);
         card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
 
-
-        // ===== TOP ROW: Stato (stessa posizione ORIGINALE rispetto al blocco bianco) =====
+        // Riga superiore: stato connessione centrato nella fascia alta.
         JPanel topRow = new JPanel();
         topRow.setOpaque(false);
         topRow.setLayout(new BoxLayout(topRow, BoxLayout.X_AXIS));
 
-        // ORIGINALE: centrato orizzontalmente dentro la riga
         topRow.add(Box.createHorizontalGlue());
         topRow.add(statusRight);
         topRow.add(Box.createHorizontalGlue());
 
-        // Header con altezza fissa: qui centriamo VERTICALMENTE lo status
+        // Header a altezza fissa: utile per mantenere centratura verticale dello status con scale diverse.
         JPanel header = new JPanel();
         header.setOpaque(false);
         header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
@@ -95,7 +124,7 @@ public class AccountDropdown {
         header.add(wrapHorizontal(scale(18), topRow));
         header.add(Box.createVerticalGlue());
 
-        // ===== CENTER COLUMN: tutto centrato nel riquadro bianco =====
+        // Colonna centrale: avatar + saluto + bottoni, tutto centrato.
         JPanel centerCol = new JPanel();
         centerCol.setOpaque(false);
         centerCol.setLayout(new BoxLayout(centerCol, BoxLayout.Y_AXIS));
@@ -106,13 +135,12 @@ public class AccountDropdown {
         manageBtn = new OutlineButton("Gestisci il tuo account");
         logoutBtn = new HoverFillButton("Logout");
 
-        // Allineamento orizzontale: CENTRO
         avatar.setAlignmentX(Component.CENTER_ALIGNMENT);
         helloLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
         manageBtn.setAlignmentX(Component.CENTER_ALIGNMENT);
         logoutBtn.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        // Click actions
+        // Azioni: chiudiamo sempre il popup prima di delegare la logica al controller chiamante.
         manageBtn.addActionListener(e -> {
             hide();
             if (this.onManage != null) this.onManage.run();
@@ -123,7 +151,6 @@ public class AccountDropdown {
             if (this.onLogout != null) this.onLogout.run();
         });
 
-        // Spaziatura più omogenea
         centerCol.add(avatar);
         centerCol.add(Box.createVerticalStrut(scale(18)));
         centerCol.add(helloLabel);
@@ -131,20 +158,13 @@ public class AccountDropdown {
         centerCol.add(manageBtn);
         centerCol.add(Box.createVerticalStrut(scale(14)));
         centerCol.add(logoutBtn);
-        // ✅ spazio sotto Logout
         centerCol.add(Box.createVerticalStrut(scale(18)));
 
-        // ===== COMPOSE: Header (stato) + contenuto centrato =====
+        // Composizione finale: header + contenuto centrato con spazi elastici.
         card.add(header);
-
-        // spazio elastico per centrare il contenuto (sotto lo stato)
         card.add(Box.createVerticalGlue());
-
         card.add(centerCol);
-
-        // spazio elastico sotto
         card.add(Box.createVerticalGlue());
-
         card.add(Box.createVerticalStrut(scale(12)));
 
         window.setContentPane(card);
@@ -154,13 +174,12 @@ public class AccountDropdown {
         refreshTexts();
         repack();
 
-        // Chiudi se clicchi fuori dalla finestra
+        // Chiusura al click fuori: usiamo coordinate assolute su schermo.
         outsideClickListener = event -> {
             if (!window.isVisible()) return;
             if (!(event instanceof MouseEvent me)) return;
             if (me.getID() != MouseEvent.MOUSE_PRESSED) return;
 
-            // Coordinate assolute dello schermo
             Point p = me.getLocationOnScreen();
             Rectangle r = new Rectangle(window.getLocationOnScreen(), window.getSize());
             if (!r.contains(p)) {
@@ -169,7 +188,7 @@ public class AccountDropdown {
         };
         Toolkit.getDefaultToolkit().addAWTEventListener(outsideClickListener, AWTEvent.MOUSE_EVENT_MASK);
 
-        // Pulizia listener (se mai la dialog venisse smontata)
+        // Pulizia: rimuove listener globale se la dialog viene chiusa/distrutta.
         window.addWindowListener(new java.awt.event.WindowAdapter() {
             @Override public void windowClosed(java.awt.event.WindowEvent e) {
                 Toolkit.getDefaultToolkit().removeAWTEventListener(outsideClickListener);
@@ -179,33 +198,46 @@ public class AccountDropdown {
 
     // ===== setters =====
 
+    /**
+     * Imposta lo username mostrato nel saluto.
+     * Se nullo o vuoto usa un valore di fallback.
+     *
+     * @param username nome utente da mostrare
+     */
     public void setUsername(String username) {
         if (username == null || username.isBlank()) this.username = "Nome";
         else this.username = username;
         refreshTexts();
     }
 
-    /** true=online (verde), false=offline (rosso) */
+    /**
+     * Aggiorna lo stato di connessione visualizzato.
+     *
+     * @param online true se online (verde), false se offline (rosso)
+     */
     public void setOnline(boolean online) {
         this.online = online;
         statusRight.setOnline(online);
     }
 
     /**
-     * Collega il pallino "Stato" ad un provider di stato connessione.
-     * Chiamalo UNA volta (es. in Main dopo aver creato dropdown + provider).
+     * Collega l'indicatore "Stato" ad un provider di connessione.
+     *
+     * Regola d'uso:
+     * - chiamare una sola volta (tipicamente nel setup della dashboard)
+     * - evita doppi binding allo stesso provider, che causerebbero notifiche duplicate
+     *
+     * @param statusProvider provider che espone stato e listener di connessione
      */
     public void bindConnectionStatus(ConnectionStatusProvider statusProvider) {
         if (statusProvider == null) return;
 
-        // evita doppio binding (altrimenti eventi doppi)
         if (this.boundStatusProvider == statusProvider) return;
         this.boundStatusProvider = statusProvider;
 
-        // stato iniziale
         setOnline(statusProvider.getState() == ConnectionState.ONLINE);
 
-        // ascolta cambiamenti (sempre su EDT)
+        // Aggiorniamo sempre su EDT per sicurezza in Swing.
         statusProvider.addListener(state ->
                 SwingUtilities.invokeLater(() ->
                         setOnline(state == ConnectionState.ONLINE)
@@ -213,13 +245,19 @@ public class AccountDropdown {
         );
     }
 
+    /**
+     * Aggiorna i testi della UI in base allo stato corrente.
+     */
     private void refreshTexts() {
         helloLabel.setText("Ciao, " + username);
     }
 
     /**
-     * Aggiorna lo username leggendo l'utente attualmente loggato (best-effort).
-     * Usa reflection per non dipendere da una specifica implementazione di User.
+     * Sincronizza lo username leggendo l'utente attualmente loggato.
+     *
+     * Scelta implementativa:
+     * - usa reflection per ridurre l'accoppiamento con la classe concreta dell'utente
+     * - se non è possibile leggere l'username, non interrompe il flusso (best-effort)
      */
     private void syncUsernameFromSession() {
         try {
@@ -234,23 +272,28 @@ public class AccountDropdown {
                 refreshTexts();
             }
         } catch (Exception ignored) {
-            // noop
+            // Best-effort: se l'utente o il metodo non esistono, manteniamo lo username attuale.
         }
     }
 
     // ================= API pubblica =================
 
+    /**
+     * Imposta la scala della UI.
+     *
+     * Nota:
+     * - se la finestra è visibile, la scala viene rimandata alla prossima apertura per evitare flicker
+     *
+     * @param s nuova scala (tipicamente 1.0 = default)
+     */
     public void setUiScale(double s) {
         uiScale = s;
 
-        // Se il popup è visibile, NON ridimensionare/packare: su macOS causa flicker.
-        // Memorizza e applica alla prossima apertura.
         if (window.isVisible()) {
             pendingScale = uiScale;
             return;
         }
 
-        // Evita ricalcoli continui: applica solo se cambia davvero
         if (lastAppliedScale < 0 || Math.abs(uiScale - lastAppliedScale) > SCALE_EPS) {
             applyScaleToAll();
             lastAppliedScale = uiScale;
@@ -258,14 +301,21 @@ public class AccountDropdown {
         }
     }
 
+    /**
+     * Esegue pack e aggiorna forma arrotondata della finestra.
+     * Da chiamare quando cambiano dimensioni o scale.
+     */
     public void repack() {
         card.revalidate();
         card.repaint();
-        // pack può flicker se chiamato spesso; qui lo usiamo solo quando richiesto esplicitamente
         window.pack();
         applyWindowShape();
     }
 
+    /**
+     * Applica una shape arrotondata alla finestra (se supportato dalla piattaforma).
+     * In caso di piattaforme non compatibili, viene ignorato senza errori.
+     */
     private void applyWindowShape() {
         try {
             int w = window.getWidth();
@@ -274,17 +324,32 @@ public class AccountDropdown {
             int arc = scale(18);
             window.setShape(new RoundRectangle2D.Double(0, 0, w, h, arc, arc));
         } catch (Throwable ignored) {
-            // setShape può non essere supportato su alcune piattaforme
+            // setShape può non essere supportato su alcune piattaforme.
         }
     }
 
+    /**
+     * Applica il gap verticale del dropdown rispetto all'ancora.
+     *
+     * @param y coordinata y dell'ancora
+     * @return y corretta con il gap di separazione
+     */
     private int applyDropdownGapY(int y) {
         return y + scale(DROPDOWN_Y_GAP_PX);
     }
 
+    /**
+     * Mostra il popup in coordinate assolute di schermo.
+     * Gestisce:
+     * - sincronizzazione username da sessione
+     * - applicazione della scala pendente (se richiesta mentre era visibile)
+     *
+     * @param x coordinata x sullo schermo
+     * @param y coordinata y sullo schermo (prima del gap)
+     */
     public void showAtScreen(int x, int y) {
         syncUsernameFromSession();
-        // Applica eventuale scala rimandata (arrivata mentre era visibile)
+
         if (pendingScale > 0 && (lastAppliedScale < 0 || Math.abs(pendingScale - lastAppliedScale) > SCALE_EPS)) {
             uiScale = pendingScale;
             pendingScale = -1.0;
@@ -292,41 +357,61 @@ public class AccountDropdown {
             lastAppliedScale = uiScale;
             repack();
         } else if (window.getWidth() <= 1 || window.getHeight() <= 1) {
-            // prima apertura: pack una volta
             applyScaleToAll();
             lastAppliedScale = uiScale;
             repack();
         }
 
-        // ✅ Sposta il dropdown più in basso per lasciare spazio rispetto all'icona profilo
         window.setLocation(x, applyDropdownGapY(y));
         window.setVisible(true);
     }
 
+    /** Nasconde il popup se visibile. */
     public void hide() {
         window.setVisible(false);
     }
+
+    /**
+     * @return true se il popup è attualmente visibile
+     */
     public boolean isVisible() { return window.isVisible(); }
+
+    /**
+     * Sposta il popup in coordinate assolute di schermo.
+     *
+     * @param x coordinata x sullo schermo
+     * @param y coordinata y sullo schermo (prima del gap)
+     */
     public void setLocationOnScreen(int x, int y) {
         window.setLocation(x, applyDropdownGapY(y));
     }
+
+    /**
+     * @return larghezza attuale della finestra del popup
+     */
     public int getWindowWidth() { return window.getWidth(); }
 
     // ================= helpers =================
 
+    /**
+     * Converte un valore in pixel applicando la scala attuale.
+     *
+     * @param v valore base (scala 1.0)
+     * @return valore scalato e arrotondato
+     */
     private int scale(int v) {
         return (int) Math.round(v * uiScale);
     }
 
+    /**
+     * Applica la scala a tutti i componenti del popup (dimensioni, font, padding).
+     * Mantiene un contenuto leggermente più piccolo del frame per ottenere un layout compatto.
+     */
     private void applyScaleToAll() {
-        // Frame più piccolo e compatto
         card.setPreferredSize(new Dimension(scale(300), scale(360)));
-        // padding interno uniforme (ora simmetrico per status a destra)
         card.setBorder(BorderFactory.createEmptyBorder(scale(12), scale(14), scale(16), scale(14)));
 
-        // header height (centra verticalmente lo status)
-        // (il componente header ha altezza fissa: la aggiorniamo quando cambia la scala)
-        // NB: header è creato nel costruttore, quindi qui aggiorniamo la preferred size del primo child (header)
+        // Aggiorna l'header (primo child del card) per mantenere altezza costante con la scala.
         if (card.getComponentCount() > 0) {
             Component c0 = card.getComponent(0);
             if (c0 instanceof JComponent jc) {
@@ -335,31 +420,24 @@ public class AccountDropdown {
             }
         }
 
-        // Stato in alto a destra
         statusRight.applyScale(uiScale);
         statusRight.setOnline(online);
-        // assicura una riga "header" consistente per il centraggio verticale dello status
         statusRight.setPreferredSize(new Dimension(scale(120), scale(36)));
         statusRight.setMinimumSize(new Dimension(scale(120), scale(36)));
         statusRight.setMaximumSize(new Dimension(scale(120), scale(36)));
 
-        // Contenuto leggermente ridimensionato per stare nel frame più piccolo
         double contentScale = uiScale * 0.90;
 
-        // Avatar dimensione
         avatar.applyScale(contentScale);
 
-        // Hello
         helloLabel.setFont(helloLabel.getFont().deriveFont(Font.BOLD, (float) Math.round(26 * contentScale)));
 
-        // Manage button (dimensioni scalate col contenuto)
         manageBtn.setFont(manageBtn.getFont().deriveFont(Font.PLAIN, (float) Math.round(16 * contentScale)));
         int manageW = (int) Math.round(250 * contentScale);
         int manageH = (int) Math.round(48 * contentScale);
         manageBtn.setPreferredSize(new Dimension(manageW, manageH));
         manageBtn.setMaximumSize(new Dimension(manageW, manageH));
 
-        // Logout button (dimensioni scalate col contenuto)
         logoutBtn.setFont(logoutBtn.getFont().deriveFont(Font.BOLD, (float) Math.round(16 * contentScale)));
         int logoutW = (int) Math.round(170 * contentScale);
         int logoutH = (int) Math.round(44 * contentScale);
@@ -367,6 +445,13 @@ public class AccountDropdown {
         logoutBtn.setMaximumSize(new Dimension(logoutW, logoutH));
     }
 
+    /**
+     * Wrapper per aggiungere padding orizzontale ad un componente mantenendo trasparenza.
+     *
+     * @param pad padding laterale in pixel (scalato a monte)
+     * @param child componente da wrappare
+     * @return componente wrapper pronto da inserire nel layout
+     */
     private static JComponent wrapHorizontal(int pad, JComponent child) {
         JPanel p = new JPanel(new BorderLayout());
         p.setOpaque(false);
@@ -377,6 +462,10 @@ public class AccountDropdown {
 
     // ================= Card =================
 
+    /**
+     * Pannello principale del popup con disegno del bordo arrotondato.
+     * La finestra è opaca: qui disegniamo solo il bordo e lasciamo il background bianco.
+     */
     private class CardPanel extends JPanel {
         @Override
         protected void paintComponent(Graphics g) {
@@ -389,7 +478,6 @@ public class AccountDropdown {
             int h = getHeight();
             int arc = scale(18);
 
-            // disegniamo solo il bordo
             g2.setColor(new Color(220, 220, 220));
             g2.draw(new RoundRectangle2D.Double(0.5, 0.5, w - 1, h - 1, arc, arc));
 
@@ -399,15 +487,29 @@ public class AccountDropdown {
 
     // ================= Stato =================
 
+    /**
+     * Componente grafico che mostra lo stato di connessione.
+     * Disegna un pallino colorato (verde/rosso) e la scritta "Stato".
+     */
     private static class StatusRight extends JComponent {
         private boolean online = true;
         private double uiScale = 1.0;
 
+        /**
+         * Imposta lo stato da visualizzare e forza il ridisegno.
+         *
+         * @param online true per verde, false per rosso
+         */
         void setOnline(boolean online) {
             this.online = online;
             repaint();
         }
 
+        /**
+         * Aggiorna la scala del componente (dimensioni e font).
+         *
+         * @param s nuova scala
+         */
         void applyScale(double s) {
             this.uiScale = s;
             revalidate();
@@ -439,7 +541,6 @@ public class AccountDropdown {
             int textW = fm.stringWidth(text);
             int totalW = dot + gap + textW;
 
-            // centrato orizzontalmente nel suo box
             int x = (getWidth() - totalW) / 2;
             int dy = (h - dot) / 2;
 
@@ -457,11 +558,18 @@ public class AccountDropdown {
 
     // ================= Avatar =================
 
+    /**
+     * Componente grafico per avatar circolare.
+     * Carica un'immagine di default dalle risorse e la disegna con clip circolare.
+     */
     private static class AvatarCircle extends JComponent {
 
         private double uiScale = 1.0;
         private Image image;
 
+        /**
+         * Crea l'avatar e carica l'immagine di profilo dalle risorse, se presente.
+         */
         AvatarCircle() {
             java.net.URL url = getClass().getResource("/immagini_profilo/immagine_profilo.png");
             if (url != null) {
@@ -469,6 +577,11 @@ public class AccountDropdown {
             }
         }
 
+        /**
+         * Aggiorna la scala del componente (dimensione del diametro).
+         *
+         * @param s nuova scala
+         */
         void applyScale(double s) {
             this.uiScale = s;
             revalidate();
@@ -506,9 +619,16 @@ public class AccountDropdown {
 
     // ================= Buttons =================
 
+    /**
+     * Bottone con stile outline e leggero hover (riempimento trasparente).
+     * Disegna manualmente bordo e background in paintComponent.
+     */
     private static class OutlineButton extends JButton {
         private boolean hover = false;
 
+        /**
+         * @param text testo mostrato sul bottone
+         */
         OutlineButton(String text) {
             super(text);
             setFocusPainted(false);
@@ -544,9 +664,16 @@ public class AccountDropdown {
         }
     }
 
+    /**
+     * Bottone pieno con hover rosso usato per l'azione di logout.
+     * Il testo è bianco e lo sfondo viene disegnato manualmente.
+     */
     private static class HoverFillButton extends JButton {
         private boolean hover = false;
 
+        /**
+         * @param text testo mostrato sul bottone
+         */
         HoverFillButton(String text) {
             super(text);
             setFocusPainted(false);
