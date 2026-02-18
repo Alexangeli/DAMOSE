@@ -18,6 +18,7 @@ import View.User.Account.AccountSettingsDialog;
 import View.User.Account.AuthDialog;
 import View.User.Fav.FavoritesDialogView;
 import config.AppConfig;
+import db.util.DB;
 
 import javax.swing.*;
 import java.awt.*;
@@ -110,6 +111,20 @@ public class AppController {
      */
     public void start() {
         frame = createFrame();
+
+        // 0) Inizializzo schema DB (crea le tabelle se mancano).
+        try {
+            DB.initSchema();
+        } catch (Exception e) {
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(
+                    frame,
+                    "Errore inizializzazione database: " + e.getMessage(),
+                    "Errore DB",
+                    JOptionPane.ERROR_MESSAGE
+            );
+            return;
+        }
 
         // 1) Status + realtime services
         statusService = new ConnectionStatusService(GTFS_RT_HEALTH_URL);
@@ -727,6 +742,7 @@ public class AppController {
 
         return null;
     }
+
     /**
      * Risolve i path dei CSV GTFS statici.
      * - Se esistono su filesystem (esecuzione da progetto/IDE), usa quelli.

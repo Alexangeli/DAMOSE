@@ -83,11 +83,51 @@ public final class DB {
             stmt.execute("PRAGMA foreign_keys = ON");
         }
 
-        // Log utile in debug per capire quale file DB sta usando il JAR/IDE.
-        // Se non lo vuoi, puoi rimuoverlo.
-        // System.out.println("[DB] Using: " + url);
-
         return conn;
+    }
+
+    /**
+     * Inizializza lo schema del database (tabelle principali) se non esistono.
+     *
+     * Serve per evitare errori "no such table" su database nuovo o vuoto.
+     * È safe: usa CREATE TABLE IF NOT EXISTS, quindi può essere chiamato più volte.
+     *
+     * @throws SQLException in caso di errori DDL o accesso al DB
+     */
+    public static void initSchema() throws SQLException {
+        try (Connection conn = getConnection();
+             Statement st = conn.createStatement()) {
+
+            st.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL UNIQUE,
+                    email TEXT NOT NULL UNIQUE,
+                    password_hash TEXT NOT NULL
+                )
+            """);
+
+            st.execute("""
+                CREATE TABLE IF NOT EXISTS user_favorite_stops (
+                    user_id INTEGER NOT NULL,
+                    stop_code TEXT NOT NULL,
+                    PRIMARY KEY (user_id, stop_code),
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            """);
+
+            st.execute("""
+                CREATE TABLE IF NOT EXISTS user_favorite_lines (
+                    user_id INTEGER NOT NULL,
+                    route_id TEXT NOT NULL,
+                    route_short_name TEXT NOT NULL,
+                    direction_id INTEGER NOT NULL,
+                    headsign TEXT NOT NULL,
+                    PRIMARY KEY (user_id, route_id, direction_id, headsign),
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            """);
+        }
     }
 
     /**
