@@ -1,17 +1,29 @@
 package Service.GTFS_RT.Status;
 
 import Model.Net.*;
-
 import java.net.URI;
 
 /**
- * Espone SOLO lo stato ONLINE/OFFLINE + listener.
- * Nessun dato realtime, solo "semaforo" per il pallino.
+ * Servizio che espone lo stato di connessione al feed GTFS Realtime.
+ * Rappresenta solo uno "stato semaforo" ONLINE / OFFLINE, utile per
+ * aggiornare indicatori grafici o notificare il frontend.
+ * Non gestisce dati real-time, si occupa esclusivamente dello stato della connessione.
+ *
+ * Funzionalità principali:
+ * - Permette al frontend di conoscere lo stato online/offline
+ * - Supporta listener per notifiche di cambiamento dello stato
+ * - Internamente utilizza {@link ConnectionManager} per monitorare l'endpoint
  */
-public class ConnectionStatusService implements ConnectionStatusProvider{
+public class ConnectionStatusService implements ConnectionStatusProvider {
 
+    /** Manager interno che verifica la raggiungibilità dell'endpoint */
     private final ConnectionManager connectionManager;
 
+    /**
+     * Costruisce un servizio di monitoraggio della connessione.
+     *
+     * @param healthUrl URL dell'endpoint di salute del feed GTFS Realtime
+     */
     public ConnectionStatusService(String healthUrl) {
         this.connectionManager = new ConnectionManager(
                 URI.create(healthUrl),
@@ -19,68 +31,44 @@ public class ConnectionStatusService implements ConnectionStatusProvider{
         );
     }
 
+    /**
+     * Avvia il monitoraggio dello stato della connessione.
+     */
     public void start() {
         connectionManager.start();
     }
 
+    /**
+     * Ferma il monitoraggio dello stato della connessione.
+     */
     public void stop() {
         connectionManager.stop();
     }
 
+    /**
+     * Restituisce lo stato corrente della connessione.
+     *
+     * @return {@link ConnectionState} corrente (ONLINE / OFFLINE)
+     */
     public ConnectionState getState() {
         return connectionManager.getState();
     }
 
+    /**
+     * Aggiunge un listener per ricevere notifiche di cambiamento dello stato.
+     *
+     * @param listener listener da registrare
+     */
     public void addListener(ConnectionListener listener) {
         connectionManager.addListener(listener);
     }
 
+    /**
+     * Rimuove un listener precedentemente registrato.
+     *
+     * @param listener listener da rimuovere
+     */
     public void removeListener(ConnectionListener listener) {
         connectionManager.removeListener(listener);
     }
 }
-
-/**
- * ConnectionStatusService
- *
- * Questa classe espone lo stato di connessione ONLINE / OFFLINE
- * del feed GTFS Realtime.
- *
- * Scopo:
- * - Permettere al frontend di sapere se il servizio è online
- * - Aggiornare un indicatore grafico (es. pallino verde/arancione)
- * - Non gestisce dati realtime, solo lo stato della connessione
- *
- * Come funziona:
- * - Internamente utilizza ConnectionManager
- * - Ogni 5 secondi verifica se l'endpoint è raggiungibile
- * - Se il feed risponde -> stato ONLINE
- * - Se fallisce più volte consecutive -> stato OFFLINE
- *
- * Come usarla:
- *
- *   ConnectionStatusService statusService =
- *       new ConnectionStatusService(GTFS_RT_URL);
- *
- *   statusService.addListener(state -> {
- *       // ATTENZIONE: se aggiorni la UI Swing,
- *       // usa SwingUtilities.invokeLater(...)
- *
- *       if (state == ConnectionState.ONLINE) {
- *           // pallino verde
- *       } else {
- *           // pallino arancione
- *       }
- *   });
- *
- *   statusService.start();
- *
- * Alla chiusura dell'app:
- *
- *   statusService.stop();
- *
- * Nota:
- * - Non contiene logica di business.
- * - Non effettua fetch dei dati.
- * - È pensata solo come "semaforo di connessione".
- */

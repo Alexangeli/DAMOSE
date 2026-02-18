@@ -21,27 +21,47 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
+/**
+ * Servizio principale per la predizione degli arrivi dei mezzi pubblici.
+ * Combina dati statici GTFS con dati realtime GTFS Realtime per fornire:
+ * - Arrivi stimati per fermata (Stop Mode)
+ * - Prossimo arrivo per una linea su una fermata (Line Mode)
+ * - Applicazione di ritardi stimati con confidenza
+ *
+ * Gestisce internamente un indice realtime {@link TripUpdatesRtIndex} e uno
+ * storico dei ritardi {@link DelayHistoryStore}, aggiornandoli solo se la
+ * connessione è ONLINE.
+ */
 public class ArrivalPredictionService {
 
     private final TripUpdatesService tripUpdatesService;
     private final ConnectionStatusProvider statusProvider;
     private final StaticGtfsRepository repo;
 
-    // ✅ iniettati (test) o default (prod)
+    /** Indice realtime delle ETA per stop/linea/direzione */
     private final TripUpdatesRtIndex rtIndex;
+
+    /** Storico dei ritardi stimati */
     private final DelayHistoryStore delayHistory;
 
+    /** Riferimento all'ultimo batch di aggiornamenti (evita rebuild ridondanti) */
     private volatile Object lastUpdatesRef = null;
 
     /**
-     * ✅ Soglia consigliata:
-     * - 0.0 = applica sempre
-     * - 0.5 = solo quando è abbastanza “buono”
-     * Io metto 0.45 (buon compromesso).
+     * Soglia minima di confidenza per applicare il ritardo stimato.
+     * 0.0 = applica sempre, 0.5 = applica solo se affidabile.
      */
     private static final double MIN_CONFIDENCE_TO_APPLY_DELAY = 0.45;
 
-    // ✅ PRODUZIONE (default)
+    // ========================= COSTRUTTORI =========================
+
+    /**
+     * Costruttore di produzione.
+     *
+     * @param tripUpdatesService servizio per ottenere TripUpdates realtime
+     * @param statusProvider provider dello stato della connessione
+     * @param repo repository dei dati statici GTFS
+     */
     public ArrivalPredictionService(
             TripUpdatesService tripUpdatesService,
             ConnectionStatusProvider statusProvider,
@@ -50,7 +70,15 @@ public class ArrivalPredictionService {
         this(tripUpdatesService, statusProvider, repo, new TripUpdatesRtIndex(), new DelayHistoryStore(0.25));
     }
 
-    // ✅ TEST / DI
+    /**
+     * Costruttore per test o dependency injection.
+     *
+     * @param tripUpdatesService servizio per ottenere TripUpdates realtime
+     * @param statusProvider provider dello stato della connessione
+     * @param repo repository dei dati statici GTFS
+     * @param rtIndex indice realtime
+     * @param delayHistory storico dei ritardi
+     */
     public ArrivalPredictionService(
             TripUpdatesService tripUpdatesService,
             ConnectionStatusProvider statusProvider,
@@ -67,6 +95,12 @@ public class ArrivalPredictionService {
 
     // ========================= STOP MODE =========================
 
+    /**
+     * Restituisce gli arrivi stimati per una fermata.
+     *
+     * @param stopId identificativo della fermata
+     * @return lista di {@link ArrivalRow} ordinata per tempo e linee
+     */
     public List<ArrivalRow> getArrivalsForStop(String stopId) {
         if (stopId == null || stopId.isBlank()) return List.of();
 
@@ -121,6 +155,9 @@ public class ArrivalPredictionService {
         return rows;
     }
 
+    /**
+     * Costruisce una riga di arrivo, scegliendo tra dati realtime e dati statici con delay stimato.
+     */
     private ArrivalRow buildRow(String stopId, String routeId, int directionId, String line, String headsign) {
         boolean online = statusProvider.getState() == ConnectionState.ONLINE;
 
@@ -134,10 +171,10 @@ public class ArrivalPredictionService {
 
     // ========================= LINE MODE =========================
 
+    /**
+     * Restituisce il prossimo arrivo stimato di una linea in una fermata specifica.
+     */
     public ArrivalRow getNextForStopOnRoute(String stopId, String routeId, int directionId) {
-        System.out.println("[ETA NEXT ACTIVE] stop=" + stopId
-                + " route=" + routeId + " dir=" + directionId
-                + " state=" + statusProvider.getState());
         if (stopId == null || stopId.isBlank()) return null;
         if (routeId == null || routeId.isBlank()) return null;
 
@@ -158,6 +195,9 @@ public class ArrivalPredictionService {
 
     // ========================= REALTIME =========================
 
+    /**
+     * Tenta di calcolare l'arrivo in tempo reale per stop/linea/direzione.
+     */
     private ArrivalRow tryRealtime(String stopId, String routeId, int directionId, String line, String headsign) {
         long now = Instant.now().getEpochSecond();
 
@@ -169,8 +209,7 @@ public class ArrivalPredictionService {
 
             int minutes = (int) ((best.etaEpoch - now) / 60);
             LocalTime time = Instant.ofEpochSecond(best.etaEpoch).atZone(ZoneId.systemDefault()).toLocalTime();
-            String tripId = best.tripId; // può essere null, ok
-            return new ArrivalRow(tripId, routeId, directionId, line, headsign, minutes, time, true);
+            return new ArrivalRow(best.tripId, routeId, directionId, line, headsign, minutes, time, true);
         }
 
         BestEta best = rtIndex.findBestEta(routeId, directionId, stopId);
@@ -178,10 +217,12 @@ public class ArrivalPredictionService {
 
         int minutes = (int) ((best.etaEpoch - now) / 60);
         LocalTime time = Instant.ofEpochSecond(best.etaEpoch).atZone(ZoneId.systemDefault()).toLocalTime();
-        String tripId = best.tripId; // può essere null, ok
-        return new ArrivalRow(tripId, routeId, directionId, line, headsign, minutes, time, true);
+        return new ArrivalRow(best.tripId, routeId, directionId, line, headsign, minutes, time, true);
     }
 
+    /**
+     * Seleziona il BestEta migliore tra due candidati.
+     */
     private static BestEta pickBest(BestEta a, BestEta b) {
         if (a == null) return b;
         if (b == null) return a;
@@ -190,23 +231,21 @@ public class ArrivalPredictionService {
         return (b.etaEpoch < a.etaEpoch) ? b : a;
     }
 
-    // ========================= STATIC + DELAY STIMATO (con confidence) =========================
+    // ========================= STATIC + DELAY STIMATO =========================
 
+    /**
+     * Restituisce l'arrivo stimato usando dati statici GTFS con delay stimato.
+     */
     private ArrivalRow staticWithEstimatedDelay(String stopId, String routeId, int directionId, String line, String headsign) {
         int nowSec = LocalTime.now().toSecondOfDay();
 
         Integer bestSec = findBestStaticArrivalSec(stopId, routeId, directionId, nowSec);
-        if (bestSec == null) {
-            return new ArrivalRow(null, routeId, directionId, line, headsign, null, null, false);
-        }
+        if (bestSec == null) return new ArrivalRow(null, routeId, directionId, line, headsign, null, null, false);
 
-        // ✅ delay stimato solo se directionId != -1 (merged non ha senso stimare)
         if (directionId != -1) {
             DelayEstimate est = delayHistory.estimate(routeId, directionId, stopId);
-
-            // Applica solo sopra soglia (evita “spari”)
             if (est.delaySec != null && est.confidence >= MIN_CONFIDENCE_TO_APPLY_DELAY) {
-                bestSec = bestSec + est.delaySec;
+                bestSec += est.delaySec;
             }
         }
 
@@ -214,6 +253,9 @@ public class ArrivalPredictionService {
         return new ArrivalRow(null, routeId, directionId, line, headsign, null, bestTime, false);
     }
 
+    /**
+     * Cerca il miglior orario statico di arrivo dopo ora corrente.
+     */
     private Integer findBestStaticArrivalSec(String stopId, String routeId, int directionId, int nowSec) {
         List<String> tripIds = (directionId == -1)
                 ? repo.getTripIdsForRoute(routeId)
@@ -232,7 +274,6 @@ public class ArrivalPredictionService {
                 if (!stopId.equals(st.getStop_id())) continue;
 
                 int arrSec = parseGtfsSeconds(st.getArrival_time());
-                if (arrSec < 0) continue;
                 if (arrSec < nowSec) continue;
 
                 if (bestSec == null || arrSec < bestSec) bestSec = arrSec;
@@ -244,19 +285,20 @@ public class ArrivalPredictionService {
 
     // ========================= RT INDEX REBUILD + HISTORY =========================
 
+    /**
+     * Aggiorna l'indice realtime e lo storico dei ritardi se lo stato è ONLINE.
+     */
     private void maybeRebuildRtIndex() {
         if (statusProvider.getState() != ConnectionState.ONLINE) return;
 
         List<TripUpdateInfo> updates = tripUpdatesService.getTripUpdates();
         Object ref = updates;
-
         if (ref == lastUpdatesRef) return;
         lastUpdatesRef = ref;
 
         long now = Instant.now().getEpochSecond();
         rtIndex.rebuild(updates, now);
 
-        // aggiorna delayHistory con propagazione
         if (updates != null) {
             for (TripUpdateInfo tu : updates) {
                 if (tu == null || tu.stopTimeUpdates == null) continue;
@@ -273,16 +315,13 @@ public class ArrivalPredictionService {
                 });
 
                 Integer lastKnownDelay = null;
-
                 for (StopTimeUpdateInfo stu : stus) {
                     if (stu == null) continue;
                     String stopId = stu.stopId;
                     if (stopId == null || stopId.isBlank()) continue;
 
-                    Integer observed =
-                            (stu.arrivalDelay != null) ? stu.arrivalDelay :
-                                    (stu.departureDelay != null) ? stu.departureDelay :
-                                            tu.delay;
+                    Integer observed = (stu.arrivalDelay != null) ? stu.arrivalDelay
+                            : (stu.departureDelay != null) ? stu.departureDelay : tu.delay;
 
                     if (observed != null) lastKnownDelay = observed;
 
@@ -297,7 +336,9 @@ public class ArrivalPredictionService {
 
     // ========================= UTILS =========================
 
-    private static String safe(String s) { return (s == null) ? "" : s.trim(); }
+    private static String safe(String s) {
+        return (s == null) ? "" : s.trim();
+    }
 
     private int parseGtfsSeconds(String hhmmss) {
         if (hhmmss == null) return -1;
