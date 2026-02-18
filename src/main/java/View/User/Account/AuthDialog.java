@@ -5,14 +5,39 @@ import Model.User.User;
 import javax.swing.*;
 import java.awt.*;
 
+/**
+ * Dialog modale per autenticazione utente.
+ *
+ * Funzione:
+ * - contiene due schermate (login e registrazione) gestite tramite CardLayout
+ * - permette di passare da una schermata all'altra tramite callback di navigazione
+ * - notifica l'applicazione quando l'utente effettua il login con successo
+ *
+ * Note di progetto:
+ * - la dialog è volutamente "pulita" (sfondo bianco e senza bordi del root pane)
+ * - non usa pack() durante i cambi card per evitare padding extra e layout instabili
+ * - la dimensione viene adattata alla card attualmente visibile
+ */
 public class AuthDialog extends JDialog {
 
+    /** Gestione delle schermate (login/register) tramite CardLayout. */
     private final CardLayout cards = new CardLayout();
+
+    /** Pannello root che contiene le card. */
     private final JPanel content = new JPanel(cards);
 
+    /** Schermata di login. */
     private LoginView loginView;
+
+    /** Schermata di registrazione. */
     private RegisterView registerView;
 
+    /**
+     * Crea la dialog di autenticazione.
+     *
+     * @param parent finestra owner (usata per centratura e modality)
+     * @param onAuthChanged callback invocata dopo un login riuscito
+     */
     public AuthDialog(Window parent, Runnable onAuthChanged) {
         super(parent, "Account", ModalityType.APPLICATION_MODAL);
 
@@ -43,7 +68,8 @@ public class AuthDialog extends JDialog {
         content.add(registerView, "register");
 
         setContentPane(content);
-        // Evita qualsiasi bordo/grigio del root pane
+
+        // Impostazioni per ottenere una finestra completamente bianca e senza bordi extra.
         getRootPane().setBorder(null);
 
         setBackground(Color.WHITE);
@@ -61,16 +87,20 @@ public class AuthDialog extends JDialog {
         setLocationRelativeTo(parent);
     }
 
+    /**
+     * Ridimensiona la dialog in base alla card visibile.
+     * La logica usa la preferredSize della card e riduce leggermente la larghezza
+     * per evitare margini laterali indesiderati.
+     */
     private void resizeToCurrentCard() {
         SwingUtilities.invokeLater(() -> {
             Component card = getVisibleCard();
             if (card != null) {
                 Dimension pd = card.getPreferredSize();
                 if (pd != null) {
-                    // Riduciamo la larghezza per eliminare i bordi laterali (aumenta/diminuisci se serve)
                     int reducedWidth = pd.width - 80;
 
-                    // Evita valori troppo piccoli su schermi/font diversi
+                    // Protezione per schermi/font diversi: evita una finestra troppo stretta.
                     int minW = 380;
                     if (reducedWidth < minW) reducedWidth = minW;
 
@@ -81,12 +111,17 @@ public class AuthDialog extends JDialog {
                 }
             }
 
-            // Nessun pack(): evitiamo che Swing aggiunga spazio extra
+            // Evitiamo pack(): così non viene aggiunto spazio extra dal layout di Swing.
             setLocationRelativeTo(getOwner());
         });
     }
 
-    /** Ritorna la card attualmente visibile dentro il CardLayout. */
+    /**
+     * Restituisce la card attualmente visibile.
+     * Se per qualche motivo non viene trovata, ritorna un fallback (loginView).
+     *
+     * @return componente visibile nel CardLayout
+     */
     private Component getVisibleCard() {
         for (Component c : content.getComponents()) {
             if (c != null && c.isVisible()) return c;

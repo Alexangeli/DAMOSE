@@ -8,42 +8,110 @@ import java.awt.event.MouseEvent;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
+/**
+ * Dialog modale per la gestione delle impostazioni dell'account.
+ *
+ * Responsabilità:
+ * - mostra una finestra unica con menu laterale e contenuti a schede (CardLayout)
+ * - gestisce tre sezioni: impostazioni generali, tema e statistiche dashboard
+ * - applica uno stile coerente: colori base fissi e soli colori "accent" derivati dal tema
+ *
+ * Note di progetto:
+ * - il tema viene letto in modo sicuro tramite reflection per evitare dipendenze forti dal ThemeManager
+ * - dopo un cambio tema il dialog forza revalidate/repaint per aggiornare la UI
+ */
 public class AccountSettingsDialog extends JDialog {
 
-    // ===== style (ACCENT-only theme: cambiamo SOLO i colori accent, non i testi) =====
-    // Manteniamo la leggibilità: testi sempre scuri su sfondo chiaro.
+    // ===== stile (tema "accent-only": cambiamo solo i colori accent, non i testi) =====
+    // Manteniamo la leggibilità: testi scuri su sfondo chiaro.
+
+    /** Colore di background esterno del dialog (fisso). */
     private static final Color FIX_BG = new Color(245, 245, 245);
+
+    /** Colore della card principale (fisso). */
     private static final Color FIX_CARD = Color.WHITE;
+
+    /** Colore del testo principale (fisso). */
     private static final Color FIX_TEXT = new Color(15, 15, 15);
+
+    /** Colore del testo secondario (fisso). */
     private static final Color FIX_MUTED = new Color(120, 120, 120);
+
+    /** Colore bordi/separatori (fisso). */
     private static final Color FIX_BORDER = new Color(220, 220, 220);
 
+    /** @return background esterno fisso */
     private static Color BG() { return FIX_BG; }
+
+    /** @return background della card principale */
     private static Color CARD() { return FIX_CARD; }
+
+    /** @return colore testo principale */
     private static Color TEXT() { return FIX_TEXT; }
+
+    /** @return colore testo secondario */
     private static Color MUTED() { return FIX_MUTED; }
+
+    /** @return colore bordi */
     private static Color BORDER() { return FIX_BORDER; }
 
     // Solo questi arrivano dal tema (accent)
+
+    /** @return colore primario del tema (accent) */
     private static Color PRIMARY() { return ThemeColors.primary(); }
+
+    /** @return colore primario hover del tema (accent) */
     private static Color PRIMARY_HOVER() { return ThemeColors.primaryHover(); }
 
+    /**
+     * Callback richieste dal dialog per delegare logiche esterne (controller/service).
+     * In questa view non salviamo direttamente dati: notifichiamo chi ha creato il dialog.
+     */
     public interface Callbacks {
-        // Generali
+
+        /**
+         * Salva le impostazioni generali (profilo).
+         *
+         * @param username nuovo username (può essere uguale al precedente)
+         * @param email nuova email (può essere uguale al precedente)
+         * @param newPassword nuova password (può essere vuota se non si vuole modificare)
+         */
         void onSaveGeneral(String username, String email, String newPassword);
 
-        // Tema (placeholder)
-        void onPickTheme(String themeKey); // es: "LIGHT", "DARK", "AMOLED" (o come decidi tu)
+        /**
+         * Richiede il cambio tema selezionato.
+         *
+         * @param themeKey chiave tema (esempi: "LIGHT", "DARK", "AMOLED")
+         */
+        void onPickTheme(String themeKey);
 
-        // Dashboard (dati aggiornabili da fuori)
+        /**
+         * Richiede i dati aggiornati per la sezione dashboard.
+         *
+         * @return dati aggregati delle statistiche della dashboard
+         */
         DashboardData requestDashboardData();
     }
 
+    /**
+     * Dati di riepilogo per la sezione dashboard.
+     * I valori sono sanitizzati in modo che non siano mai negativi.
+     */
     public static class DashboardData {
-        public final int early;    // anticipo (delay < 0, oltre soglia)
-        public final int onTime;   // in orario (|delay| <= soglia)
-        public final int delayed;  // ritardo (delay > 0, oltre soglia)
+        /** Numero passaggi "in anticipo" oltre soglia (delay < 0). */
+        public final int early;
 
+        /** Numero passaggi in orario (|delay| <= soglia). */
+        public final int onTime;
+
+        /** Numero passaggi in ritardo oltre soglia (delay > 0). */
+        public final int delayed;
+
+        /**
+         * @param early conteggio per "in anticipo"
+         * @param onTime conteggio per "in orario"
+         * @param delayed conteggio per "in ritardo"
+         */
         public DashboardData(int early, int onTime, int delayed) {
             this.early = Math.max(0, early);
             this.onTime = Math.max(0, onTime);
@@ -51,29 +119,60 @@ public class AccountSettingsDialog extends JDialog {
         }
     }
 
+    /** Callback esterne del dialog. */
     private final Callbacks cb;
 
     // menu
+    /** Bottone sezione "Generali". */
     private SideMenuButton btnGenerali;
+
+    /** Bottone sezione "Tema". */
     private SideMenuButton btnTema;
+
+    /** Bottone sezione "Dashboard". */
     private SideMenuButton btnDashboard;
 
-    // content cards
+    // contenuto a schede
+    /** Layout per gestire le sezioni a schede. */
     private CardLayout contentCL;
+
+    /** Container delle schede (GEN, THEME, DASH). */
     private JPanel contentCards;
 
+    /** View sezione impostazioni generali. */
     private GeneralSettingsView generalView;
+
+    /** View sezione tema. */
     private ThemeSettingsView themeView;
+
+    /** View sezione statistiche dashboard. */
     private DashboardStatsView dashboardView;
 
-    // promoted UI components for fixed colors application
+    // componenti "promossi" per applicazione colori fissi
+    /** Pannello radice del dialog. */
     private JPanel root;
+
+    /** Card principale bianca che contiene header + body. */
     private JPanel shell;
+
+    /** Titolo nel header. */
     private JLabel title;
+
+    /** Sottotitolo nel header. */
     private JLabel subtitle;
+
+    /** Bottone di chiusura del dialog. */
     private JButton close;
+
+    /** Separatore sotto header. */
     private JSeparator sep;
 
+    /**
+     * Crea il dialog delle impostazioni account e costruisce tutta la UI.
+     *
+     * @param owner finestra owner (posizionamento e modalità)
+     * @param cb callback per delegare salvataggi e lettura dati
+     */
     public AccountSettingsDialog(Window owner, Callbacks cb) {
         super(owner, "Impostazioni account", ModalityType.APPLICATION_MODAL);
         this.cb = cb;
@@ -86,29 +185,39 @@ public class AccountSettingsDialog extends JDialog {
         setSize(Math.max(getWidth(), 780), Math.max(getHeight(), 470));
     }
 
+    /**
+     * Mostra il dialog centrato rispetto all'owner.
+     * Prima della visualizzazione forza l'applicazione dei colori (utile dopo cambi tema).
+     */
     public void showCentered() {
         refreshTheme();
         setLocationRelativeTo(getOwner());
         setVisible(true);
     }
 
+    /**
+     * Costruisce la UI completa:
+     * - header con titolo, sottotitolo e bottone chiudi
+     * - menu laterale per navigazione
+     * - pannello contenuti a CardLayout
+     */
     private void buildUI() {
         root = new JPanel(new BorderLayout());
         root.setBackground(BG());
         root.setBorder(new EmptyBorder(18, 18, 18, 18));
         setContentPane(root);
 
-        // ===== shell bianco =====
+        // card esterna (bianca) che contiene tutto
         shell = new JPanel(new BorderLayout());
         shell.setBackground(CARD());
         shell.setBorder(new EmptyBorder(18, 18, 18, 18));
         root.add(shell, BorderLayout.CENTER);
 
-        // ===== header (titolo + sottotitolo + chiudi) =====
+        // ===== header =====
         JPanel header = new JPanel(new BorderLayout());
         header.setOpaque(false);
 
-        // ===== accent bar (come in Preferiti) =====
+        // Barra accent a sinistra (stile coerente con altre schermate)
         JPanel accent = new JPanel() {
             @Override
             protected void paintComponent(Graphics g) {
@@ -178,13 +287,13 @@ public class AccountSettingsDialog extends JDialog {
         headerSepWrap.add(sep, BorderLayout.CENTER);
         shell.add(headerSepWrap, BorderLayout.CENTER);
 
-        // ===== body (menu + contenuto) =====
+        // ===== body =====
         JPanel body = new JPanel(new BorderLayout());
         body.setOpaque(false);
         body.setBorder(new EmptyBorder(14, 0, 0, 0));
         shell.add(body, BorderLayout.SOUTH);
 
-        // ---- menu sinistro ----
+        // menu sinistro
         JPanel menu = new JPanel();
         menu.setOpaque(false);
         menu.setLayout(new BoxLayout(menu, BoxLayout.Y_AXIS));
@@ -201,7 +310,7 @@ public class AccountSettingsDialog extends JDialog {
         menu.add(btnDashboard);
         menu.add(Box.createVerticalGlue());
 
-        // ---- contenuto destro (cardlayout) ----
+        // contenuto destro
         contentCL = new CardLayout();
         contentCards = new JPanel(contentCL);
         contentCards.setOpaque(false);
@@ -233,15 +342,21 @@ public class AccountSettingsDialog extends JDialog {
         body.add(menu, BorderLayout.WEST);
         body.add(contentWrap, BorderLayout.CENTER);
 
-        // ===== navigation =====
+        // navigazione
         btnGenerali.addActionListener(e -> showSection("GEN"));
         btnTema.addActionListener(e -> showSection("THEME"));
         btnDashboard.addActionListener(e -> showSection("DASH"));
 
-        // start
+        // sezione iniziale
         showSection("GEN");
     }
 
+    /**
+     * Mostra una sezione del dialog e aggiorna lo stato "active" del menu.
+     * Se si entra nella sezione dashboard, forza l'aggiornamento dei dati.
+     *
+     * @param key chiave della sezione ("GEN", "THEME", "DASH")
+     */
     private void showSection(String key) {
         btnGenerali.setActive("GEN".equals(key));
         btnTema.setActive("THEME".equals(key));
@@ -249,7 +364,6 @@ public class AccountSettingsDialog extends JDialog {
 
         contentCL.show(contentCards, key);
 
-        // refresh dashboard when entering
         if ("DASH".equals(key)) {
             dashboardView.refresh();
         }
@@ -257,10 +371,17 @@ public class AccountSettingsDialog extends JDialog {
 
     // ===================== small components =====================
 
+    /**
+     * Bottone del menu laterale con stato hover e stato attivo.
+     * Lo stato attivo viene evidenziato tramite accent bar e background leggero.
+     */
     private static class SideMenuButton extends JButton {
         private boolean hover = false;
         private boolean active = false;
 
+        /**
+         * @param text testo mostrato nel menu
+         */
         SideMenuButton(String text) {
             super(text);
             setFocusPainted(false);
@@ -281,6 +402,11 @@ public class AccountSettingsDialog extends JDialog {
             });
         }
 
+        /**
+         * Imposta lo stato attivo del bottone.
+         *
+         * @param on true se il bottone rappresenta la sezione attualmente visibile
+         */
         void setActive(boolean on) {
             active = on;
             repaint();
@@ -310,12 +436,22 @@ public class AccountSettingsDialog extends JDialog {
         }
     }
 
+    /**
+     * Border arrotondato con spessore configurabile.
+     * Usato per incorniciare l'area contenuti mantenendo lo stile "card".
+     */
     private static class RoundedBorder implements javax.swing.border.Border {
         private final Color color;
         private final int thickness;
         private final int arc;
         private final Insets insets;
 
+        /**
+         * @param color colore del bordo
+         * @param thickness spessore del bordo
+         * @param arc raggio arrotondamento
+         * @param insets padding interno riservato dal bordo
+         */
         RoundedBorder(Color color, int thickness, int arc, Insets insets) {
             this.color = color;
             this.thickness = thickness;
@@ -338,8 +474,8 @@ public class AccountSettingsDialog extends JDialog {
     }
 
     /**
-     * Force a repaint of this dialog after a theme change.
-     * If your ThemeManager already calls updateComponentTreeUI globally, this is still harmless.
+     * Applica l'aggiornamento grafico dopo un cambio tema.
+     * È sicuro anche se il ThemeManager aggiorna già globalmente la UI.
      */
     public void refreshTheme() {
         SwingUtilities.invokeLater(() -> {
@@ -349,6 +485,10 @@ public class AccountSettingsDialog extends JDialog {
         });
     }
 
+    /**
+     * Riapplica i colori fissi sui componenti "promossi".
+     * Il resto dello stile viene gestito da paintComponent o dal Look&Feel.
+     */
     private void applyFixedColors() {
         if (root != null) root.setBackground(BG());
         if (shell != null) shell.setBackground(CARD());
@@ -363,29 +503,60 @@ public class AccountSettingsDialog extends JDialog {
     }
 
     // ===================== THEME (safe via reflection) =====================
+
+    /**
+     * Utility per ottenere i colori "accent" dal tema corrente.
+     *
+     * Scelta implementativa:
+     * - usa reflection per non introdurre dipendenze dirette con View.Theme.ThemeManager
+     * - se non riesce a leggere i campi, usa colori di fallback
+     */
     private static final class ThemeColors {
 
+        /** Colore primario di fallback (accent). */
         private static final Color FALLBACK_PRIMARY = new Color(0xFF, 0x7A, 0x00);
+
+        /** Colore primario hover di fallback (accent). */
         private static final Color FALLBACK_PRIMARY_HOVER = new Color(0xFF, 0x8F, 0x33);
 
         private ThemeColors() {}
 
+        /**
+         * @return colore primario del tema, oppure fallback
+         */
         static Color primary() {
             Color c = fromThemeField("primary");
             return (c != null) ? c : FALLBACK_PRIMARY;
         }
 
+        /**
+         * @return colore primario hover del tema, oppure fallback
+         */
         static Color primaryHover() {
             Color c = fromThemeField("primaryHover");
             return (c != null) ? c : FALLBACK_PRIMARY_HOVER;
         }
 
+        /**
+         * Crea una versione del colore con alpha specificato.
+         *
+         * @param base colore base
+         * @param alpha0to255 valore alpha tra 0 e 255
+         * @return colore con alpha applicato
+         */
         static Color withAlpha(Color base, int alpha0to255) {
             if (base == null) return new Color(0, 0, 0, Math.max(0, Math.min(255, alpha0to255)));
             int a = Math.max(0, Math.min(255, alpha0to255));
             return new Color(base.getRed(), base.getGreen(), base.getBlue(), a);
         }
 
+        /**
+         * Legge un campo pubblico Color dal tema corrente.
+         * Se il tema o il campo non esistono, ritorna null.
+         *
+         * @param fieldName nome del campo (es. "primary", "primaryHover")
+         * @return colore letto oppure null
+         */
         private static Color fromThemeField(String fieldName) {
             try {
                 Class<?> tm = Class.forName("View.Theme.ThemeManager");

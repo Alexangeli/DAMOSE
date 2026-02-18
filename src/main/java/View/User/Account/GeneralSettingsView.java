@@ -4,39 +4,104 @@ import javax.swing.*;
 import java.awt.*;
 import Model.User.Session;
 
+/**
+ * Schermata "Generali" nelle impostazioni account.
+ *
+ * Responsabilità:
+ * - mostra e permette la modifica di username, email e password
+ * - gestisce due stati: visualizzazione (view) e modifica (edit)
+ * - valida i dati base prima di chiamare la callback di salvataggio
+ *
+ * Scelte implementative:
+ * - i dati iniziali vengono letti da Session.getCurrentUser() usando reflection,
+ *   così la view non dipende dalla firma esatta della classe User
+ * - la password viene gestita con una cache locale:
+ *   in view mode viene mascherata, in edit mode viene mostrato il testo inserito
+ * - i colori "accent" (primary) provano a leggere dal ThemeManager, ma hanno fallback
+ */
 public class GeneralSettingsView extends JPanel {
 
+    /**
+     * Callback invocata quando l'utente salva le modifiche.
+     * La view non decide come e dove vengono salvati i dati: delega al chiamante.
+     */
     public interface OnSave {
         void save(String username, String email, String newPassword);
     }
 
-    // Fallback (se ThemeManager non è presente)
+    // ===================== THEME FALLBACK =====================
+
+    /** Colore primary di default se non è disponibile un ThemeManager. */
     private static final Color FALLBACK_PRIMARY = new Color(0xFF, 0x7A, 0x00);
+
+    /** Colore hover di default se non è disponibile un ThemeManager. */
     private static final Color FALLBACK_PRIMARY_HOVER = new Color(0xFF, 0x8F, 0x33);
+
+    /** Colore testo secondario di default. */
     private static final Color FALLBACK_MUTED = new Color(120, 120, 120);
+
+    /** Colore bordo di default. */
     private static final Color FALLBACK_BORDER = new Color(220, 220, 220);
+
+    /** Colore usato per messaggi di errore. */
     private static final Color ERROR = new Color(176, 0, 32);
 
+    // ===================== LAYOUT CONSTANTS =====================
+
+    /** Larghezza standard dei campi (coerente con la card di impostazioni). */
     private static final int FIELD_W = 360;
+
+    /** Altezza standard dei campi. */
     private static final int FIELD_H = 40;
 
+    /** Callback di salvataggio. */
     private final OnSave onSave;
 
+    // ===================== UI FIELDS =====================
+
+    /** Campo username. */
     private JTextField username;
+
+    /** Campo email. */
     private JTextField email;
+
+    /** Campo password (mascherato o in chiaro a seconda della modalità). */
     private JPasswordField password;
+
+    /** Label messaggi (errore / conferma). */
     private JLabel msg;
 
+    // ===================== STATE =====================
+
+    /** True se l'utente sta modificando i campi, false se è in sola visualizzazione. */
     private boolean editMode = false;
+
+    /** Lunghezza della password cache (tenuta per coerenza, anche se non è fondamentale). */
     private int realPasswordLength = 0;
+
+    /** Cache locale della password letta/aggiornata (usata per alternare view/edit senza perdere testo). */
     private String realPassword = "";
+
+    /** Bottone principale: "Modifica" in view mode, "Salva" in edit mode. */
     private HoverScaleFillButton primaryBtn;
 
+    /**
+     * Crea la view e costruisce la UI.
+     *
+     * @param onSave callback per notificare il salvataggio
+     */
     public GeneralSettingsView(OnSave onSave) {
         this.onSave = onSave;
         buildUI();
     }
 
+    /**
+     * Costruisce l'interfaccia:
+     * - titolo, sottotitolo
+     * - campi input con stile arrotondato
+     * - messaggi di errore/feedback
+     * - bottone principale per passare in edit o salvare
+     */
     private void buildUI() {
         setOpaque(false);
         setLayout(new BorderLayout());
@@ -45,7 +110,6 @@ public class GeneralSettingsView extends JPanel {
         card.setOpaque(false);
         card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
         card.setAlignmentX(Component.LEFT_ALIGNMENT);
-        // Extra padding from left border to align better with container
         card.setBorder(BorderFactory.createEmptyBorder(0, 28, 0, 0));
 
         JLabel title = new JLabel("Generali");
@@ -101,33 +165,45 @@ public class GeneralSettingsView extends JPanel {
 
         add(card, BorderLayout.CENTER);
 
-        // inizializza campi con dati reali (Session) e parte in modalità "visualizza"
+        // Caricamento iniziale dati e avvio in modalità view.
         loadFromSession();
         setEditMode(false);
 
         primaryBtn.addActionListener(e -> onPrimaryAction());
         password.addActionListener(e -> {
-            // Enter sulla password salva solo se siamo in edit mode
+            // Enter sulla password: salva solo se siamo già in edit mode.
             if (editMode) primaryBtn.doClick();
         });
     }
 
+    /**
+     * Gestisce il click sul bottone principale:
+     * - in view mode: entra in edit mode
+     * - in edit mode: tenta il salvataggio
+     */
     private void onPrimaryAction() {
-        // Se siamo in view mode → entra in edit mode
         if (!editMode) {
             setEditMode(true);
             msg.setForeground(ThemeColors.textMuted());
             msg.setText(" ");
             return;
         }
-        // Se siamo in edit mode → salva
         doSave();
     }
 
+    /**
+     * Attiva/disattiva la modalità di editing.
+     *
+     * Regole:
+     * - username ed email: abilitati solo in edit mode
+     * - password: resta enabled per essere disegnata correttamente, ma editable cambia
+     * - in edit mode la password è visibile, in view mode è mascherata
+     *
+     * @param on true per entrare in edit mode, false per view mode
+     */
     private void setEditMode(boolean on) {
         this.editMode = on;
 
-        // username/email
         if (username != null) {
             username.setEditable(on);
             username.setEnabled(on);
@@ -137,39 +213,35 @@ public class GeneralSettingsView extends JPanel {
             email.setEnabled(on);
         }
 
-        // password: in VIEW -> masked (******), in EDIT -> visible (plain)
         if (password != null) {
-            // keep enabled so Swing actually paints the text; disable editing instead
             password.setEnabled(true);
             password.setEditable(on);
 
             if (on) {
-                // edit mode: show real characters
                 password.setEchoChar((char) 0);
                 password.setText(realPassword != null ? realPassword : "");
             } else {
-                // view mode: mask with '*'
                 password.setEchoChar('*');
                 password.setText(realPassword != null ? realPassword : "");
-                // optional: avoid focus/caret in view mode
                 password.setCaretPosition(0);
             }
         }
 
-        // testo bottone
         if (primaryBtn != null) {
             primaryBtn.setText(on ? "Salva" : "Modifica");
         }
 
-        // focus sul primo campo quando entri in edit
         if (on && username != null) {
             SwingUtilities.invokeLater(() -> username.requestFocusInWindow());
         }
     }
 
     /**
-     * Popola i campi con i dati reali letti da Session.getCurrentUser().
-     * Usa reflection per non dipendere dalla firma esatta di User.
+     * Popola i campi leggendo l'utente attualmente loggato da Session.
+     *
+     * Nota:
+     * - la lettura avviene via reflection per tollerare differenze di implementazione
+     * - se l'utente o i campi non sono disponibili, la funzione termina senza errori
      */
     private void loadFromSession() {
         try {
@@ -187,20 +259,27 @@ public class GeneralSettingsView extends JPanel {
             realPasswordLength = realPassword.length();
 
             if (password != null) {
-                // default: view mode look (masked)
                 password.setEchoChar('*');
                 password.setText(realPassword);
             }
         } catch (Exception ignored) {
-            // noop
+            // In caso di incompatibilità con la classe User, restiamo in fallback senza interrompere la UI.
         }
     }
 
+    /**
+     * Legge una stringa da un oggetto provando, in ordine:
+     * - metodi getter (nome che inizia con "get")
+     * - campi (anche privati) tramite reflection
+     *
+     * @param obj oggetto sorgente
+     * @param candidates nomi possibili di getter o field
+     * @return valore letto oppure null se non disponibile
+     */
     private static String readString(Object obj, String... candidates) {
         if (obj == null) return null;
         for (String c : candidates) {
             try {
-                // prova getter
                 if (c.startsWith("get")) {
                     var m = obj.getClass().getMethod(c);
                     Object out = m.invoke(obj);
@@ -209,7 +288,6 @@ public class GeneralSettingsView extends JPanel {
                         if (!s.isEmpty()) return s;
                     }
                 } else {
-                    // prova field pubblico/privato
                     var f = obj.getClass().getDeclaredField(c);
                     f.setAccessible(true);
                     Object out = f.get(obj);
@@ -219,12 +297,16 @@ public class GeneralSettingsView extends JPanel {
                     }
                 }
             } catch (Exception ignored) {
-                // continua
+                // Prova il prossimo candidato.
             }
         }
         return null;
     }
 
+    /**
+     * Valida i dati e invoca la callback di salvataggio.
+     * Se il salvataggio parte, la view torna in view mode e ricarica i dati dalla Session.
+     */
     private void doSave() {
         msg.setText(" ");
         msg.setForeground(ERROR);
@@ -244,7 +326,7 @@ public class GeneralSettingsView extends JPanel {
 
         if (onSave != null) onSave.save(u, e, p);
 
-        // aggiorna cache locale (in attesa che il backend aggiorni Session)
+        // Aggiorna cache locale della password solo se l'utente ha inserito qualcosa.
         if (!p.isEmpty()) {
             realPassword = p;
             realPasswordLength = p.length();
@@ -253,15 +335,24 @@ public class GeneralSettingsView extends JPanel {
         msg.setForeground(new Color(20, 140, 0));
         msg.setText("Modifiche salvate.");
 
-        // torna in view mode e ricarica (se il backend aggiorna Session)
         setEditMode(false);
         loadFromSession();
     }
 
+    /**
+     * Normalizza una stringa eliminando spazi e gestendo null.
+     *
+     * @param s input
+     * @return stringa non null, trim
+     */
     private static String safe(String s) {
         return (s == null) ? "" : s.trim();
     }
 
+    /**
+     * Wrapper orizzontale per centrare un componente.
+     * Attualmente non utilizzato, ma mantenuto come utility grafica.
+     */
     private JComponent centerX(JComponent inner) {
         JPanel wrap = new JPanel();
         wrap.setOpaque(false);
@@ -272,6 +363,12 @@ public class GeneralSettingsView extends JPanel {
         return wrap;
     }
 
+    /**
+     * Crea una label allineata a sinistra, con larghezza fissa coerente con i campi.
+     *
+     * @param text testo della label
+     * @return componente label contenuto in un wrapper
+     */
     private JComponent labelLeft(String text) {
         JLabel l = new JLabel(text);
         l.setFont(new Font("SansSerif", Font.PLAIN, 14));
@@ -287,9 +384,18 @@ public class GeneralSettingsView extends JPanel {
         return box;
     }
 
+    /**
+     * Applica stile coerente (sfondo bianco, bordo arrotondato, dimensioni fisse) ad un JTextField.
+     *
+     * Nota:
+     * - lo sfondo resta bianco per massimizzare leggibilità (anche se il tema cambia accent)
+     *
+     * @param field campo da stilizzare
+     * @return wrapper con il campo al centro
+     */
     private JComponent roundedField(JTextField field) {
         field.setOpaque(true);
-        field.setBackground(Color.WHITE); // resta bianco per leggibilità (tema attuale modifica solo accent/border)
+        field.setBackground(Color.WHITE);
         field.setFont(new Font("SansSerif", Font.PLAIN, 14));
         field.setBorder(new ThemedRoundedBorder(1, 12, new Insets(9, 12, 9, 12)));
         field.setPreferredSize(new Dimension(FIELD_W, FIELD_H));
@@ -307,6 +413,10 @@ public class GeneralSettingsView extends JPanel {
 
     // ===== button + border (uguale LoginView) =====
 
+    /**
+     * Bottone primary con riempimento e animazione di scala in hover.
+     * Usa i colori "accent" del tema (o fallback) e mantiene testo bianco.
+     */
     private static class HoverScaleFillButton extends JButton {
         private boolean hover = false;
         private double scale = 1.0;
@@ -365,6 +475,10 @@ public class GeneralSettingsView extends JPanel {
         }
     }
 
+    /**
+     * Bordo arrotondato che usa il colore del tema per il contorno.
+     * Usato per i campi input per mantenere uniformità grafica.
+     */
     private static class ThemedRoundedBorder implements javax.swing.border.Border {
         private final int thickness;
         private final int arc;
@@ -391,6 +505,11 @@ public class GeneralSettingsView extends JPanel {
     }
 
     // ===================== THEME (safe via reflection) =====================
+
+    /**
+     * Helper per leggere i colori dal tema senza dipendere direttamente da ThemeManager.
+     * Se ThemeManager o i campi non esistono, vengono usati fallback coerenti.
+     */
     private static final class ThemeColors {
 
         private ThemeColors() {}
@@ -403,22 +522,17 @@ public class GeneralSettingsView extends JPanel {
         static Color primaryHover() {
             Color c = fromThemeField("primaryHover");
             if (c != null) return c;
-
-            // Se il tema non espone primaryHover, deriviamolo dal primary corrente
-            // (così non ricadiamo sul fallback arancione quando primary è rosso, ecc.)
             return deriveHover(primary());
         }
 
         private static Color deriveHover(Color base) {
             if (base == null) return FALLBACK_PRIMARY_HOVER;
 
-            // schiarisci leggermente senza cambiare alpha
             int a = base.getAlpha();
             int r = base.getRed();
             int g = base.getGreen();
             int b = base.getBlue();
 
-            // +10% verso il bianco
             r = (int) Math.round(r + (255 - r) * 0.10);
             g = (int) Math.round(g + (255 - g) * 0.10);
             b = (int) Math.round(b + (255 - b) * 0.10);
@@ -431,7 +545,6 @@ public class GeneralSettingsView extends JPanel {
         }
 
         static Color text() {
-            // se il tema non espone "text" usiamo un nero standard
             Color c = fromThemeField("text");
             return (c != null) ? c : new Color(15, 15, 15);
         }

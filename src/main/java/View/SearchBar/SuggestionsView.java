@@ -10,20 +10,18 @@ import java.awt.event.MouseListener;
 import java.util.List;
 
 /**
- * Vista per la tendina dei suggerimenti sotto la barra di ricerca.
+ * Vista per la tendina dei suggerimenti sotto la SearchBar.
  *
  * Responsabilità:
- *  - pannello contenitore
- *  - JList + modello
- *  - renderer per StopModel / RouteDirectionOption
- *  - selezione e visibilità
+ * - contenitore grafico (JPanel)
+ * - gestione JList + modello DefaultListModel
+ * - renderer personalizzato per StopModel e RouteDirectionOption
+ * - gestione selezione e visibilità
  *
  * NON gestisce:
- *  - debounce
- *  - ENTER / frecce (logica in SearchBarView)
- *  - chiamate ai controller
- *
- * Creatore: Simone Bonuso
+ * - debounce o eventi di testo (SearchBarView)
+ * - logica di ENTER / frecce
+ * - chiamate ai controller
  */
 public class SuggestionsView {
 
@@ -31,10 +29,13 @@ public class SuggestionsView {
     private final JList<Object> list;
     private final DefaultListModel<Object> model;
 
-    // Cache dell’ultima lista mostrata (utile per rifiltri UI senza richiamare i controller)
+    // Cache per rifiltri rapidi senza richiamare controller
     private List<StopModel> lastStops = List.of();
     private List<RouteDirectionOption> lastLineOptions = List.of();
 
+    /**
+     * Costruttore: inizializza la lista e il renderer.
+     */
     public SuggestionsView() {
         panel = new JPanel(new BorderLayout());
 
@@ -42,12 +43,9 @@ public class SuggestionsView {
         list = new JList<>(model);
         list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         list.setVisibleRowCount(8);
-
-        // La lista NON prende il focus, così ENTER resta sul campo di testo
         list.setFocusable(false);
 
-        // ✅ NEW: scroll più "fluido" e pulito (non cambia la tua logica)
-        list.setFixedCellHeight(-1); // lascia al renderer la gestione altezza
+        list.setFixedCellHeight(-1); // altezza gestita dal renderer
         list.setAutoscrolls(true);
 
         // Renderer per StopModel / RouteDirectionOption
@@ -87,8 +85,6 @@ public class SuggestionsView {
         });
 
         JScrollPane scroll = new JScrollPane(list);
-
-        // ✅ NEW: evita bordi pesanti e migliora lo scroll
         scroll.setBorder(BorderFactory.createEmptyBorder());
         scroll.getVerticalScrollBar().setUnitIncrement(16);
 
@@ -96,40 +92,17 @@ public class SuggestionsView {
         panel.setVisible(false);
     }
 
-    // ===================== ACCESSO AL PANNELLO =====================
+    // ===================== ACCESSO =====================
 
-    public JPanel getPanel() {
-        return panel;
-    }
+    public JPanel getPanel() { return panel; }
+    public boolean isVisible() { return panel.isVisible(); }
+    public boolean hasSuggestions() { return !model.isEmpty(); }
 
-    public boolean isVisible() {
-        return panel.isVisible();
-    }
+    public List<StopModel> getAllStops() { return lastStops; }
+    public List<RouteDirectionOption> getAllLineOptions() { return lastLineOptions; }
 
-    public boolean hasSuggestions() {
-        return !model.isEmpty();
-    }
-
-    // ===================== CACHE (per refilter UI) =====================
-
-    public List<StopModel> getAllStops() {
-        return lastStops;
-    }
-
-    public List<RouteDirectionOption> getAllLineOptions() {
-        return lastLineOptions;
-    }
-
-    // ======================== SELEZIONE LISTA =======================
-
-    public int size() {
-        return model.getSize();
-    }
-
-    public int getSelectedIndex() {
-        return list.getSelectedIndex();
-    }
-
+    public int size() { return model.getSize(); }
+    public int getSelectedIndex() { return list.getSelectedIndex(); }
     public void setSelectedIndex(int index) {
         if (index < 0 || index >= model.getSize()) return;
         list.setSelectedIndex(index);
@@ -142,20 +115,15 @@ public class SuggestionsView {
         }
     }
 
-    public Object getSelectedValue() {
-        return list.getSelectedValue();
-    }
+    public Object getSelectedValue() { return list.getSelectedValue(); }
 
-    public void addListSelectionListener(ListSelectionListener l) {
-        list.addListSelectionListener(l);
-    }
+    public void addListSelectionListener(ListSelectionListener l) { list.addListSelectionListener(l); }
+    public void addMouseListener(MouseListener l) { list.addMouseListener(l); }
 
-    public void addMouseListener(MouseListener l) {
-        list.addMouseListener(l);
-    }
-
-    // ✅ NEW: feature richiesta — scroll/selection con frecce anche senza focus
-    // (SearchBarView può chiamare questo metodo su VK_UP/VK_DOWN)
+    /**
+     * Muove la selezione su e giù senza richiedere il focus.
+     * Usato dalle frecce della SearchBar.
+     */
     public void moveSelection(int delta) {
         int n = model.getSize();
         if (n <= 0) return;
@@ -164,21 +132,18 @@ public class SuggestionsView {
         if (idx < 0) idx = 0;
 
         int next = idx + delta;
-
-        // wrap
         if (next < 0) next = n - 1;
         if (next >= n) next = 0;
 
         setSelectedIndex(next);
     }
 
-    // ✅ NEW: in caso ti serva forzare lo scroll sul selezionato
     public void ensureSelectedVisible() {
         int idx = list.getSelectedIndex();
         if (idx >= 0) list.ensureIndexIsVisible(idx);
     }
 
-    // ======================= MOSTRARE / NASCONDERE =======================
+    // ===================== MOSTRA / NASCONDI =====================
 
     public void hide() {
         model.clear();
@@ -199,9 +164,7 @@ public class SuggestionsView {
             return;
         }
 
-        for (StopModel s : lastStops) {
-            model.addElement(s);
-        }
+        for (StopModel s : lastStops) model.addElement(s);
 
         panel.setVisible(true);
         selectFirstIfNone();
@@ -219,9 +182,7 @@ public class SuggestionsView {
             return;
         }
 
-        for (RouteDirectionOption opt : lastLineOptions) {
-            model.addElement(opt);
-        }
+        for (RouteDirectionOption opt : lastLineOptions) model.addElement(opt);
 
         panel.setVisible(true);
         selectFirstIfNone();
