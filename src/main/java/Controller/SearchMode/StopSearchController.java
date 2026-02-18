@@ -10,13 +10,49 @@ import java.util.List;
 import Controller.Map.MapController;
 import Controller.StopLines.StopLinesController;
 
+/**
+ * Controller responsabile della gestione della ricerca per FERMATA.
+ *
+ * Viene utilizzato quando l'utente è in modalità Stop (ricerca fermata)
+ * nella dashboard. Coordina:
+ * - SearchBarView per input e suggerimenti
+ * - MapController per il centramento della mappa
+ * - StopLinesController per mostrare le linee che passano dalla fermata
+ *
+ * Il controller interroga il file GTFS statico (stops.csv) tramite StopService.
+ * Non gestisce logica realtime: si occupa solo della selezione e visualizzazione
+ * della fermata e delle relative linee.
+ *
+ * Note:
+ * - I risultati vengono limitati a massimo 30 elementi per evitare
+ *   sovraccarico visivo nei suggerimenti.
+ * - È presente una gestione esplicita del caret del JTextField per
+ *   evitare problemi di sovrascrittura del testo durante la digitazione.
+ *
+ * @author Simone Bonuso
+ */
 public class StopSearchController {
 
+    /** Vista della barra di ricerca (input + suggerimenti). */
     private final SearchBarView searchView;
+
+    /** Controller della mappa per centramento su fermata selezionata. */
     private final MapController mapController;
+
+    /** Percorso del file stops.csv (GTFS statico). */
     private final String stopsCsvPath;
+
+    /** Controller che mostra le linee associate a una fermata. */
     private final StopLinesController stopLinesController;
 
+    /**
+     * Crea un controller per la gestione della ricerca fermate.
+     *
+     * @param searchView vista contenente il campo di ricerca e suggerimenti
+     * @param mapController controller della mappa
+     * @param stopsCsvPath percorso al file GTFS stops.csv
+     * @param stopLinesController controller per visualizzare le linee della fermata
+     */
     public StopSearchController(SearchBarView searchView,
                                 MapController mapController,
                                 String stopsCsvPath,
@@ -27,6 +63,16 @@ public class StopSearchController {
         this.stopLinesController = stopLinesController;
     }
 
+    /**
+     * Gestisce l'evento di ricerca esplicita (es. pressione Invio).
+     *
+     * Comportamento:
+     * - Se non viene trovato nulla, mostra un messaggio informativo.
+     * - Se viene trovata una sola fermata, centra la mappa e mostra le linee.
+     * - Se vengono trovate più fermate, mostra i suggerimenti.
+     *
+     * @param query testo inserito dall'utente
+     */
     public void onSearch(String query) {
         if (query == null || query.isBlank()) return;
 
@@ -51,42 +97,70 @@ public class StopSearchController {
         }
     }
 
+    /**
+     * Gestisce l'aggiornamento in tempo reale del testo digitato.
+     *
+     * Mostra suggerimenti già dal primo carattere.
+     * Se il campo viene svuotato, nasconde i suggerimenti.
+     *
+     * @param text testo corrente nel campo di ricerca
+     */
     public void onTextChanged(String text) {
         if (text == null || text.isBlank()) {
             searchView.hideSuggestions();
             return;
         }
 
-        // ✅ suggerimenti da subito (1 carattere)
         List<StopModel> results = StopService.searchStopByName(text, stopsCsvPath);
         if (results.size() > 30) results = results.subList(0, 30);
 
         searchView.showStopSuggestions(results);
 
-        // ✅ evita che il field rimanga selezionato e sovrascriva quello che digiti dopo
+        // Evita che il testo rimanga selezionato e venga sovrascritto
+        // durante la digitazione successiva
         clearSelectionSoTypingDoesNotOverwrite();
     }
 
+    /**
+     * Gestisce la selezione di un suggerimento.
+     *
+     * Centra la mappa sulla fermata scelta e,
+     * se disponibile, aggiorna il pannello con le linee associate.
+     *
+     * @param stop fermata selezionata
+     */
     public void onSuggestionSelected(StopModel stop) {
         if (stop == null) return;
+
         mapController.centerMapOnStop(stop);
+
         if (stopLinesController != null) {
             stopLinesController.showLinesForStop(stop);
         }
     }
 
+    /**
+     * Ripristina correttamente il caret del campo di testo.
+     *
+     * Serve a evitare un comportamento anomalo in cui il testo
+     * viene sovrascritto o scritto "al contrario" se il caret
+     * rimane posizionato all'inizio del campo dopo l'aggiornamento
+     * dei suggerimenti.
+     *
+     * L'operazione viene eseguita sull'Event Dispatch Thread
+     * per rispettare il modello di threading di Swing.
+     */
     private void clearSelectionSoTypingDoesNotOverwrite() {
         SwingUtilities.invokeLater(() -> {
             JTextField f = searchView.getSearchField();
 
-            // se per qualche motivo il caret finisce a 0 mentre stai scrivendo,
-            // lo riportiamo in fondo per non “scrivere al contrario”
             int pos = f.getCaretPosition();
             int len = f.getText() == null ? 0 : f.getText().length();
+
             if (pos == 0 && len > 0) pos = len;
 
             f.setCaretPosition(pos);
-            f.select(pos, pos); // selection vuota
+            f.select(pos, pos);
         });
     }
 }
