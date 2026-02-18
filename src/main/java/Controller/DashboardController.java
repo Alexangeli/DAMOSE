@@ -1,5 +1,8 @@
 package Controller;
 
+import Model.ArrivalRow;
+import java.lang.reflect.Method;
+
 import Controller.Map.MapController;
 import Controller.SearchMode.LineSearchController;
 import Controller.SearchMode.SearchMode;
@@ -89,9 +92,6 @@ public class DashboardController {
         );
 
         // SEARCH CONTROLLERS
-        this.stopSearchController =
-                new StopSearchController(searchBar, mapController, stopsCsvPath);
-
         this.lineSearchController =
                 new LineSearchController(searchBar, mapController, routesCsvPath, tripsCsvPath);
 
@@ -99,8 +99,19 @@ public class DashboardController {
         this.lineStopsController =
                 new LineStopsController(lineStopsView, repo, mapController, arrivalPredictionService);
 
+        // ✅ STOP MODE: fermata -> arrivi (linee + orario) + doppio click per aprire dettagli linea
         this.stopLinesController =
-                new StopLinesController(lineStopsView, repo, mapController, arrivalPredictionService);
+                new StopLinesController(
+                        lineStopsView,
+                        repo,
+                        mapController,
+                        arrivalPredictionService,
+                        row -> openLineFromArrivalRow(row, searchBar, lineStopsView)
+                );
+
+        // ✅ StopSearchController ora richiama automaticamente stopLinesController.showLinesForStop(stop)
+        this.stopSearchController =
+                new StopSearchController(searchBar, mapController, stopsCsvPath, stopLinesController);
 
         // FAVORITES
         FavoritesView favoritesView = new FavoritesView();
@@ -108,6 +119,9 @@ public class DashboardController {
                 new FavoritesController(favoritesView, mapController, lineStopsController);
 
         favoritesButton.addActionListener(e -> favoritesController.refreshView());
+
+        // ✅ LINE MODE: doppio click su fermata -> switch a STOP + apri dettagli fermata
+        lineStopsView.setOnStopDoubleClick(stop -> openStopFromLineStopDoubleClick(stop, searchBar, lineStopsView));
 
         // CALLBACKS
         searchBar.setOnModeChanged(mode -> {
@@ -142,8 +156,8 @@ public class DashboardController {
             mapController.clearRouteHighlight();
             mapController.clearVehicles();
 
+            // stopSearchController gestisce anche l'apertura delle linee alla fermata
             stopSearchController.onSuggestionSelected(stop);
-            stopLinesController.showLinesForStop(stop);
         });
 
         searchBar.setOnRouteDirectionSelected((RouteDirectionOption option) -> {
@@ -164,6 +178,104 @@ public class DashboardController {
             mapController.clearVehicles();
             mapController.clearHighlightedStop();
         });
+    }
+
+    private void openStopFromLineStopDoubleClick(StopModel stop, SearchBarView searchBar, LineStopsView lineStopsView) {
+        if (stop == null) return;
+
+        // 1) switch SearchBar to STOP mode (reflection to match your SearchBarView API)
+        try {
+            Method m = searchBar.getClass().getMethod("setMode", SearchMode.class);
+            m.invoke(searchBar, SearchMode.STOP);
+        } catch (NoSuchMethodException ignored) {
+            try {
+                Method m2 = searchBar.getClass().getMethod("setCurrentMode", SearchMode.class);
+                m2.invoke(searchBar, SearchMode.STOP);
+            } catch (NoSuchMethodException ignored2) {
+                try {
+                    Method m3 = searchBar.getClass().getMethod("switchTo", SearchMode.class);
+                    m3.invoke(searchBar, SearchMode.STOP);
+                } catch (Exception ignored3) {
+                    // If no explicit API exists, we still proceed.
+                }
+            } catch (Exception ex) {
+                System.err.println("[DashboardController] Unable to set STOP mode: " + ex.getMessage());
+            }
+        } catch (Exception ex) {
+            System.err.println("[DashboardController] Unable to set STOP mode: " + ex.getMessage());
+        }
+
+        // 2) clear panel selection/suggestions to avoid UI glitches
+        if (lineStopsView != null) lineStopsView.clear();
+        searchBar.hideSuggestions();
+
+        // 3) put stop name into the search field (best-effort)
+        String query = (stop.getName() != null) ? stop.getName().trim() : "";
+        try {
+            JTextField f = searchBar.getSearchField();
+            f.setText(query);
+            f.setCaretPosition(query.length());
+            f.select(query.length(), query.length());
+        } catch (Exception ignored) {
+            // If SearchBarView doesn't expose the field, it's fine.
+        }
+
+        // 4) run the normal STOP pipeline (center + show arrivals/lines)
+        mapController.showAllStops();
+        mapController.clearRouteHighlight();
+        mapController.clearVehicles();
+        stopSearchController.onSuggestionSelected(stop);
+    }
+
+    private void openLineFromArrivalRow(ArrivalRow row, SearchBarView searchBar, LineStopsView lineStopsView) {
+        if (row == null) return;
+
+        // Prefer the user-facing line short name if available; fallback to routeId.
+        String query = (row.line != null && !row.line.isBlank()) ? row.line.trim() : null;
+        if ((query == null || query.isBlank()) && row.routeId != null) query = row.routeId.trim();
+        if (query == null || query.isBlank()) return;
+
+        // 1) switch SearchBar to LINE mode (reflection to match your SearchBarView API)
+        try {
+            Method m = searchBar.getClass().getMethod("setMode", SearchMode.class);
+            m.invoke(searchBar, SearchMode.LINE);
+        } catch (NoSuchMethodException ignored) {
+            try {
+                Method m2 = searchBar.getClass().getMethod("setCurrentMode", SearchMode.class);
+                m2.invoke(searchBar, SearchMode.LINE);
+            } catch (NoSuchMethodException ignored2) {
+                try {
+                    Method m3 = searchBar.getClass().getMethod("switchTo", SearchMode.class);
+                    m3.invoke(searchBar, SearchMode.LINE);
+                } catch (Exception ignored3) {
+                    // If no explicit API exists, we still proceed with the search; mode callback may not fire.
+                }
+            } catch (Exception ex) {
+                System.err.println("[DashboardController] Unable to set LINE mode: " + ex.getMessage());
+            }
+        } catch (Exception ex) {
+            System.err.println("[DashboardController] Unable to set LINE mode: " + ex.getMessage());
+        }
+
+        // 2) clear panel selection/suggestions to avoid UI glitches
+        if (lineStopsView != null) lineStopsView.clear();
+        searchBar.hideSuggestions();
+
+        // 3) put query into the search field
+        try {
+            JTextField f = searchBar.getSearchField();
+            f.setText(query);
+            f.setCaretPosition(query.length());
+            f.select(query.length(), query.length());
+        } catch (Exception ignored) {
+            // If SearchBarView doesn't expose the field, it's fine; LineSearchController will still run.
+        }
+
+        // 4) run the normal LINE search pipeline
+        mapController.clearHighlightedStop();
+        mapController.clearRouteHighlight();
+        mapController.clearVehicles();
+        lineSearchController.onSearch(query);
     }
 
     public DashboardView getView() {

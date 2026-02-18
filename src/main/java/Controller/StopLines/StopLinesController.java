@@ -13,6 +13,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.lang.reflect.Method;
+import java.util.function.Consumer;
 
 public class StopLinesController {
 
@@ -20,6 +22,7 @@ public class StopLinesController {
     private final MapController mapController;
     private final ArrivalPredictionService arrivalPredictionService;
     private final StaticGtfsRepository repo;
+    private final Consumer<ArrivalRow> onArrivalDoubleClick;
 
     private volatile String currentStopId = null;
     private volatile String currentStopName = null;
@@ -30,14 +33,34 @@ public class StopLinesController {
                                StaticGtfsRepository repo,
                                MapController mapController,
                                ArrivalPredictionService arrivalPredictionService) {
+        this(view, repo, mapController, arrivalPredictionService, null);
+    }
+
+    public StopLinesController(LineStopsView view,
+                               StaticGtfsRepository repo,
+                               MapController mapController,
+                               ArrivalPredictionService arrivalPredictionService,
+                               Consumer<ArrivalRow> onArrivalDoubleClick) {
 
         this.view = view;
         this.repo = repo;
         this.mapController = mapController;
         this.arrivalPredictionService = arrivalPredictionService;
+        this.onArrivalDoubleClick = onArrivalDoubleClick;
 
         refreshTimer = new Timer(30_000, e -> refreshIfStopSelected());
         refreshTimer.setRepeats(true);
+
+        // ✅ Optional: if LineStopsView exposes a double-click hook, attach it.
+        // We use reflection to avoid compile errors until LineStopsView is updated.
+        try {
+            Method m = this.view.getClass().getMethod("setOnArrivalDoubleClick", Consumer.class);
+            m.invoke(this.view, (Consumer<ArrivalRow>) this::handleArrivalDoubleClick);
+        } catch (NoSuchMethodException ignored) {
+            // LineStopsView not yet updated; will be wired once the method exists.
+        } catch (Exception ex) {
+            System.err.println("[StopLinesController] Unable to wire double click: " + ex.getMessage());
+        }
 
         this.view.setOnArrivalSelected(row -> {
             if (row == null) return;
@@ -65,6 +88,13 @@ public class StopLinesController {
             List<StopModel> stops = TripStopsService.getStopsForRouteDirection(routeId, dir, repo);
             if (!stops.isEmpty()) mapController.hideUselessStops(stops);
         });
+    }
+
+    private void handleArrivalDoubleClick(ArrivalRow row) {
+        if (row == null) return;
+        if (onArrivalDoubleClick != null) {
+            onArrivalDoubleClick.accept(row);
+        }
     }
 
     public void showLinesForStop(StopModel stop) {
