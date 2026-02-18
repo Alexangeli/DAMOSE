@@ -18,5 +18,5 @@ public class AppConfig {
     public static final int REFRESH_INTERVAL_SECONDS = 30;
 
     // App
-    public static final String APP_TITLE = "Damose - Rome Transit Tracker";
+    public static final String APP_TITLE = "eNnamo - Rome Transit Tracker";
 }
