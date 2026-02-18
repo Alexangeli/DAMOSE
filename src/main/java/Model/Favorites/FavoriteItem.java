@@ -6,24 +6,37 @@ import Model.Points.StopModel;
 import java.util.Objects;
 
 /**
- * Rappresenta un elemento nei preferiti:
- *  - una fermata (STOP)
- *  - una linea+direzione (LINE)
+ * Rappresenta un elemento salvato tra i preferiti dell’utente.
+ *
+ * Un preferito può essere di due tipi:
+ * - una fermata (STOP)
+ * - una linea con una specifica direzione (LINE)
+ *
+ * La classe è immutabile: una volta creato l’oggetto, i suoi dati
+ * non possono essere modificati. Questo semplifica la gestione
+ * nella lista dei preferiti ed evita stati inconsistenti.
  */
 public class FavoriteItem {
 
     private final FavoriteType type;
 
-    // dati fermata
+    // ===================== DATI FERMATA =====================
+    // Valorizzati solo se type == STOP
     private final String stopId;
     private final String stopName;
 
-    // dati linea
+    // ===================== DATI LINEA =====================
+    // Valorizzati solo se type == LINE
     private final String routeId;
     private final String routeShortName;
     private final int directionId;
     private final String headsign;
 
+    /**
+     * Costruttore privato.
+     * L’oggetto viene creato solo tramite i factory method,
+     * così evitiamo stati incoerenti (es. STOP con dati linea).
+     */
     private FavoriteItem(FavoriteType type,
                          String stopId,
                          String stopName,
@@ -40,10 +53,17 @@ public class FavoriteItem {
         this.headsign = headsign;
     }
 
-    // ===== factory methods =====
+    // ===================== FACTORY METHODS =====================
 
+    /**
+     * Crea un preferito di tipo STOP a partire da un modello fermata.
+     *
+     * @param stop fermata selezionata
+     * @return nuovo FavoriteItem oppure null se il parametro è null
+     */
     public static FavoriteItem fromStop(StopModel stop) {
         if (stop == null) return null;
+
         return new FavoriteItem(
                 FavoriteType.STOP,
                 stop.getId(),
@@ -55,8 +75,16 @@ public class FavoriteItem {
         );
     }
 
+    /**
+     * Crea un preferito di tipo LINE a partire da una scelta
+     * linea + direzione.
+     *
+     * @param opt opzione selezionata dall’utente
+     * @return nuovo FavoriteItem oppure null se il parametro è null
+     */
     public static FavoriteItem fromLine(RouteDirectionOption opt) {
         if (opt == null) return null;
+
         return new FavoriteItem(
                 FavoriteType.LINE,
                 null,
@@ -68,7 +96,48 @@ public class FavoriteItem {
         );
     }
 
-    // ===== getters usati dal controller =====
+    /**
+     * Crea manualmente un preferito di tipo STOP.
+     * Utile quando i dati provengono da salvataggio locale.
+     */
+    public static FavoriteItem stop(String stopId, String stopName) {
+        if (stopId == null || stopId.isBlank()) return null;
+
+        String name = (stopName == null || stopName.isBlank()) ? stopId : stopName;
+
+        return new FavoriteItem(
+                FavoriteType.STOP,
+                stopId,
+                name,
+                null,
+                null,
+                -1,
+                null
+        );
+    }
+
+    /**
+     * Crea manualmente un preferito di tipo LINE.
+     * Usato ad esempio durante il caricamento da file o database.
+     */
+    public static FavoriteItem line(String routeId,
+                                    String routeShortName,
+                                    int directionId,
+                                    String headsign) {
+        if (routeId == null || routeId.isBlank()) return null;
+
+        return new FavoriteItem(
+                FavoriteType.LINE,
+                null,
+                null,
+                routeId,
+                routeShortName == null ? "" : routeShortName,
+                directionId,
+                headsign == null ? "" : headsign
+        );
+    }
+
+    // ===================== GETTERS =====================
 
     public FavoriteType getType() {
         return type;
@@ -98,7 +167,12 @@ public class FavoriteItem {
         return headsign;
     }
 
-    /** Testo leggibile per la JList. */
+    // ===================== RAPPRESENTAZIONE TESTUALE =====================
+
+    /**
+     * Restituisce una stringa leggibile per la visualizzazione
+     * nella lista dei preferiti (es. JList).
+     */
     public String toDisplayString() {
         if (type == FavoriteType.STOP) {
             return "[Fermata] " + stopName + " (" + stopId + ")";
@@ -115,11 +189,19 @@ public class FavoriteItem {
         return toDisplayString();
     }
 
-    // per evitare duplicati nella lista preferiti
+    // ===================== EQUALS E HASHCODE =====================
+
+    /**
+     * Due preferiti sono considerati uguali se rappresentano
+     * la stessa entità logica.
+     *
+     * Questo permette di evitare duplicati nella lista preferiti.
+     */
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
         if (!(o instanceof FavoriteItem that)) return false;
+
         return directionId == that.directionId
                 && type == that.type
                 && Objects.equals(stopId, that.stopId)
@@ -130,32 +212,5 @@ public class FavoriteItem {
     @Override
     public int hashCode() {
         return Objects.hash(type, stopId, routeId, directionId, headsign);
-    }
-
-    public static FavoriteItem stop(String stopId, String stopName) {
-        if (stopId == null || stopId.isBlank()) return null;
-        String name = (stopName == null || stopName.isBlank()) ? stopId : stopName;
-        return new FavoriteItem(
-                FavoriteType.STOP,
-                stopId,
-                name,
-                null,
-                null,
-                -1,
-                null
-        );
-    }
-
-    public static FavoriteItem line(String routeId, String routeShortName, int directionId, String headsign) {
-        if (routeId == null || routeId.isBlank()) return null;
-        return new FavoriteItem(
-                FavoriteType.LINE,
-                null,
-                null,
-                routeId,
-                routeShortName == null ? "" : routeShortName,
-                directionId,
-                headsign == null ? "" : headsign
-        );
     }
 }
