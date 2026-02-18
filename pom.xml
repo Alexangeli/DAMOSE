@@ -91,7 +91,6 @@
                     <source>25</source>
                     <target>25</target>
                     <encoding>${project.build.sourceEncoding}</encoding>
-                    <compilerArgs>--enable-preview</compilerArgs>
                 </configuration>
             </plugin>
 
