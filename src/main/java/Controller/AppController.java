@@ -22,6 +22,11 @@ import config.AppConfig;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -65,10 +70,18 @@ public class AppController {
 
     // ========================= CSV GTFS statici =========================
 
-    private final String stopsCsvPath     = "src/main/resources/rome_static_gtfs/stops.csv";
-    private final String routesCsvPath    = "src/main/resources/rome_static_gtfs/routes.csv";
-    private final String tripsCsvPath     = "src/main/resources/rome_static_gtfs/trips.csv";
-    private final String stopTimesCsvPath = "src/main/resources/rome_static_gtfs/stop_times.csv";
+    // In IDE questi file esistono anche su filesystem sotto src/main/resources.
+    // Nel JAR invece vanno letti dal classpath: li estraiamo in una cartella temporanea e passiamo un path reale.
+    private static final String STOPS_RES      = "/rome_static_gtfs/stops.csv";
+    private static final String ROUTES_RES     = "/rome_static_gtfs/routes.csv";
+    private static final String TRIPS_RES      = "/rome_static_gtfs/trips.csv";
+    private static final String STOP_TIMES_RES = "/rome_static_gtfs/stop_times.csv";
+
+    // Path reali su disco (risolti a runtime). Verranno valorizzati in start().
+    private String stopsCsvPath;
+    private String routesCsvPath;
+    private String tripsCsvPath;
+    private String stopTimesCsvPath;
 
     // ========================= Riferimenti runtime =========================
 
@@ -105,6 +118,9 @@ public class AppController {
         VehiclePositionsService vehicleSvc = new VehiclePositionsService(GTFS_RT_VEHICLE_URL);
         TripUpdatesService tripSvc = new TripUpdatesService(GTFS_RT_TRIP_URL);
         AlertsService alertsSvc = new AlertsService(GTFS_RT_ALERTS_URL);
+
+        // 1.5) Risolvo i CSV GTFS statici: in IDE posso usare src/main/resources, nel JAR estraggo dal classpath.
+        resolveStaticGtfsPaths();
 
         // 2) Dashboard controller (riceve i service per leggere cache e costruire UI)
         dashboardController = new DashboardController(
@@ -710,5 +726,58 @@ public class AppController {
         } catch (Exception ignored) {}
 
         return null;
+    }
+    /**
+     * Risolve i path dei CSV GTFS statici.
+     * - Se esistono su filesystem (esecuzione da progetto/IDE), usa quelli.
+     * - Altrimenti (esecuzione da JAR), estrae le risorse dal classpath in una cartella temporanea.
+     */
+    private void resolveStaticGtfsPaths() {
+        // Tentativo 1: path locali (IDE)
+        String base = "src/main/resources";
+        Path pStops = Path.of(base, "rome_static_gtfs", "stops.csv");
+        Path pRoutes = Path.of(base, "rome_static_gtfs", "routes.csv");
+        Path pTrips = Path.of(base, "rome_static_gtfs", "trips.csv");
+        Path pStopTimes = Path.of(base, "rome_static_gtfs", "stop_times.csv");
+
+        if (Files.exists(pStops) && Files.exists(pRoutes) && Files.exists(pTrips) && Files.exists(pStopTimes)) {
+            stopsCsvPath = pStops.toString();
+            routesCsvPath = pRoutes.toString();
+            tripsCsvPath = pTrips.toString();
+            stopTimesCsvPath = pStopTimes.toString();
+            System.out.println("[AppController] GTFS static (IDE): " + pStops);
+            return;
+        }
+
+        // Tentativo 2: estrazione da classpath (JAR)
+        try {
+            Path dir = Files.createTempDirectory("damose-gtfs-");
+            dir.toFile().deleteOnExit();
+
+            stopsCsvPath = extractResourceToFile(STOPS_RES, dir).toString();
+            routesCsvPath = extractResourceToFile(ROUTES_RES, dir).toString();
+            tripsCsvPath = extractResourceToFile(TRIPS_RES, dir).toString();
+            stopTimesCsvPath = extractResourceToFile(STOP_TIMES_RES, dir).toString();
+
+            System.out.println("[AppController] GTFS static (JAR extracted): " + stopsCsvPath);
+        } catch (IOException e) {
+            throw new RuntimeException("Impossibile risolvere i CSV GTFS statici (mancano risorse nel JAR?)", e);
+        }
+    }
+
+    private static Path extractResourceToFile(String resourcePath, Path targetDir) throws IOException {
+        if (resourcePath == null || resourcePath.isBlank()) {
+            throw new IOException("resourcePath vuoto");
+        }
+        try (InputStream in = AppController.class.getResourceAsStream(resourcePath)) {
+            if (in == null) {
+                throw new IOException("Risorsa non trovata nel classpath: " + resourcePath);
+            }
+            String fileName = Path.of(resourcePath).getFileName().toString();
+            Path out = targetDir.resolve(fileName);
+            Files.copy(in, out, StandardCopyOption.REPLACE_EXISTING);
+            out.toFile().deleteOnExit();
+            return out;
+        }
     }
 }
