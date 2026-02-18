@@ -542,11 +542,8 @@ public class AppController {
             // aggiorna anche l'icona dell'app in base al tema
             if (frame != null) updateAppIcon(frame, themeKey);
 
-            // 5) In ogni caso, forza update UI per repaint completo
+            // repaint leggero senza ricreare la UI (evita reset font)
             if (frame != null) {
-                SwingUtilities.updateComponentTreeUI(frame);
-                frame.invalidate();
-                frame.validate();
                 frame.repaint();
             }
 
@@ -560,9 +557,6 @@ public class AppController {
             // fallback: solo repaint
             if (frame != null) updateAppIcon(frame, themeKey);
             if (frame != null) {
-                SwingUtilities.updateComponentTreeUI(frame);
-                frame.invalidate();
-                frame.validate();
                 frame.repaint();
             }
         }
