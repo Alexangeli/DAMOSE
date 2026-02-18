@@ -56,9 +56,9 @@ public class MapController {
     private Point dragPrev = null; // punto precedente per drag
 
     private final ShapePainter shapePainter;
-    final String shapesPath  = "src/main/resources/rome_static_gtfs/shapes.csv";
-    final String routesPath  = "src/main/resources/rome_static_gtfs/routes.csv";
-    final String tripsPath   = "src/main/resources/rome_static_gtfs/trips.csv";
+    final String shapesPath = "src/main/resources/rome_static_gtfs/shapes.csv";
+    final String routesPath = "src/main/resources/rome_static_gtfs/routes.csv";
+    final String tripsPath = "src/main/resources/rome_static_gtfs/trips.csv";
 
     // 👉 nuova: posizione della fermata evidenziata (marker speciale)
     private GeoPosition highlightedPosition = null;
@@ -473,8 +473,6 @@ public class MapController {
     }
 
 
-
-
     public void highlightRouteAllDirections(String routeId) {
         if (routeId == null || routeId.isBlank()) return;
 
@@ -495,6 +493,7 @@ public class MapController {
 
         refreshView();
     }
+
     // ✅ LINE-SEARCH: evidenzia e fa fit-zoom sulla shape
     public void highlightRouteFitLine(String routeId, String directionId) {
         if (routeId == null || routeId.isBlank() || directionId == null) return;
@@ -625,7 +624,7 @@ public class MapController {
             Point2D p1 = map.getTileFactory().geoToPixel(new GeoPosition(maxLat, minLon), z);
             Point2D p2 = map.getTileFactory().geoToPixel(new GeoPosition(minLat, maxLon), z);
 
-            double widthPx  = Math.abs(p2.getX() - p1.getX());
+            double widthPx = Math.abs(p2.getX() - p1.getX());
             double heightPx = Math.abs(p2.getY() - p1.getY());
 
             if (widthPx <= usableW && heightPx <= usableH) {
@@ -712,11 +711,11 @@ public class MapController {
 
         provider.addListener(state -> SwingUtilities.invokeLater(() -> {
             if (state == ConnectionState.OFFLINE) {
-                // ✅ niente realtime in offline
+                View.Map.CustomTileFactory.setOfflineOnly(true);
                 clearVehicles();
-                vehiclesRefreshTimer.stop(); // opzionale ma consigliato
+                vehiclesRefreshTimer.stop();
             } else {
-                // ✅ online: puoi riprendere
+                View.Map.CustomTileFactory.setOfflineOnly(false);
                 if (!vehiclesRefreshTimer.isRunning()) vehiclesRefreshTimer.start();
                 refreshVehiclesLayerIfNeeded();
             }
