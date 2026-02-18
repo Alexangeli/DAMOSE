@@ -1,5 +1,8 @@
 package Controller;
 
+import Model.ArrivalRow;
+import java.lang.reflect.Method;
+
 import Controller.Map.MapController;
 import Controller.SearchMode.LineSearchController;
 import Controller.SearchMode.SearchMode;
@@ -7,15 +10,19 @@ import Controller.SearchMode.StopSearchController;
 import Controller.StopLines.LineStopsController;
 import Controller.StopLines.StopLinesController;
 import Controller.User.Fav.FavoritesController;
+
 import Model.Map.MapModel;
 import Model.Map.RouteDirectionOption;
 import Model.Points.StopModel;
-import Model.Net.ConnectionStatusProvider;
+
 import Service.GTFS_RT.ArrivalPredictionService;
 import Service.GTFS_RT.Fetcher.TripUpdates.TripUpdatesService;
 import Service.GTFS_RT.Fetcher.Vehicle.VehiclePositionsService;
+import Model.Net.ConnectionStatusProvider;
+
 import Service.Parsing.Static.StaticGtfsRepository;
 import Service.Parsing.Static.StaticGtfsRepositoryBuilder;
+
 import View.DashboardView;
 import View.Map.LineStopsView;
 import View.Map.MapView;
@@ -24,24 +31,6 @@ import View.User.Fav.FavoritesView;
 
 import javax.swing.*;
 
-/**
- * Controller della dashboard (schermata principale).
- *
- * Responsabilità:
- * - Creare e collegare i componenti principali della UI: mappa, search bar, pannello lista fermate/corse.
- * - Istanziate e collegare i controller “di feature”:
- *   - ricerca fermate e ricerca linee,
- *   - lista fermate di una linea,
- *   - lista linee/corse in arrivo a una fermata,
- *   - gestione preferiti.
- * - Costruire il repository GTFS statico e il servizio di previsione arrivi (ETA).
- * - Gestire le callback provenienti dalla SearchBar e sincronizzare mappa + pannelli.
- *
- * Note di design:
- * - Questo controller fa soprattutto wiring: non contiene logica di parsing o rendering.
- * - La logica di aggiornamento realtime è in altri componenti (ArrivalPredictionService, VehiclePositionsService).
- * - Il repository statico viene indicizzato all’avvio per ridurre latenza durante le ricerche.
- */
 public class DashboardController {
 
     private final DashboardView dashboardView;
@@ -56,17 +45,6 @@ public class DashboardController {
 
     private final ArrivalPredictionService arrivalPredictionService;
 
-    /**
-     * Costruisce la dashboard collegando view, model, repository e controller.
-     *
-     * @param stopsCsvPath path di stops.csv
-     * @param routesCsvPath path di routes.csv
-     * @param tripsCsvPath path di trips.csv
-     * @param stopTimesPath path di stop_times.csv
-     * @param vehiclePositionsService service realtime per posizioni veicoli
-     * @param tripUpdatesService service realtime per trip updates (delay, schedule relationship, ecc.)
-     * @param statusProvider provider dello stato connessione (ONLINE/OFFLINE)
-     */
     public DashboardController(
             String stopsCsvPath,
             String routesCsvPath,
@@ -76,8 +54,7 @@ public class DashboardController {
             TripUpdatesService tripUpdatesService,
             ConnectionStatusProvider statusProvider
     ) {
-
-        // ========================= VIEW =========================
+        // VIEW
         this.dashboardView = new DashboardView();
 
         MapView mapView = dashboardView.getMapView();
@@ -85,11 +62,10 @@ public class DashboardController {
         LineStopsView lineStopsView = dashboardView.getLineStopsView();
         JButton favoritesButton = dashboardView.getFavoritesButton();
 
-        // ========================= MODEL =========================
+        // MODEL
         this.mapModel = new MapModel();
 
-        // ========================= STATIC REPO =========================
-        // Repository indicizzato: velocizza query su stops/trips/stop_times durante uso app.
+        // STATIC REPO (puoi anche costruirlo in Main e passarlo)
         StaticGtfsRepository repo = new StaticGtfsRepositoryBuilder()
                 .withStopsPath(stopsCsvPath)
                 .withRoutesPath(routesCsvPath)
@@ -100,48 +76,56 @@ public class DashboardController {
                 .indexStopStopTimes(true)
                 .build();
 
-        // ========================= ARRIVAL PREDICTION (ETA) =========================
+        // ARRIVAL PREDICTION (ETA)
         this.arrivalPredictionService = new ArrivalPredictionService(
                 tripUpdatesService,
                 statusProvider,
                 repo
         );
 
-        // ========================= MAP CONTROLLER =========================
+        // MAP CONTROLLER (usa vehiclePositionsService ricevuto)
         this.mapController = new MapController(
                 mapModel,
                 mapView,
                 stopsCsvPath,
                 vehiclePositionsService
         );
+
         this.mapController.bindConnectionStatus(statusProvider);
 
-        // ========================= SEARCH CONTROLLERS =========================
-        this.stopSearchController =
-                new StopSearchController(searchBar, mapController, stopsCsvPath);
-
+        // SEARCH CONTROLLERS
         this.lineSearchController =
                 new LineSearchController(searchBar, mapController, routesCsvPath, tripsCsvPath);
 
-        // ========================= LIST PANELS CONTROLLERS =========================
+        // LIST PANELS
         this.lineStopsController =
                 new LineStopsController(lineStopsView, repo, mapController, arrivalPredictionService);
 
+        // ✅ STOP MODE: fermata -> arrivi (linee + orario) + doppio click per aprire dettagli linea
         this.stopLinesController =
-                new StopLinesController(lineStopsView, repo, mapController, arrivalPredictionService);
+                new StopLinesController(
+                        lineStopsView,
+                        repo,
+                        mapController,
+                        arrivalPredictionService,
+                        row -> openLineFromArrivalRow(row, searchBar, lineStopsView)
+                );
 
-        // ========================= FAVORITES =========================
+        // ✅ StopSearchController ora richiama automaticamente stopLinesController.showLinesForStop(stop)
+        this.stopSearchController =
+                new StopSearchController(searchBar, mapController, stopsCsvPath, stopLinesController);
+
+        // FAVORITES
         FavoritesView favoritesView = new FavoritesView();
         this.favoritesController =
                 new FavoritesController(favoritesView, mapController, lineStopsController);
 
-        // Il bottone preferiti nella dashboard tipicamente apre la dialog (gestita altrove).
-        // Qui ci assicuriamo almeno che i dati siano aggiornati quando viene premuto.
         favoritesButton.addActionListener(e -> favoritesController.refreshView());
 
-        // ========================= CALLBACKS (SearchBar) =========================
+        // ✅ LINE MODE: doppio click su fermata -> switch a STOP + apri dettagli fermata
+        lineStopsView.setOnStopDoubleClick(stop -> openStopFromLineStopDoubleClick(stop, searchBar, lineStopsView));
 
-        // Cambio modalità STOP/LINE: reset coerente di mappa e pannelli.
+        // CALLBACKS
         searchBar.setOnModeChanged(mode -> {
             lineStopsView.clear();
             searchBar.hideSuggestions();
@@ -157,52 +141,38 @@ public class DashboardController {
             }
         });
 
-        // Submit ricerca (invio o icona).
         searchBar.setOnSearch(query -> {
             if (query == null || query.isBlank()) return;
-
-            if (searchBar.getCurrentMode() == SearchMode.STOP) {
-                stopSearchController.onSearch(query);
-            } else {
-                lineSearchController.onSearch(query);
-            }
+            if (searchBar.getCurrentMode() == SearchMode.STOP) stopSearchController.onSearch(query);
+            else lineSearchController.onSearch(query);
         });
 
-        // Suggerimenti in tempo reale mentre l’utente digita.
         searchBar.setOnTextChanged(text -> {
-            if (searchBar.getCurrentMode() == SearchMode.STOP) {
-                stopSearchController.onTextChanged(text);
-            } else {
-                lineSearchController.onTextChanged(text);
-            }
+            if (searchBar.getCurrentMode() == SearchMode.STOP) stopSearchController.onTextChanged(text);
+            else lineSearchController.onTextChanged(text);
         });
 
-        // Selezione suggerimento STOP: centro la mappa e mostro le linee/corse in arrivo alla fermata.
         searchBar.setOnSuggestionSelected((StopModel stop) -> {
             if (stop == null) return;
 
             mapController.clearRouteHighlight();
             mapController.clearVehicles();
 
+            // stopSearchController gestisce anche l'apertura delle linee alla fermata
             stopSearchController.onSuggestionSelected(stop);
-            stopLinesController.showLinesForStop(stop);
         });
 
-        // Selezione suggerimento LINE: evidenzio la linea, attivo veicoli e mostro elenco fermate della linea.
         searchBar.setOnRouteDirectionSelected((RouteDirectionOption option) -> {
             if (option == null) return;
 
             mapController.clearHighlightedStop();
-
             lineSearchController.onRouteDirectionSelected(option);
 
-            // Ridondante ma esplicito: garantisce layer veicoli attiva dopo selezione linea.
+            // ✅ showVehiclesForRoute usa il vehiclePositionsService già dentro MapController
             mapController.showVehiclesForRoute(option.getRouteId(), option.getDirectionId());
-
             lineStopsController.showStopsFor(option);
         });
 
-        // Clear: reset totale (pannelli + mappa).
         searchBar.setOnClear(() -> {
             lineStopsView.clear();
             mapController.showAllStops();
@@ -212,11 +182,104 @@ public class DashboardController {
         });
     }
 
-    /**
-     * Restituisce la view principale della dashboard.
-     *
-     * @return DashboardView creata e configurata dal controller
-     */
+    private void openStopFromLineStopDoubleClick(StopModel stop, SearchBarView searchBar, LineStopsView lineStopsView) {
+        if (stop == null) return;
+
+        // 1) switch SearchBar to STOP mode (reflection to match your SearchBarView API)
+        try {
+            Method m = searchBar.getClass().getMethod("setMode", SearchMode.class);
+            m.invoke(searchBar, SearchMode.STOP);
+        } catch (NoSuchMethodException ignored) {
+            try {
+                Method m2 = searchBar.getClass().getMethod("setCurrentMode", SearchMode.class);
+                m2.invoke(searchBar, SearchMode.STOP);
+            } catch (NoSuchMethodException ignored2) {
+                try {
+                    Method m3 = searchBar.getClass().getMethod("switchTo", SearchMode.class);
+                    m3.invoke(searchBar, SearchMode.STOP);
+                } catch (Exception ignored3) {
+                    // If no explicit API exists, we still proceed.
+                }
+            } catch (Exception ex) {
+                System.err.println("[DashboardController] Unable to set STOP mode: " + ex.getMessage());
+            }
+        } catch (Exception ex) {
+            System.err.println("[DashboardController] Unable to set STOP mode: " + ex.getMessage());
+        }
+
+        // 2) clear panel selection/suggestions to avoid UI glitches
+        if (lineStopsView != null) lineStopsView.clear();
+        searchBar.hideSuggestions();
+
+        // 3) put stop name into the search field (best-effort)
+        String query = (stop.getName() != null) ? stop.getName().trim() : "";
+        try {
+            JTextField f = searchBar.getSearchField();
+            f.setText(query);
+            f.setCaretPosition(query.length());
+            f.select(query.length(), query.length());
+        } catch (Exception ignored) {
+            // If SearchBarView doesn't expose the field, it's fine.
+        }
+
+        // 4) run the normal STOP pipeline (center + show arrivals/lines)
+        mapController.showAllStops();
+        mapController.clearRouteHighlight();
+        mapController.clearVehicles();
+        stopSearchController.onSuggestionSelected(stop);
+    }
+
+    private void openLineFromArrivalRow(ArrivalRow row, SearchBarView searchBar, LineStopsView lineStopsView) {
+        if (row == null) return;
+
+        // Prefer the user-facing line short name if available; fallback to routeId.
+        String query = (row.line != null && !row.line.isBlank()) ? row.line.trim() : null;
+        if ((query == null || query.isBlank()) && row.routeId != null) query = row.routeId.trim();
+        if (query == null || query.isBlank()) return;
+
+        // 1) switch SearchBar to LINE mode (reflection to match your SearchBarView API)
+        try {
+            Method m = searchBar.getClass().getMethod("setMode", SearchMode.class);
+            m.invoke(searchBar, SearchMode.LINE);
+        } catch (NoSuchMethodException ignored) {
+            try {
+                Method m2 = searchBar.getClass().getMethod("setCurrentMode", SearchMode.class);
+                m2.invoke(searchBar, SearchMode.LINE);
+            } catch (NoSuchMethodException ignored2) {
+                try {
+                    Method m3 = searchBar.getClass().getMethod("switchTo", SearchMode.class);
+                    m3.invoke(searchBar, SearchMode.LINE);
+                } catch (Exception ignored3) {
+                    // If no explicit API exists, we still proceed with the search; mode callback may not fire.
+                }
+            } catch (Exception ex) {
+                System.err.println("[DashboardController] Unable to set LINE mode: " + ex.getMessage());
+            }
+        } catch (Exception ex) {
+            System.err.println("[DashboardController] Unable to set LINE mode: " + ex.getMessage());
+        }
+
+        // 2) clear panel selection/suggestions to avoid UI glitches
+        if (lineStopsView != null) lineStopsView.clear();
+        searchBar.hideSuggestions();
+
+        // 3) put query into the search field
+        try {
+            JTextField f = searchBar.getSearchField();
+            f.setText(query);
+            f.setCaretPosition(query.length());
+            f.select(query.length(), query.length());
+        } catch (Exception ignored) {
+            // If SearchBarView doesn't expose the field, it's fine; LineSearchController will still run.
+        }
+
+        // 4) run the normal LINE search pipeline
+        mapController.clearHighlightedStop();
+        mapController.clearRouteHighlight();
+        mapController.clearVehicles();
+        lineSearchController.onSearch(query);
+    }
+
     public DashboardView getView() {
         return dashboardView;
     }

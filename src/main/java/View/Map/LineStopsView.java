@@ -23,6 +23,7 @@ public class LineStopsView extends JPanel {
     // ======= LINE MODE (linea -> fermate) =======
     private List<StopModel> currentStops = Collections.emptyList();
     private MapController mapController;
+    private Consumer<StopModel> onStopDoubleClick;
 
     // ======= STOP MODE v1 (fermata -> linee) =======
     private List<RoutesModel> currentRoutes = Collections.emptyList();
@@ -35,6 +36,7 @@ public class LineStopsView extends JPanel {
     // ✅ STOP MODE v3 (fermata -> arrivals con orario)
     private List<ArrivalRow> currentArrivals = Collections.emptyList();
     private Consumer<ArrivalRow> onArrivalSelected;
+    private Consumer<ArrivalRow> onArrivalDoubleClick;
 
     private Service.GTFS_RT.Fetcher.Vehicle.VehiclePositionsService vehiclePositionsService;
     private enum PanelMode { NONE, LINE_STOPS, STOP_ROUTES, STOP_ROUTE_DIRECTIONS, STOP_ARRIVALS }
@@ -101,6 +103,34 @@ public class LineStopsView extends JPanel {
                 onArrivalSelected.accept(currentArrivals.get(idx));
             }
         });
+
+        // ✅ doppio click: in LINE_STOPS apre fermata, in STOP_ARRIVALS apre dettagli linea (gestito dal controller)
+        list.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                if (e.getClickCount() != 2 || !javax.swing.SwingUtilities.isLeftMouseButton(e)) return;
+
+                int idx = list.locationToIndex(e.getPoint());
+                if (idx < 0) return;
+
+                // ✅ doppio click in LINE_STOPS: apri fermata (gestito dal controller)
+                if (panelMode == PanelMode.LINE_STOPS) {
+                    if (onStopDoubleClick == null) return;
+                    if (currentStops == null || currentStops.isEmpty()) return;
+                    if (idx >= currentStops.size()) return;
+                    onStopDoubleClick.accept(currentStops.get(idx));
+                    return;
+                }
+
+                // ✅ doppio click in STOP_ARRIVALS: apri dettagli linea (gestito dal controller)
+                if (panelMode == PanelMode.STOP_ARRIVALS) {
+                    if (onArrivalDoubleClick == null) return;
+                    if (currentArrivals == null || currentArrivals.isEmpty()) return;
+                    if (idx >= currentArrivals.size()) return;
+                    onArrivalDoubleClick.accept(currentArrivals.get(idx));
+                }
+            }
+        });
     }
 
     public void setOnRouteSelected(Consumer<RoutesModel> cb) { this.onRouteSelected = cb; }
@@ -108,6 +138,8 @@ public class LineStopsView extends JPanel {
 
     // ✅ nuovo
     public void setOnArrivalSelected(Consumer<ArrivalRow> cb) { this.onArrivalSelected = cb; }
+    public void setOnArrivalDoubleClick(Consumer<ArrivalRow> cb) { this.onArrivalDoubleClick = cb; }
+    public void setOnStopDoubleClick(Consumer<StopModel> cb) { this.onStopDoubleClick = cb; }
 
     public void showLineStops(String label, List<StopModel> stops, MapController mapController) {
         this.panelMode = PanelMode.LINE_STOPS;
